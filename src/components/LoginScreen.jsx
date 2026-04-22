@@ -226,14 +226,15 @@ export default function LoginScreen({ onLogin }) {
         .ll-stripe { position:absolute; top:0; right:0; bottom:0; width:1px; background:rgba(255,255,255,0.1); }
         .ll-glow { position:absolute; top:-100px; right:-100px; width:420px; height:420px; border-radius:50%; background:radial-gradient(circle, rgba(96,165,250,0.18) 0%, transparent 65%); pointer-events:none; }
         .ll-glow2 { position:absolute; bottom:-120px; left:-80px; width:340px; height:340px; border-radius:50%; background:radial-gradient(circle, rgba(30,58,138,0.5) 0%, transparent 70%); pointer-events:none; }
-        .lright { flex:1; display:flex; align-items:center; justify-content:center; background:#f0f4ff; padding:40px 32px; }
-        .lcard { width:100%; max-width:400px; background:#fff; border-radius:16px; padding:36px 32px 32px; box-shadow:0 4px 32px rgba(30,64,175,0.10); }
-        .finput { width:100%; box-sizing:border-box; padding:10px 13px; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px; font-size:13px; color:#0f172a; font-family:'Inter',sans-serif; outline:none; transition:all 0.15s; }
-        .finput:focus { border-color:#2563eb; background:#fff; box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
-        .finput::placeholder { color:#c0cad8; }
-        .lbtn { width:100%; padding:11px; background:#2563eb; border:none; border-radius:10px; color:#fff; font-weight:600; font-size:14px; cursor:pointer; font-family:'Inter',sans-serif; display:flex; align-items:center; justify-content:center; gap:8px; transition:background 0.15s; }
-        .lbtn:hover:not(:disabled) { background:#1d4ed8; }
-        .lbtn:disabled { background:#e2e8f0; color:#94a3b8; cursor:not-allowed; }
+        .lright { flex:1; display:flex; align-items:center; justify-content:center; background:#0b0c10; padding:40px 32px; }
+        .lcard { width:100%; max-width:400px; background:#12151c; border:1px solid #222836; border-radius:16px; padding:36px 32px 32px; box-shadow:0 20px 60px rgba(0,0,0,0.5); }
+        .finput { width:100%; box-sizing:border-box; padding:10px 13px; background:#0f172a; border:1.5px solid #222836; border-radius:10px; font-size:13px; color:#e2e8f0; font-family:'Inter',sans-serif; outline:none; transition:all 0.15s; }
+        .finput:focus { border-color:#6366f1; background:#0d1117; box-shadow:0 0 0 3px rgba(99,102,241,0.15); }
+        .finput::placeholder { color:#334155; }
+        .lbtn { width:100%; padding:11px; background:#6366f1; border:none; border-radius:10px; color:#fff; font-weight:600; font-size:14px; cursor:pointer; font-family:'Inter',sans-serif; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.15s; box-shadow:0 4px 14px rgba(99,102,241,0.35); }
+        .lbtn:hover:not(:disabled) { background:#4f46e5; box-shadow:0 6px 20px rgba(99,102,241,0.45); transform:translateY(-1px); }
+        .lbtn:active:not(:disabled) { transform:translateY(0); }
+        .lbtn:disabled { background:#1e293b; color:#475569; cursor:not-allowed; box-shadow:none; }
         @media(max-width:720px){ .ll{display:none;} .lright{padding:24px 20px;} }
       `}</style>
 
@@ -407,16 +408,16 @@ export default function LoginScreen({ onLogin }) {
                 style={{
                   fontSize: 22,
                   fontWeight: 700,
-                  color: "#0f172a",
+                  color: "#e2e8f0",
                   letterSpacing: "-0.03em",
                   marginBottom: 5,
                 }}
               >
                 Sign in
               </div>
-              <div style={{ fontSize: 13, color: "#94a3b8" }}>
+              <div style={{ fontSize: 13, color: "#475569" }}>
                 Password for all accounts is{" "}
-                <span style={{ fontWeight: 600, color: "#2563eb" }}>demo</span>
+                <span style={{ fontWeight: 600, color: "#818cf8" }}>demo</span>
               </div>
             </div>
 
@@ -436,11 +437,11 @@ export default function LoginScreen({ onLogin }) {
                 margin: "18px 0",
               }}
             >
-              <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
-              <div style={{ fontSize: 11, color: "#cbd5e1" }}>
+              <div style={{ flex: 1, height: 1, background: "#1e293b" }} />
+              <div style={{ fontSize: 11, color: "#334155" }}>
                 or type manually
               </div>
-              <div style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+              <div style={{ flex: 1, height: 1, background: "#1e293b" }} />
             </div>
 
             {/* Email */}
@@ -450,7 +451,7 @@ export default function LoginScreen({ onLogin }) {
                   display: "block",
                   fontSize: 10.5,
                   fontWeight: 600,
-                  color: "#64748b",
+                  color: "#475569",
                   letterSpacing: "0.06em",
                   textTransform: "uppercase",
                   marginBottom: 6,
@@ -475,7 +476,7 @@ export default function LoginScreen({ onLogin }) {
                   display: "block",
                   fontSize: 10.5,
                   fontWeight: 600,
-                  color: "#64748b",
+                  color: "#475569",
                   letterSpacing: "0.06em",
                   textTransform: "uppercase",
                   marginBottom: 6,
@@ -497,11 +498,11 @@ export default function LoginScreen({ onLogin }) {
               <div
                 style={{
                   padding: "9px 12px",
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
+                  background: "rgba(220,38,38,0.1)",
+                  border: "1px solid rgba(220,38,38,0.3)",
                   borderRadius: 8,
                   fontSize: 12,
-                  color: "#dc2626",
+                  color: "#f87171",
                   marginBottom: 14,
                 }}
               >
@@ -512,7 +513,7 @@ export default function LoginScreen({ onLogin }) {
             <button className="lbtn" onClick={handleLogin} disabled={loading}>
               {loading ? (
                 <>
-                  <Spinner size={14} color="#94a3b8" /> Signing in…
+                  <Spinner size={14} color="rgba(255,255,255,0.5)" /> Signing in…
                 </>
               ) : (
                 "Sign in to workspace"
@@ -524,7 +525,7 @@ export default function LoginScreen({ onLogin }) {
                 marginTop: 18,
                 textAlign: "center",
                 fontSize: 11,
-                color: "#cbd5e1",
+                color: "#1e293b",
               }}
             >
               Prophone · ProPhone Suite
