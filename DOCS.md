@@ -307,4 +307,24 @@ Open `http://localhost:3000` and sign in with:
 
 ---
 
+## Supabase
+
+[Supabase](https://supabase.com) is the backend for ProPhone CRM. It provides:
+
+- **PostgreSQL database** — all contacts, activities, users, and clients are stored here.
+- **JS client (`@supabase/supabase-js`)** — the app communicates with Supabase directly from the browser using the anon key; no custom backend server is needed.
+- **Row-level access** — the anon key restricts reads/writes to what the app explicitly queries (no direct table exposure beyond the schema).
+
+All database logic lives in [src/lib/db.js](src/lib/db.js). Every function there (e.g. `getContacts`, `createContact`, `addActivity`) maps to a Supabase query. To swap out the data source in the future, only that file needs to change.
+
+**Required env vars:**
+```
+REACT_APP_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
+
+Find these in: Supabase Dashboard → Project Settings → API.
+
+---
+
 *ProPhone CRM — Built for GeniusAI · Prophone Suite*
