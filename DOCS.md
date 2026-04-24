@@ -12,7 +12,7 @@ ProPhone CRM is a **Sales CRM (Customer Relationship Management)** web applicati
 
 | Role | Name | Access |
 |---|---|---|
-| Admin | Mike Johnson | Full access |
+| Super Admin | Super Admin | Full access |
 | Manager | Sarah Lee | Full access |
 | Sales Rep | James Davis | Standard access |
 | Sales Rep | Amy Wilson | Standard access |

@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Company (one per tenant) ───────────────────────────────────────────────────
+model company_profile {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id String   @unique                      // e.g. "foxtow", "acme-towing"
+  name        String
+  website     String   @default("")
+  city        String   @default("")
+  address     String   @default("")
+  phone       String   @default("")
+  industry    String   @default("")
+  plan        String   @default("starter")
+  notes       String   @default("")
+  metadata    Json     @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  users    user[]
+  contacts contact[]
+
+  @@map("company_profiles")
+}
+
+// ── Users ──────────────────────────────────────────────────────────────────────
+model user {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id String?                               // null for super_admin; required for admin/rep
+  email       String   @unique
+  password    String
+  name        String   @default("")
+  role        String   @default("rep")              // rep | admin | super_admin
+  avatar      String   @default("")
+  color       String   @default("")
+  created_at  DateTime @default(now())
+
+  company company_profile? @relation(fields: [prophone_id], references: [prophone_id])
+
+  @@index([prophone_id])
+  @@map("users")
+}
+
+// ── Contacts ───────────────────────────────────────────────────────────────────
+model contact {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id     String
+  pool            String
+  client_id       String?
+  first_name      String   @default("")
+  last_name       String   @default("")
+  email           String   @default("")
+  phone           String   @default("")
+  company         String   @default("")
+  title           String   @default("")
+  website         String   @default("")
+  city            String   @default("")
+  trucks          Int      @default(0)
+  lifecycle_stage String   @default("new")
+  lead_score      Int      @default(0)
+  status          String   @default("active")
+  source          String   @default("")
+  campaign        String   @default("")
+  emails_sent     Int      @default(0)
+  emails_opened   Int      @default(0)
+  emails_clicked  Int      @default(0)
+  calls_made      Int      @default(0)
+  calls_answered  Int      @default(0)
+  last_activity_at DateTime @default(now())
+  contract_value  Int      @default(0)
+  account_size    String   @default("1-5")
+  tags            String[] @default([])
+  notes           String   @default("")
+  owned_by        String   @default("")
+  added_by        String   @default("")
+  created_at      DateTime @default(now())
+
+  company_rel company_profile @relation(fields: [prophone_id], references: [prophone_id])
+  activities  activity[]
+
+  @@index([prophone_id])
+  @@map("contacts")
+}
+
+// ── Activities ─────────────────────────────────────────────────────────────────
+model activity {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contact_id String   @db.Uuid
+  type       String
+  note       String   @default("")
+  by         String   @default("")
+  ts         DateTime @default(now())
+
+  contact contact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
+// ── Email Templates ────────────────────────────────────────────────────────────
+model email_template {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id    String
+  name           String
+  subject        String   @default("")
+  json_structure Json     @default("{\"version\":1,\"blocks\":[]}")
+  html_output    String   @default("")
+  status         String   @default("draft")
+  version        Int      @default(1)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([prophone_id, updated_at(sort: Desc)])
+  @@map("email_templates")
+}

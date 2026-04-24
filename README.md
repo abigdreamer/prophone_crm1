@@ -67,7 +67,7 @@ App runs at **http://localhost:3000**
 
 | Name          | Email                  | Role    | Password |
 |---------------|------------------------|---------|----------|
-| Mike Johnson  | mike@geniusai.biz      | Admin   | demo     |
+| Super Admin  | mike@geniusai.biz      | Admin   | 123456     |
 | Sarah Lee     | sarah@geniusai.biz     | Manager | demo     |
 | James Davis   | james@geniusai.biz     | Rep     | demo     |
 | Amy Wilson    | amy@geniusai.biz       | Rep     | demo     |
