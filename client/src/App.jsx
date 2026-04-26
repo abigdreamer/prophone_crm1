@@ -273,8 +273,8 @@ function AppLayout() {
           padding: isFullPage || isProfile ? 0 : 20,
           minWidth: 0, position: "relative", minHeight: 0,
         }}>
-          {!firstLoad && loading && !isFullPage && !isProfile && (
-            <ContentLoader text="Loading contacts…" />
+          {!firstLoad && loading && (
+            <ContentLoader text="Loading…" />
           )}
           <Outlet />
         </div>

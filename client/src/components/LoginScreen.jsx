@@ -11,6 +11,14 @@ const HIGHLIGHTS = [
   "All activity logged in one place",
 ];
 
+// Hardcoded seed users — shown instantly without waiting for the API.
+// The useEffect below refreshes this list in the background once the API responds.
+const SEED_QUICK_USERS = [
+  { id: 'seed-super', email: 'mike@geniusai.biz',    name: 'Super Admin',      role: 'super_admin', avatar: 'SA', color: '#6366f1' },
+  { id: 'seed-admin', email: 'admin@geniusai.biz',   name: 'GeniusAI Admin',   role: 'admin',       avatar: 'GA', color: '#6366f1' },
+  { id: 'seed-mgr',   email: 'manager@geniusai.biz', name: 'GeniusAI Manager', role: 'manager',     avatar: 'GM', color: '#6366f1' },
+];
+
 function QuickLoginDropdown({ users, selectedEmail, onSelect }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -89,8 +97,8 @@ function QuickLoginDropdown({ users, selectedEmail, onSelect }) {
 }
 
 export default function LoginScreen({ onLogin }) {
-  const [quickUsers, setQuickUsers] = useState([]);
-  const [email,    setEmail]    = useState("");
+  const [quickUsers, setQuickUsers] = useState(SEED_QUICK_USERS);
+  const [email,    setEmail]    = useState(SEED_QUICK_USERS[0].email);
   const [password, setPassword] = useState("123456");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
@@ -98,13 +106,12 @@ export default function LoginScreen({ onLogin }) {
   const [pwVisible, setPwVisible] = useState(false);
   const [emFocus,  setEmFocus]  = useState(false);
 
+  // Background refresh — updates names/avatars if they've changed in the DB.
+  // The list is already visible from SEED_QUICK_USERS so there's no loading delay.
   useEffect(() => {
     getQuickUsers()
-      .then(users => {
-        setQuickUsers(users);
-        if (users.length > 0 && !email) setEmail(users[0].email);
-      })
-      .catch(() => {}); // silent — login still works manually
+      .then(users => { if (users.length > 0) setQuickUsers(users); })
+      .catch(() => {});
   }, []);
 
   async function handleLogin() {
