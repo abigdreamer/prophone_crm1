@@ -1,11 +1,12 @@
 import prisma from '../prisma.js';
 
 const ACTIVITY_SELECT = { id: true, type: true, note: true, by: true, ts: true };
+const GROUP_SELECT    = { id: true, name: true };
 
 export async function findMany(where) {
   return prisma.contact.findMany({
     where,
-    include: { activities: { select: ACTIVITY_SELECT } },
+    include: { activities: { select: ACTIVITY_SELECT }, group: { select: GROUP_SELECT } },
     orderBy: { last_activity_at: 'desc' },
   });
 }
@@ -13,7 +14,7 @@ export async function findMany(where) {
 export async function findById(id) {
   return prisma.contact.findUnique({
     where:   { id },
-    include: { activities: { select: ACTIVITY_SELECT } },
+    include: { activities: { select: ACTIVITY_SELECT }, group: { select: GROUP_SELECT } },
   });
 }
 
@@ -44,6 +45,10 @@ export async function updateContact(id, data) {
     data,
     include: { activities: { select: ACTIVITY_SELECT } },
   });
+}
+
+export async function deleteContact(id) {
+  return prisma.contact.delete({ where: { id } });
 }
 
 export async function addActivity(contactId, activityData) {

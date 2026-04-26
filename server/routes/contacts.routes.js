@@ -5,6 +5,7 @@ import {
   getContact,
   createContact,
   updateContact,
+  deleteContact,
   addActivity,
 } from '../controllers/contacts.controller.js';
 
@@ -16,6 +17,7 @@ router.get('/',                listContacts);
 router.get('/:id',             getContact);
 router.post('/',               createContact);
 router.put('/:id',             updateContact);
+router.delete('/:id',          deleteContact);
 router.post('/:id/activities', addActivity);
 
 export default router;
