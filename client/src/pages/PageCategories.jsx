@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Tag, Plus, MoreHorizontal, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Tag, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import Card from "../components/ui/Card";
 import Btn from "../components/ui/Btn";
 import { Spinner } from "../components/ui/Loader";
+import ConfirmDeleteModal from "../components/ui/ConfirmDeleteModal";
 import T from "../theme";
 import fmt from "../utils/format";
 import { createGroup, updateGroup, deleteGroup } from "../api/groups.api";
@@ -108,74 +109,8 @@ function RowMenu({ onEdit, onDelete }) {
   );
 }
 
-// ─── Delete confirmation modal ────────────────────────────────────────────────
-function DeleteGroupModal({ group, onConfirm, onClose, busy }) {
-  const count = group.contactCount;
-  return createPortal(
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 1000,
-      background: "rgba(0,0,0,0.45)", display: "flex",
-      alignItems: "center", justifyContent: "center",
-    }}>
-      <div style={{
-        background: "#fff", borderRadius: 14, padding: "28px 28px 24px",
-        width: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-      }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 18 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-            background: "#fef2f2", border: "1px solid #fecaca",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <AlertTriangle size={18} color="#dc2626" />
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>
-              Delete "{group.name}"?
-            </div>
-            <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
-              {count === 0
-                ? "This group has no contacts. It will be permanently removed."
-                : <>
-                    This group contains{" "}
-                    <strong style={{ color: "#dc2626" }}>{count} contact{count !== 1 ? "s" : ""}</strong>.
-                    {" "}Deleting the group will <strong>unassign</strong> all contacts from it —
-                    the contacts themselves will not be deleted.
-                    {count > 20 && (
-                      <span style={{ display: "block", marginTop: 8, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 10px", fontSize: 12 }}>
-                        ⚠ This group has many contacts. The operation may take a moment to complete.
-                      </span>
-                    )}
-                  </>
-              }
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <Btn variant="ghost" onClick={onClose} disabled={busy}>Cancel</Btn>
-          <Btn
-            onClick={onConfirm}
-            disabled={busy}
-            style={{ background: "#dc2626", borderColor: "#dc2626" }}
-          >
-            {busy
-              ? <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <Spinner size={13} color="#fff" />
-                  Deleting…
-                </span>
-              : `Delete Group`
-            }
-          </Btn>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function PageCategories({ groups = [], setGroups, currentUser }) {
+export default function PageCategories({ groups = [], setGroups, currentUser, setContacts }) {
   const toast = useToast();
   const [newName,   setNewName]   = useState("");
   const [adding,    setAdding]    = useState(false);
@@ -225,6 +160,10 @@ export default function PageCategories({ groups = [], setGroups, currentUser }) 
     try {
       await deleteGroup(deleteTarget.id);
       setGroups(prev => prev.filter(g => g.id !== deleteTarget.id));
+      // Clear group reference from any contacts in local state (backend uses onDelete: SetNull)
+      setContacts?.(prev => prev.map(c =>
+        c.groupId === deleteTarget.id ? { ...c, groupId: null, groupName: null } : c
+      ));
       toast.success(`Group "${deleteTarget.name}" deleted.`);
       setDeleteTarget(null);
     } catch (err) {
@@ -238,8 +177,27 @@ export default function PageCategories({ groups = [], setGroups, currentUser }) 
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {deleteTarget && (
-        <DeleteGroupModal
-          group={deleteTarget}
+        <ConfirmDeleteModal
+          title={`Delete "${deleteTarget.name}"`}
+          itemName={deleteTarget.name}
+          description={
+            deleteTarget.contactCount === 0
+              ? "This group has no contacts. It will be permanently removed."
+              : <>
+                  This group contains{" "}
+                  <strong style={{ color: "#dc2626" }}>
+                    {deleteTarget.contactCount} contact{deleteTarget.contactCount !== 1 ? "s" : ""}
+                  </strong>.
+                  {" "}Deleting the group will <strong>unassign</strong> all contacts from it —
+                  the contacts themselves will not be deleted.
+                  {deleteTarget.contactCount > 20 && (
+                    <span style={{ display: "block", marginTop: 8, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 10px", fontSize: 12 }}>
+                      ⚠ This group has many contacts. The operation may take a moment.
+                    </span>
+                  )}
+                </>
+          }
+          confirmLabel="Delete Group"
           onConfirm={handleDelete}
           onClose={() => setDeleteTarget(null)}
           busy={deleting}

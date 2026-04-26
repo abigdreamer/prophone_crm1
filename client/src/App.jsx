@@ -212,8 +212,8 @@ function ContactsRoute() {
 }
 
 function CategoriesRoute() {
-  const { groups, setGroups, currentUser } = useApp();
-  return <PageCategories groups={groups} setGroups={setGroups} currentUser={currentUser} />;
+  const { groups, setGroups, currentUser, setContacts } = useApp();
+  return <PageCategories groups={groups} setGroups={setGroups} currentUser={currentUser} setContacts={setContacts} />;
 }
 
 function EmailTemplatesRoute() {

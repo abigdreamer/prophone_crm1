@@ -11,6 +11,7 @@ import {
 } from "../api/companies.api";
 import { getUsers, createUser, updateUser, deleteUser } from "../api/auth.api";
 import { useToast } from "../hooks/useToast";
+import { CompanyGroupsView } from "./PageCompanies";
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
@@ -339,7 +340,13 @@ function ManageCompany({ currentUser }) {
     } else {
       if (!currentUser?.prophone_id) { setLoading(false); return; }
       getCompany(currentUser.prophone_id)
-        .then(data => setForm({ name: data.name || "", website: data.website || "", city: data.city || "", address: data.address || "", phone: data.phone || "", industry: data.industry || "", notes: data.notes || "" }))
+        .then(d => setForm({
+          name: d.name || "", website: d.website || "", city: d.city || "",
+          address: d.address || "", phone: d.phone || "", email: d.email || "",
+          fax: d.fax || "", zipcode: d.zipcode || "", state: d.state || "",
+          country: d.country || "", timezone: d.timezone || "",
+          industry: d.industry || "", notes: d.notes || "",
+        }))
         .catch(() => toast.error("Failed to load company."))
         .finally(() => setLoading(false));
     }
@@ -379,40 +386,133 @@ function ManageCompany({ currentUser }) {
     </div>
   );
 
-  // ── Admin: single company inline form ──
+  // ── Admin: full-page two-column company form ──
   if (!isSuperAdmin) {
     if (!form) return null;
+    const D = !isAdmin;
+    const set = k => v => setForm(f => ({ ...f, [k]: v }));
+
+    const US_STATES = [
+      { value: "", label: "Select State" },
+      ...[["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]].map(([v,l]) => ({ value: v, label: l }))
+    ];
+    const TIMEZONES = [
+      { value: "", label: "Select Time Zone" },
+      { value: "America/New_York",    label: "(GMT-05:00) Eastern Time"  },
+      { value: "America/Chicago",     label: "(GMT-06:00) Central Time"  },
+      { value: "America/Denver",      label: "(GMT-07:00) Mountain Time" },
+      { value: "America/Los_Angeles", label: "(GMT-08:00) Pacific Time"  },
+      { value: "America/Anchorage",   label: "(GMT-09:00) Alaska"        },
+      { value: "Pacific/Honolulu",    label: "(GMT-10:00) Hawaii"        },
+      { value: "America/Phoenix",     label: "(GMT-07:00) Arizona"       },
+    ];
+
+    function FLabel({ children, required }) {
+      return (
+        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
+          {children}{required && <span style={{ color: "#ef4444", marginLeft: 3 }}>*</span>}
+        </label>
+      );
+    }
+
     return (
-      <div style={{ maxWidth: 620, padding: 32 }}>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <style>{SPIN}</style>
-        <div style={{ marginBottom: 24 }}>
-          <ReadonlyBadge label={currentUser.prophone_id} />
+
+        {/* Header */}
+        <div style={{ padding: "20px 32px", borderBottom: "1px solid " + T.border, background: T.surface, flexShrink: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: T.text, marginBottom: 4 }}>Company Profile</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, color: T.muted }}>Manage your company's information and contact details.</div>
+            <ReadonlyBadge label={currentUser.prophone_id} />
+          </div>
+          {!isAdmin && (
+            <div style={{ marginTop: 10, display: "inline-flex", gap: 6, background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", borderRadius: 7, padding: "5px 12px", fontSize: 12 }}>
+              View only — contact your admin to make changes
+            </div>
+          )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <Field label="Company Name" value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Acme Towing" disabled={!isAdmin} />
-          </div>
-          <Field label="Website"  value={form.website}  onChange={v => setForm(f => ({ ...f, website: v }))}  placeholder="https://example.com"  disabled={!isAdmin} />
-          <Field label="Phone"    value={form.phone}    onChange={v => setForm(f => ({ ...f, phone: v }))}    placeholder="+1 555 000 0000"       disabled={!isAdmin} />
-          <Field label="City"     value={form.city}     onChange={v => setForm(f => ({ ...f, city: v }))}     placeholder="Dallas, TX"            disabled={!isAdmin} />
-          <Field label="Industry" value={form.industry} onChange={v => setForm(f => ({ ...f, industry: v }))} placeholder="Towing & Recovery"     disabled={!isAdmin} />
-          <div style={{ gridColumn: "1 / -1" }}>
-            <Field label="Address" value={form.address} onChange={v => setForm(f => ({ ...f, address: v }))} placeholder="123 Main St, Suite 100" disabled={!isAdmin} />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Notes</label>
-            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} disabled={!isAdmin}
-              style={{ width: "100%", padding: "9px 12px", background: !isAdmin ? T.panel : T.surface, border: "1px solid " + T.border, borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }}
-            />
+
+        {/* Two-column form */}
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0, padding: "28px 32px 0" }}>
+
+            {/* Left — Company Information */}
+            <div style={{ paddingRight: 32, borderRight: "1px solid " + T.border, paddingBottom: 32 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 18, paddingBottom: 12, borderBottom: "1px solid " + T.border }}>
+                Company Information
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <FLabel required>Company Name</FLabel>
+                <Field label="" value={form.name} onChange={set("name")} placeholder="Acme Corp" disabled={D} />
+              </div>
+
+              <Field label="Address" value={form.address} onChange={set("address")} placeholder="123 Main St, Suite 100" disabled={D} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+                <Field label="City" value={form.city} onChange={set("city")} placeholder="Los Angeles" disabled={D} />
+                <Field label="ZIP" value={form.zipcode} onChange={set("zipcode")} placeholder="90001" disabled={D} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <FLabel>State</FLabel>
+                  <select value={form.state} onChange={e => !D && set("state")(e.target.value)} disabled={D}
+                    style={{ width: "100%", padding: "9px 12px", background: D ? T.panel : T.surface, border: "1.5px solid " + T.border, borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: D ? "not-allowed" : "pointer" }}>
+                    {US_STATES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <Field label="Country" value={form.country} onChange={set("country")} placeholder="United States" disabled={D} />
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <FLabel>Time Zone</FLabel>
+                <select value={form.timezone} onChange={e => !D && set("timezone")(e.target.value)} disabled={D}
+                  style={{ width: "100%", padding: "9px 12px", background: D ? T.panel : T.surface, border: "1.5px solid " + T.border, borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none", boxSizing: "border-box", cursor: D ? "not-allowed" : "pointer" }}>
+                  {TIMEZONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+
+              <Field label="Email" value={form.email} onChange={set("email")} placeholder="info@company.com" disabled={D} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Phone" value={form.phone} onChange={set("phone")} placeholder="+1 555 000 0000" disabled={D} />
+                <Field label="Fax"   value={form.fax}   onChange={set("fax")}   placeholder="+1 555 000 0001" disabled={D} />
+              </div>
+            </div>
+
+            {/* Right — Additional Details */}
+            <div style={{ paddingLeft: 32, paddingBottom: 32 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 18, paddingBottom: 12, borderBottom: "1px solid " + T.border }}>
+                Additional Details
+              </div>
+
+              <Field label="Website"  value={form.website}  onChange={set("website")}  placeholder="https://yourcompany.com" disabled={D} />
+              <Field label="Industry" value={form.industry} onChange={set("industry")} placeholder="e.g. Technology, Retail, Logistics…" disabled={D} />
+
+              <div style={{ marginBottom: 14 }}>
+                <FLabel>Notes</FLabel>
+                <textarea value={form.notes} onChange={e => !D && setForm(f => ({ ...f, notes: e.target.value }))} disabled={D} placeholder="Any additional information…" rows={6}
+                  style={{ width: "100%", padding: "9px 12px", background: D ? T.panel : T.surface, border: "1.5px solid " + T.border, borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Save bar */}
         {isAdmin && (
-          <button onClick={handleAdminSave} disabled={saving}
-            style={{ marginTop: 20, display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 20px", background: saving ? T.border : T.accent, border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", transition: "background 0.15s" }}
-          >
-            {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={14} />}
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
+          <div style={{ padding: "16px 32px", borderTop: "1px solid " + T.border, background: T.surface, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={handleAdminSave} disabled={saving}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 28px", background: saving ? T.border : T.accent, border: "none", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", transition: "background 0.15s", boxShadow: "0 2px 8px rgba(37,99,235,0.2)" }}
+              onMouseEnter={e => { if (!saving) e.currentTarget.style.background = "#1d4ed8"; }}
+              onMouseLeave={e => { if (!saving) e.currentTarget.style.background = T.accent; }}
+            >
+              {saving && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
         )}
       </div>
     );
@@ -761,12 +861,15 @@ function ManageUsers({ currentUser }) {
 // ── Page shell ─────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
-  { id: "manage-company", label: "Companies",    superLabel: "Companies", icon: Building2 },
-  { id: "manage-users",   label: "Users",        superLabel: "Users",     icon: Users     },
+  { id: "manage-company", label: "Companies", icon: Building2 },
+  { id: "manage-users",   label: "Users",          icon: Users     },
 ];
 
 export default function PageSettings({ currentUser }) {
   const [active, setActive] = useState("manage-company");
+  const isSuperAdmin = currentUser?.role === "super_admin";
+
+  const visibleSections = SECTIONS.filter(s => !s.superAdminOnly || isSuperAdmin);
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -776,7 +879,7 @@ export default function PageSettings({ currentUser }) {
         <div style={{ padding: "0 14px 10px", fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
           Settings
         </div>
-        {SECTIONS.map(s => {
+        {visibleSections.map(s => {
           const Icon = s.icon;
           const sel  = active === s.id;
           return (
@@ -804,9 +907,13 @@ export default function PageSettings({ currentUser }) {
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, background: T.bg, overflow: "auto" }}>
-        {active === "manage-company" && <ManageCompany currentUser={currentUser} />}
-        {active === "manage-users"   && <ManageUsers   currentUser={currentUser} />}
+      <div style={{ flex: 1, background: T.bg, overflow: "hidden" }}>
+        {active === "manage-company" && (
+          isSuperAdmin
+            ? <CompanyGroupsView />
+            : <ManageCompany currentUser={currentUser} />
+        )}
+        {active === "manage-users" && <ManageUsers currentUser={currentUser} />}
       </div>
     </div>
   );

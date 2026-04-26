@@ -11,11 +11,14 @@ export async function listCompanies(req, res) {
 }
 
 export async function createCompany(req, res) {
-  const { name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
+  const {
+    name, website, city, address, zipcode, state, country, phone, email, fax,
+    industry, timezone, notes, metadata, plan,
+  } = req.body ?? {};
   if (!name) return sendError(res, 'name is required', 400);
 
-  // Auto-generate prophone_id from company name (uppercase, no spaces)
-  const prophone_id = (req.body?.prophone_id || name.toUpperCase().replace(/\s+/g, ''));
+  // Auto-generate prophone_id from company name (UPPERCASE, spaces → underscore)
+  const prophone_id = name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 
   try {
     const company = await companyRepo.createCompany({
@@ -24,8 +27,14 @@ export async function createCompany(req, res) {
       website:  website  || '',
       city:     city     || '',
       address:  address  || '',
+      zipcode:  zipcode  || '',
+      state:    state    || '',
+      country:  country  || '',
       phone:    phone    || '',
+      email:    email    || '',
+      fax:      fax      || '',
       industry: industry || '',
+      timezone: timezone || '',
       plan:     plan     || 'starter',
       notes:    notes    || '',
       metadata: metadata || {},
@@ -60,14 +69,23 @@ export async function updateCompany(req, res) {
     return sendError(res, 'Admin access required', 403);
   }
 
-  const { name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
+  const {
+    name, website, city, address, zipcode, state, country, phone, email, fax,
+    industry, timezone, notes, metadata, plan,
+  } = req.body ?? {};
   const data = {};
   if (name     !== undefined) data.name     = name;
   if (website  !== undefined) data.website  = website;
   if (city     !== undefined) data.city     = city;
   if (address  !== undefined) data.address  = address;
+  if (zipcode  !== undefined) data.zipcode  = zipcode;
+  if (state    !== undefined) data.state    = state;
+  if (country  !== undefined) data.country  = country;
   if (phone    !== undefined) data.phone    = phone;
+  if (email    !== undefined) data.email    = email;
+  if (fax      !== undefined) data.fax      = fax;
   if (industry !== undefined) data.industry = industry;
+  if (timezone !== undefined) data.timezone = timezone;
   if (notes    !== undefined) data.notes    = notes;
   if (metadata !== undefined) data.metadata = metadata;
   if (plan !== undefined && req.user.role === 'super_admin') data.plan = plan;

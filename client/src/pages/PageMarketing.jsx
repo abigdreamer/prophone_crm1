@@ -822,7 +822,7 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
 // ─── Page Root ─────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
-  { id: "campaigns", label: "Campaigns", icon: Megaphone, ready: true },
+  { id: "campaigns", label: "Campaigns", icon: Megaphone, ready: false },
   { id: "sequences", label: "Sequences", icon: Layers,    ready: false },
 ];
 
@@ -892,20 +892,30 @@ export default function PageMarketing() {
       {/* Main content */}
       <div style={{ flex: 1, display: "flex", background: T.bg, overflow: "hidden", minWidth: 0 }}>
         {activeSection === "campaigns" ? (
-          selectedCampaignId ? (
-            <CampaignDetail
-              key={selectedCampaignId}
-              campaignId={selectedCampaignId}
-              onBack={() => setSelectedCampaignId(null)}
-              onUpdated={() => setRefreshKey(k => k + 1)}
-            />
-          ) : (
-            <CampaignsList
-              key={refreshKey}
-              onSelect={setSelectedCampaignId}
-              scopedCompany={scopedCompany}
-            />
-          )
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ textAlign: "center", maxWidth: 400, padding: "0 24px" }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18, background: T.accentLow,
+                border: "1px solid " + T.accent + "30",
+                display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px",
+              }}>
+                <Megaphone size={28} color={T.accent} strokeWidth={1.5} />
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 8 }}>Campaigns — Coming Soon</div>
+              <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.7 }}>
+                Email campaigns with scheduling, audience targeting, open/click tracking, and detailed analytics are on the way.
+              </div>
+              <div style={{
+                marginTop: 20, display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "7px 16px", borderRadius: 20,
+                background: T.amber + "18", color: T.amber,
+                border: "1px solid " + T.amber + "40",
+                fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+              }}>
+                COMING SOON
+              </div>
+            </div>
+          </div>
         ) : (
           /* Sequences — Coming Soon */
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -920,6 +930,15 @@ export default function PageMarketing() {
               <div style={{ fontSize: 20, fontWeight: 700, color: T.text, marginBottom: 8 }}>Sequences — Coming Soon</div>
               <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.7 }}>
                 Automate follow-up sequences with timed emails, calls, and tasks assigned to reps.
+              </div>
+              <div style={{
+                marginTop: 20, display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "7px 16px", borderRadius: 20,
+                background: T.amber + "18", color: T.amber,
+                border: "1px solid " + T.amber + "40",
+                fontSize: 12, fontWeight: 700, letterSpacing: "0.04em",
+              }}>
+                COMING SOON
               </div>
             </div>
           </div>

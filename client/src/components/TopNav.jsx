@@ -10,12 +10,12 @@ const H = {
 };
 
 const NAV = [
-  { label: "Dashboard",     path: "/dashboard",      icon: LayoutDashboard },
-  { label: "Contacts",      path: "/contacts",        icon: Users           },
-  { label: "Marketing",     path: "/marketing",       icon: Megaphone       },
-  { label: "Template",      path: "/email-templates", icon: Mail            },
-  { label: "Domains",       path: "/domains",         icon: Globe           },
-  { label: "Settings",      path: "/settings",        icon: Settings        },
+  { label: "Dashboard", path: "/dashboard",      icon: LayoutDashboard },
+  { label: "Contacts",  path: "/contacts",        icon: Users           },
+  { label: "Marketing", path: "/marketing",       icon: Megaphone       },
+  { label: "Template",  path: "/email-templates", icon: Mail            },
+  { label: "Domains",   path: "/domains",         icon: Globe           },
+  { label: "Settings",  path: "/settings",        icon: Settings        },
 ];
 
 function NavBtn({ path, icon: Icon, label }) {
