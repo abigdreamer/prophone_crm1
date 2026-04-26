@@ -23,8 +23,9 @@ model company_profile {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  users    user[]
-  contacts contact[]
+  users          user[]
+  contacts       contact[]
+  contact_groups contact_group[]
 
   @@map("company_profiles")
 }
@@ -79,13 +80,32 @@ model contact {
   notes           String   @default("")
   owned_by        String   @default("")
   added_by        String   @default("")
+  group_id        String?  @db.Uuid
   created_at      DateTime @default(now())
 
   company_rel company_profile @relation(fields: [prophone_id], references: [prophone_id])
   activities  activity[]
+  group       contact_group?  @relation(fields: [group_id], references: [id], onDelete: SetNull)
 
   @@index([prophone_id])
+  @@index([group_id])
   @@map("contacts")
+}
+
+// ── Contact Groups ─────────────────────────────────────────────────────────────
+model contact_group {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id String
+  name        String
+  created_by  String   @default("")
+  created_at  DateTime @default(now())
+
+  company_rel company_profile @relation(fields: [prophone_id], references: [prophone_id])
+  contacts    contact[]
+
+  @@unique([prophone_id, name])
+  @@index([prophone_id])
+  @@map("contact_groups")
 }
 
 // ── Activities ─────────────────────────────────────────────────────────────────

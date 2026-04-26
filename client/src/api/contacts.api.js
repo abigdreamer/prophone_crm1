@@ -26,6 +26,10 @@ export async function updateContact(id, contact) {
   });
 }
 
+export async function deleteContact(id) {
+  return apiFetch(`/contacts/${id}`, { method: 'DELETE' });
+}
+
 export async function addActivity(contactId, activity) {
   return apiFetch(`/contacts/${contactId}/activities`, {
     method: 'POST',

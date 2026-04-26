@@ -1,34 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "../ui/Modal";
 import Input from "../ui/Input";
 import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
 import T from "../../theme";
-import USERS_DB from "../../data/users";
+import { getUsers } from "../../api/auth.api";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
 
 // ─── Add / Edit Contact modal ─────────────────────────────────────────────────
-export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser }) {
+export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser, groups = [] }) {
   const isEdit = !!contact;
   const [saving, setSaving] = useState(false);
+  const [users,  setUsers]  = useState([]);
+  const [errors, setErrors] = useState({});
 
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", city: "",
-    trucks: 1, lifecycleStage: "new", source: "", campaign: "",
+    lifecycleStage: "new", source: "", campaign: "",
     tags: [], notes: "", contractValue: "", accountSize: "1-5",
     ownedBy: currentUser?.name || "",
+    groupId: "",
     pool, clientId,
   });
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  useEffect(() => {
+    getUsers(clientId).then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
+  }, [clientId]);
+
+  const set = (k, v) => {
+    setForm(p => ({ ...p, [k]: v }));
+    if (errors[k]) setErrors(p => ({ ...p, [k]: undefined }));
+  };
 
   async function handleSave() {
-    if (!form.firstName || !form.email) {
-      alert("First name and email are required.");
-      return;
-    }
+    const e = {};
+    if (!form.firstName.trim()) e.firstName = "First name is required";
+    if (!form.email.trim())     e.email     = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Enter a valid email";
+    if (Object.keys(e).length) { setErrors(e); return; }
+    setErrors({});
+
     const saved = {
       ...form,
       id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
@@ -48,7 +61,6 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         ts: new Date().toISOString(),
         by: currentUser?.name || "Unknown",
       }],
-      trucks:        parseInt(form.trucks)        || 1,
       contractValue: parseInt(form.contractValue) || 0,
     };
     setSaving(true);
@@ -62,15 +74,22 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   return (
     <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={onClose} width={600}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Input label="First Name *" value={form.firstName}     onChange={v => set("firstName",     v)} placeholder="Mike" />
-        <Input label="Last Name"    value={form.lastName}      onChange={v => set("lastName",      v)} placeholder="Johnson" />
-        <Input label="Email *"      value={form.email}         onChange={v => set("email",         v)} placeholder="mike@towpro.com" type="email" />
-        <Input label="Phone"        value={form.phone}         onChange={v => set("phone",         v)} placeholder="(510) 555-1234" type="tel" />
-        <Input label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="TowPro LLC" />
-        <Input label="Job Title"    value={form.title}         onChange={v => set("title",         v)} placeholder="Owner" />
-        <Input label="City"         value={form.city}          onChange={v => set("city",          v)} placeholder="Oakland, CA" />
-        <Input label="# of Trucks"  value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="4" type="number" />
-        <Input label="Contract Value ($)" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="5000" type="number" />
+        <Input
+          label="First Name" required
+          value={form.firstName} onChange={v => set("firstName", v)}
+          placeholder="Mike" error={errors.firstName}
+        />
+        <Input label="Last Name" value={form.lastName} onChange={v => set("lastName", v)} placeholder="Johnson" />
+        <Input
+          label="Email" required type="email"
+          value={form.email} onChange={v => set("email", v)}
+          placeholder="mike@company.com" error={errors.email}
+        />
+        <Input label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)} placeholder="(510) 555-1234" />
+        <Input label="Company"   value={form.company} onChange={v => set("company", v)} placeholder="Acme Inc." />
+        <Input label="Job Title" value={form.title}   onChange={v => set("title",   v)} placeholder="Owner" />
+        <Input label="City"      value={form.city}    onChange={v => set("city",    v)} placeholder="Oakland, CA" />
+        <Input label="Contract Value ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="5000" />
         <Sel
           label="Stage"
           value={form.lifecycleStage}
@@ -81,7 +100,19 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
           label="Assigned To"
           value={form.ownedBy}
           onChange={v => set("ownedBy", v)}
-          options={USERS_DB.map(u => ({ value: u.name, label: `${u.name} (${u.role})` }))}
+          options={users.length
+            ? users.map(u => ({ value: u.name, label: `${u.name} (${u.role})` }))
+            : currentUser ? [{ value: currentUser.name, label: `${currentUser.name} (${currentUser.role})` }] : []
+          }
+        />
+        <Sel
+          label="Group (optional)"
+          value={form.groupId || ""}
+          onChange={v => set("groupId", v || null)}
+          options={[
+            { value: "", label: "— No group —" },
+            ...groups.map(g => ({ value: g.id, label: `${g.name} (${g.contactCount} contacts)` })),
+          ]}
         />
       </div>
 

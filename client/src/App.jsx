@@ -3,7 +3,7 @@ import {
   BrowserRouter, Routes, Route, Navigate,
   Outlet, useLocation, useNavigate, useParams,
 } from "react-router-dom";
-import { LayoutList, ChevronDown, Building2 } from "lucide-react";
+import { LayoutList, Tag, ChevronDown, Building2 } from "lucide-react";
 
 import LoginScreen          from "./components/LoginScreen";
 import CompanySelectScreen  from "./components/CompanySelectScreen";
@@ -21,11 +21,13 @@ import PageSettings       from "./pages/PageSettings";
 import PageUsers          from "./pages/PageUsers";
 import PageCompanies      from "./pages/PageCompanies";
 import PageDomains        from "./pages/PageDomains";
+import PageCategories     from "./pages/PageCategories";
 import NotFound           from "./pages/NotFound";
 
 import T                    from "./theme";
 import { getContacts }                    from "./api/contacts.api";
-import { logoutUser, selectCompany as selectCompanyApi } from "./api/auth.api";
+import { listGroups }                     from "./api/groups.api";
+import { logoutUser, selectCompany as selectCompanyApi, getUsers } from "./api/auth.api";
 import { listCompanies }                 from "./api/companies.api";
 import { PageLoader, ContentLoader } from "./components/ui/Loader";
 
@@ -35,6 +37,14 @@ export function useApp() { return useContext(AppContext); }
 
 // ─── Contacts sidebar ─────────────────────────────────────────────────────────
 function ContactsNavSidebar() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+
+  const items = [
+    { label: "Contact Groups",    icon: Tag,        path: "/contacts/categories" },
+    { label: "Contacts",  icon: LayoutList, path: "/contacts"            },
+  ];
+
   return (
     <div style={{
       width: 200, flexShrink: 0,
@@ -44,14 +54,28 @@ function ContactsNavSidebar() {
       <div style={{ padding: "0 14px 10px", fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
         Contacts
       </div>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 9, padding: "10px 14px",
-        background: T.accentLow, borderLeft: "3px solid " + T.accent,
-        color: T.accent, fontSize: 13, fontWeight: 600,
-      }}>
-        <LayoutList size={15} />
-        <span>List</span>
-      </div>
+      {items.map(({ label, icon: Icon, path }) => {
+        const active = pathname === path;
+        return (
+          <div
+            key={path}
+            onClick={() => navigate(path)}
+            style={{
+              display: "flex", alignItems: "center", gap: 9, padding: "10px 14px",
+              background: active ? T.accentLow : "transparent",
+              borderLeft: active ? "3px solid " + T.accent : "3px solid transparent",
+              color: active ? T.accent : T.sub,
+              fontSize: 13, fontWeight: active ? 600 : 400,
+              cursor: "pointer", transition: "all 0.12s",
+            }}
+            onMouseEnter={e => { if (!active) { e.currentTarget.style.background = T.panel; e.currentTarget.style.color = T.text; } }}
+            onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = T.sub; } }}
+          >
+            <Icon size={15} />
+            <span>{label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -157,11 +181,17 @@ function CompanyScopeSelector() {
 
 function DashboardRoute() {
   const navigate = useNavigate();
-  const { pool, clientId, viewMode, contacts, setContacts, currentUser, setViewMode } = useApp();
+  const { clientId, contacts, setContacts, currentUser, setViewMode } = useApp();
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    getUsers(clientId).then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
+  }, [clientId]);
+
   return (
     <PageDashboard
-      pool={pool} clientId={clientId} viewMode={viewMode}
       contacts={contacts} setContacts={setContacts} currentUser={currentUser}
+      users={users}
       setViewMode={v => { setViewMode(v); navigate("/contacts"); }}
       setPage={p => navigate("/" + (p === "all-contacts" ? "contacts" : p))}
     />
@@ -169,15 +199,21 @@ function DashboardRoute() {
 }
 
 function ContactsRoute() {
-  const { pool, clientId, viewMode, setViewMode, contacts, setContacts, currentUser, handleSelect } = useApp();
+  const { pool, clientId, viewMode, setViewMode, contacts, setContacts, groups, currentUser, handleSelect } = useApp();
   return (
     <PageTable
       pool={pool} clientId={clientId}
       viewMode={viewMode} setViewMode={setViewMode}
       contacts={contacts} setContacts={setContacts}
+      groups={groups}
       currentUser={currentUser} onSelect={handleSelect}
     />
   );
+}
+
+function CategoriesRoute() {
+  const { groups, setGroups, currentUser } = useApp();
+  return <PageCategories groups={groups} setGroups={setGroups} currentUser={currentUser} />;
 }
 
 function EmailTemplatesRoute() {
@@ -212,7 +248,7 @@ function AppLayout() {
   const navigate  = useNavigate();
   const { pathname } = useLocation();
 
-  const isContacts = pathname === "/contacts";
+  const isContacts = pathname.startsWith("/contacts");
   const isEmail    = pathname.startsWith("/email");
   const isProfile  = pathname === "/profile";
   const isFullPage = isEmail || ["/marketing", "/settings", "/users", "/companies", "/domains"].includes(pathname);
@@ -362,6 +398,7 @@ export default function App() {
 
   const [viewMode,  setViewMode]  = useState("all");
   const [contacts,  setContacts]  = useState([]);
+  const [groups,    setGroups]    = useState([]);
   const [loading,   setLoading]   = useState(false);
   const [firstLoad, setFirstLoad] = useState(true);
   const [selected,  setSelected]  = useState(null);
@@ -371,9 +408,19 @@ export default function App() {
     if (!currentUser) return;
     let cancelled = false;
     setLoading(true);
-    getContacts(pool, clientId)
-      .then(data => { if (!cancelled) { setContacts(data); setSelected(null); setCharted(null); } })
-      .catch(err => console.error("Failed to load contacts:", err))
+    Promise.all([
+      getContacts(pool, clientId),
+      listGroups(),
+    ])
+      .then(([contactData, groupData]) => {
+        if (!cancelled) {
+          setContacts(contactData);
+          setGroups(groupData);
+          setSelected(null);
+          setCharted(null);
+        }
+      })
+      .catch(err => console.error("Failed to load data:", err))
       .finally(() => { if (!cancelled) { setLoading(false); setFirstLoad(false); } });
     return () => { cancelled = true; };
   }, [clientId, currentUser]);
@@ -392,6 +439,7 @@ export default function App() {
     pool, clientId,
     viewMode, setViewMode,
     contacts, setContacts,
+    groups,   setGroups,
     loading, firstLoad,
     selected, setSelected,
     charted, setCharted,
@@ -425,6 +473,7 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard"         element={<DashboardRoute />} />
             <Route path="/contacts"          element={<ContactsRoute />} />
+            <Route path="/contacts/categories" element={<CategoriesRoute />} />
             <Route path="/marketing"         element={<PageMarketing />} />
             <Route path="/email-templates"   element={<EmailTemplatesRoute />} />
             <Route path="/email-builder"     element={<EmailBuilderRoute />} />

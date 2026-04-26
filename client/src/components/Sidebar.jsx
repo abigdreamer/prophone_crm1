@@ -4,8 +4,9 @@ import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
 import T from "../theme";
 import CLIENTS from "../data/clients";
-import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES } from "../data/stages";
+import { STAGE_DEF, CONTACT_STAGES, LEAD_STAGES, LOST_STAGES } from "../data/stages";
 import fmt from "../utils/format";
+import { calcLeadScore } from "../utils/scoring";
 import { createContact } from "../api/contacts.api";
 import { useToast } from "../hooks/useToast";
 
@@ -21,6 +22,8 @@ export default function Sidebar({
   const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   const modeFiltered = contacts.filter(c => {
+    if (!viewMode || viewMode === "all")      return true;
+    if (viewMode === "contacts")  return CONTACT_STAGES.includes(c.lifecycleStage);
     if (viewMode === "leads")     return LEAD_STAGES.includes(c.lifecycleStage);
     if (viewMode === "customers") return c.lifecycleStage === "customer";
     if (viewMode === "lost")      return LOST_STAGES.includes(c.lifecycleStage);
@@ -40,7 +43,7 @@ export default function Sidebar({
     })
     .sort((a, b) => {
       if (sortF === "name")  return a.firstName.localeCompare(b.firstName);
-      if (sortF === "score") return b.leadScore - a.leadScore;
+      if (sortF === "score") return calcLeadScore(b) - calcLeadScore(a);
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
@@ -204,10 +207,9 @@ export default function Sidebar({
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                  <ScoreBar score={c.leadScore} />
+                  <ScoreBar score={calcLeadScore(c)} />
                   <span style={{ fontSize: 10, color: T.muted, whiteSpace: "nowrap" }}>{fmt.ago(c.lastActivityAt)}</span>
                 </div>
-                {c.trucks && <div style={{ marginTop: 4, fontSize: 10, color: T.orange }}>🚛 {c.trucks} trucks</div>}
               </div>
             );
           })

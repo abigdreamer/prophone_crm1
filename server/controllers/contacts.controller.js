@@ -1,9 +1,14 @@
 import { tenantWhere, tenantId, canAccessTenant } from '../lib/tenant.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import * as contactRepo from '../repositories/contactRepository.js';
+import { calcLeadScore } from '../utils/scoring.js';
 
 function toContact(row) {
   if (!row) return null;
+  const activities = (row.activities || [])
+    .sort((a, b) => new Date(a.ts) - new Date(b.ts))
+    .map(a => ({ id: a.id, type: a.type, note: a.note || '', ts: a.ts, by: a.by || '' }));
+
   return {
     id:             row.id,
     prophone_id:    row.prophone_id,
@@ -17,7 +22,6 @@ function toContact(row) {
     title:          row.title,
     website:        row.website,
     city:           row.city,
-    trucks:         row.trucks,
     lifecycleStage: row.lifecycle_stage,
     leadScore:      row.lead_score,
     status:         row.status,
@@ -35,10 +39,10 @@ function toContact(row) {
     notes:          row.notes,
     ownedBy:        row.owned_by,
     addedBy:        row.added_by,
+    groupId:        row.group_id,
+    groupName:      row.group?.name || null,
     createdAt:      row.created_at,
-    activities: (row.activities || [])
-      .sort((a, b) => new Date(a.ts) - new Date(b.ts))
-      .map(a => ({ id: a.id, type: a.type, note: a.note || '', ts: a.ts, by: a.by || '' })),
+    activities,
   };
 }
 
@@ -73,6 +77,14 @@ export async function createContact(req, res) {
   if (!tid) return sendError(res, 'prophone_id is required to create a contact', 400);
 
   try {
+    const contractValue = parseInt(contact.contractValue) || 0;
+    const score = calcLeadScore({
+      lifecycleStage: contact.lifecycleStage || 'new',
+      activities:     initialActs,
+      lastActivityAt: new Date(),
+      contractValue,
+    });
+
     const row = await contactRepo.createContact({
       prophone_id:      tid,
       pool:             contact.pool,
@@ -85,18 +97,18 @@ export async function createContact(req, res) {
       title:            contact.title            || '',
       website:          contact.website          || '',
       city:             contact.city             || '',
-      trucks:           parseInt(contact.trucks) || 0,
       lifecycle_stage:  contact.lifecycleStage   || 'new',
-      lead_score:       contact.leadScore        || 10,
+      lead_score:       score,
       status:           contact.status           || 'active',
       source:           contact.source           || '',
       campaign:         contact.campaign         || '',
-      contract_value:   parseInt(contact.contractValue) || 0,
+      contract_value:   contractValue,
       account_size:     contact.accountSize      || '1-5',
       tags:             contact.tags             || [],
       notes:            contact.notes            || '',
       owned_by:         contact.ownedBy          || '',
       added_by:         contact.addedBy          || '',
+      group_id:         contact.groupId          || null,
       last_activity_at: new Date(),
     }, initialActs);
 
@@ -113,6 +125,17 @@ export async function updateContact(req, res) {
     if (!existing) return sendError(res, 'Contact not found', 404);
     if (!canAccessTenant(req, existing.prophone_id)) return sendError(res, 'Forbidden', 403);
 
+    // Fetch current activities to include in score recalculation
+    const full = await contactRepo.findById(req.params.id);
+    const contractValue = parseInt(contact.contractValue) || 0;
+    const lastActivityAt = contact.lastActivityAt ? new Date(contact.lastActivityAt) : new Date();
+    const score = calcLeadScore({
+      lifecycleStage: contact.lifecycleStage || 'new',
+      activities:     full?.activities || [],
+      lastActivityAt,
+      contractValue,
+    });
+
     const row = await contactRepo.updateContact(req.params.id, {
       first_name:       contact.firstName        || '',
       last_name:        contact.lastName         || '',
@@ -122,18 +145,18 @@ export async function updateContact(req, res) {
       title:            contact.title            || '',
       website:          contact.website          || '',
       city:             contact.city             || '',
-      trucks:           parseInt(contact.trucks) || 0,
       lifecycle_stage:  contact.lifecycleStage   || 'new',
-      lead_score:       contact.leadScore        || 0,
+      lead_score:       score,
       status:           contact.status           || 'active',
       source:           contact.source           || '',
       campaign:         contact.campaign         || '',
-      contract_value:   parseInt(contact.contractValue) || 0,
+      contract_value:   contractValue,
       account_size:     contact.accountSize      || '1-5',
       tags:             contact.tags             || [],
       notes:            contact.notes            || '',
       owned_by:         contact.ownedBy          || '',
-      last_activity_at: contact.lastActivityAt ? new Date(contact.lastActivityAt) : new Date(),
+      group_id:         contact.groupId          !== undefined ? (contact.groupId || null) : undefined,
+      last_activity_at: lastActivityAt,
     });
 
     sendSuccess(res, toContact(row));
@@ -142,16 +165,40 @@ export async function updateContact(req, res) {
   }
 }
 
+export async function deleteContact(req, res) {
+  try {
+    const existing = await contactRepo.findTenantById(req.params.id);
+    if (!existing) return sendError(res, 'Contact not found', 404);
+    if (!canAccessTenant(req, existing.prophone_id)) return sendError(res, 'Forbidden', 403);
+
+    await contactRepo.deleteContact(req.params.id);
+    sendSuccess(res, { ok: true });
+  } catch (err) {
+    sendServerError(res, err, 'deleteContact');
+  }
+}
+
 export async function addActivity(req, res) {
   const { type, note, by, ts } = req.body ?? {};
   if (!type) return sendError(res, 'Activity type is required', 400);
 
   try {
-    const contact = await contactRepo.findTenantById(req.params.id);
-    if (!contact) return sendError(res, 'Contact not found', 404);
-    if (!canAccessTenant(req, contact.prophone_id)) return sendError(res, 'Forbidden', 403);
+    const tenant = await contactRepo.findTenantById(req.params.id);
+    if (!tenant) return sendError(res, 'Contact not found', 404);
+    if (!canAccessTenant(req, tenant.prophone_id)) return sendError(res, 'Forbidden', 403);
 
     await contactRepo.addActivity(req.params.id, { type, note, by, ts });
+
+    // Recalculate score after new activity is recorded
+    const full = await contactRepo.findById(req.params.id);
+    const score = calcLeadScore({
+      lifecycleStage: full.lifecycle_stage,
+      activities:     full.activities || [],
+      lastActivityAt: full.last_activity_at,
+      contractValue:  full.contract_value,
+    });
+    await contactRepo.updateContact(req.params.id, { lead_score: score });
+
     sendSuccess(res, { ok: true }, 201);
   } catch (err) {
     sendServerError(res, err, 'addActivity');

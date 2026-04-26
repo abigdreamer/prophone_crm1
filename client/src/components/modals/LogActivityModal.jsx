@@ -8,12 +8,14 @@ import { Spinner } from "../ui/Loader";
 
 // ─── Log Activity modal ───────────────────────────────────────────────────────
 export default function LogActivityModal({ contact, onSave, onClose, currentUser }) {
-  const [type,   setType]   = useState("call_made");
-  const [note,   setNote]   = useState("");
-  const [saving, setSaving] = useState(false);
+  const [type,     setType]     = useState("call_made");
+  const [note,     setNote]     = useState("");
+  const [noteErr,  setNoteErr]  = useState("");
+  const [saving,   setSaving]   = useState(false);
 
   async function handleSave() {
-    if (!note.trim()) { alert("Please add a note."); return; }
+    if (!note.trim()) { setNoteErr("Note is required"); return; }
+    setNoteErr("");
     setSaving(true);
     try {
       await onSave({
@@ -38,24 +40,26 @@ export default function LogActivityModal({ contact, onSave, onClose, currentUser
       />
 
       <div style={{ marginTop: 14 }}>
-        <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Notes *
+        <label style={{ fontSize: 10, color: noteErr ? "#ef4444" : T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Notes <span style={{ color: "#ef4444" }}>*</span>
         </label>
         <textarea
           value={note}
-          onChange={e => setNote(e.target.value)}
+          onChange={e => { setNote(e.target.value); if (noteErr) setNoteErr(""); }}
           placeholder="Describe what happened..."
           style={{
             width: "100%", marginTop: 4,
-            background: T.surface, border: "1px solid " + T.border,
+            background: T.surface,
+            border: "1px solid " + (noteErr ? "#ef4444" : T.border),
             borderRadius: 6, padding: "8px 11px",
             color: T.text, fontSize: 12,
             outline: "none", fontFamily: "inherit",
             minHeight: 90, resize: "vertical", boxSizing: "border-box",
           }}
-          onFocus={e => (e.target.style.borderColor = T.accent)}
-          onBlur={e  => (e.target.style.borderColor = T.border)}
+          onFocus={e => (e.target.style.borderColor = noteErr ? "#ef4444" : T.accent)}
+          onBlur={e  => (e.target.style.borderColor = noteErr ? "#ef4444" : T.border)}
         />
+        {noteErr && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>{noteErr}</div>}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
