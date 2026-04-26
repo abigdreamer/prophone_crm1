@@ -23,16 +23,10 @@ cd "$APP_DIR/client"
 npm install
 NODE_ENV=production npm run build
 
-# Restart PM2 (start if not yet running)
+# Restart via ecosystem config (ensures correct flags — e.g. serve -s for SPA routing)
 echo "🚀 Restarting PM2..."
-pm2 describe prophone-server > /dev/null 2>&1 \
-  && pm2 restart prophone-server \
-  || pm2 start "$APP_DIR/server/index.js" --name prophone-server
-
-pm2 describe prophone-client > /dev/null 2>&1 \
-  && pm2 restart prophone-client \
-  || pm2 start npx --name prophone-client -- serve -s "$APP_DIR/client/dist" -l 3000
-
+cd "$APP_DIR"
+pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
 echo "✅ Done! App is live."
