@@ -5,18 +5,16 @@ const USER_SELECT = {
   role: true, avatar: true, color: true, created_at: true,
 };
 
+const SEED_EMAILS = ['mike@geniusai.biz', 'admin@geniusai.biz', 'manager@geniusai.biz'];
+
 export async function findQuickUsers() {
-  const roles = ['super_admin', 'admin', 'manager'];
-  const results = await Promise.all(
-    roles.map(role =>
-      prisma.user.findFirst({
-        where: { role },
-        select: { id: true, name: true, email: true, role: true, avatar: true, color: true },
-        orderBy: { created_at: 'asc' },
-      })
-    )
-  );
-  return results.filter(Boolean);
+  const users = await prisma.user.findMany({
+    where: { email: { in: SEED_EMAILS } },
+    select: { id: true, name: true, email: true, role: true, avatar: true, color: true },
+  });
+  // Return in a consistent order: super_admin → admin → manager
+  const order = ['super_admin', 'admin', 'manager'];
+  return order.map(role => users.find(u => u.role === role)).filter(Boolean);
 }
 
 export async function findByEmail(email) {
