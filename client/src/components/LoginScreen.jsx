@@ -216,7 +216,7 @@ export default function LoginScreen({ onLogin }) {
                 selectedEmail={email}
                 onSelect={(e) => {
                   setEmail(e);
-                  setPassword("");
+                  setPassword("123456");
                 }}
               />
             )}

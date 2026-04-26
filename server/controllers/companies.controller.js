@@ -11,8 +11,11 @@ export async function listCompanies(req, res) {
 }
 
 export async function createCompany(req, res) {
-  const { prophone_id, name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
-  if (!prophone_id || !name) return sendError(res, 'prophone_id and name are required', 400);
+  const { name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
+  if (!name) return sendError(res, 'name is required', 400);
+
+  // Auto-generate prophone_id from company name (uppercase, no spaces)
+  const prophone_id = (req.body?.prophone_id || name.toUpperCase().replace(/\s+/g, ''));
 
   try {
     const company = await companyRepo.createCompany({
