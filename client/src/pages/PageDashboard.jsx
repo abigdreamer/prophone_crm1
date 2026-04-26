@@ -7,6 +7,7 @@ import Card from "../components/ui/Card";
 import Avatar from "../components/ui/Avatar";
 import T from "../theme";
 import USERS_DB from "../data/users";
+import { fmtRole } from "../utils/format";
 import { STAGE_DEF, LEAD_STAGES, LOST_STAGES } from "../data/stages";
 import { ACT_DEF } from "../data/activities";
 import fmt from "../utils/format";
@@ -229,7 +230,7 @@ export default function PageDashboard({ pool, clientId, viewMode, setViewMode, s
                 <Avatar user={u} size={34} />
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{u.name.split(" ")[0]}</div>
-                  <div style={{ fontSize: 10, color: u.color, fontWeight: 600 }}>{u.role}</div>
+                  <div style={{ fontSize: 10, color: u.color, fontWeight: 600 }}>{fmtRole(u.role)}</div>
                   <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{myC.length} contacts · {myA.length} actions</div>
                 </div>
               </div>

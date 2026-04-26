@@ -18,3 +18,10 @@ export function requireAuth(req, res, next) {
 export function signToken(payload) {
   return jwt.sign(payload, SECRET, { expiresIn: '30d' });
 }
+
+export function requireSuperAdmin(req, res, next) {
+  if (req.user?.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super admin access required' });
+  }
+  next();
+}

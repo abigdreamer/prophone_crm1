@@ -1,74 +1,63 @@
-import prisma from '../prisma.js';
+import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
+import * as companyRepo from '../repositories/companyRepository.js';
 
-// Super admin: list all companies
 export async function listCompanies(req, res) {
   try {
-    const rows = await prisma.company_profile.findMany({
-      orderBy: { created_at: 'desc' },
-      include: { _count: { select: { users: true, contacts: true } } },
-    });
-    res.json(rows);
+    const rows = await companyRepo.findAll();
+    sendSuccess(res, rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'listCompanies');
   }
 }
 
-// Super admin: create a company
 export async function createCompany(req, res) {
-  const { prophone_id, name, website, city, address, phone, industry, notes, metadata, plan } = req.body;
-  if (!prophone_id || !name) {
-    return res.status(400).json({ error: 'prophone_id and name are required' });
-  }
+  const { prophone_id, name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
+  if (!prophone_id || !name) return sendError(res, 'prophone_id and name are required', 400);
+
   try {
-    const company = await prisma.company_profile.create({
-      data: {
-        prophone_id,
-        name,
-        website:  website  || '',
-        city:     city     || '',
-        address:  address  || '',
-        phone:    phone    || '',
-        industry: industry || '',
-        plan:     plan     || 'starter',
-        notes:    notes    || '',
-        metadata: metadata || {},
-      },
+    const company = await companyRepo.createCompany({
+      prophone_id,
+      name,
+      website:  website  || '',
+      city:     city     || '',
+      address:  address  || '',
+      phone:    phone    || '',
+      industry: industry || '',
+      plan:     plan     || 'starter',
+      notes:    notes    || '',
+      metadata: metadata || {},
     });
-    res.status(201).json(company);
+    sendSuccess(res, company, 201);
   } catch (err) {
-    if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'prophone_id already exists' });
-    }
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2002') return sendError(res, 'prophone_id already exists', 409);
+    sendServerError(res, err, 'createCompany');
   }
 }
 
-// Any authenticated user can GET their own company; super_admin can GET any
 export async function getCompany(req, res) {
   const { prophone_id } = req.params;
   if (req.user.role !== 'super_admin' && prophone_id !== req.user.prophone_id) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return sendError(res, 'Forbidden', 403);
   }
   try {
-    const company = await prisma.company_profile.findUnique({ where: { prophone_id } });
-    if (!company) return res.status(404).json({ error: 'Company not found' });
-    res.json(company);
+    const company = await companyRepo.findByPhoneId(prophone_id);
+    if (!company) return sendError(res, 'Company not found', 404);
+    sendSuccess(res, company);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'getCompany');
   }
 }
 
-// Admin/super_admin can update their company; super_admin can update any
 export async function updateCompany(req, res) {
   const { prophone_id } = req.params;
   if (req.user.role !== 'super_admin' && prophone_id !== req.user.prophone_id) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return sendError(res, 'Forbidden', 403);
   }
   if (!['admin', 'super_admin'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Admin access required' });
+    return sendError(res, 'Admin access required', 403);
   }
 
-  const { name, website, city, address, phone, industry, notes, metadata, plan } = req.body;
+  const { name, website, city, address, phone, industry, notes, metadata, plan } = req.body ?? {};
   const data = {};
   if (name     !== undefined) data.name     = name;
   if (website  !== undefined) data.website  = website;
@@ -78,24 +67,22 @@ export async function updateCompany(req, res) {
   if (industry !== undefined) data.industry = industry;
   if (notes    !== undefined) data.notes    = notes;
   if (metadata !== undefined) data.metadata = metadata;
-  // Only super_admin can change the plan
   if (plan !== undefined && req.user.role === 'super_admin') data.plan = plan;
 
   try {
-    const company = await prisma.company_profile.update({ where: { prophone_id }, data });
-    res.json(company);
+    const company = await companyRepo.updateCompany(prophone_id, data);
+    sendSuccess(res, company);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'updateCompany');
   }
 }
 
-// Super admin only: delete a company
 export async function deleteCompany(req, res) {
   const { prophone_id } = req.params;
   try {
-    await prisma.company_profile.delete({ where: { prophone_id } });
-    res.json({ ok: true });
+    await companyRepo.removeCompany(prophone_id);
+    sendSuccess(res, { ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'deleteCompany');
   }
 }

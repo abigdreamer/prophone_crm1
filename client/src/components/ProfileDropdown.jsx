@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { User, LogOut } from "lucide-react";
 import Avatar from "./ui/Avatar";
 import T from "../theme";
+import { fmtRole } from "../utils/format";
 
 const HDR = T.header;
 
@@ -56,7 +57,7 @@ export default function ProfileDropdown({ user, onProfile, onLogout }) {
             <Avatar user={user} size={36} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{user?.name}</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 3, textTransform: "capitalize" }}>{user?.role}</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 3 }}>{fmtRole(user?.role)}</div>
             </div>
           </div>
 

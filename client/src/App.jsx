@@ -5,8 +5,9 @@ import {
 } from "react-router-dom";
 import { LayoutList, ChevronDown, Building2 } from "lucide-react";
 
-import LoginScreen     from "./components/LoginScreen";
-import TopNav          from "./components/TopNav";
+import LoginScreen          from "./components/LoginScreen";
+import CompanySelectScreen  from "./components/CompanySelectScreen";
+import TopNav               from "./components/TopNav";
 import LifecycleChart  from "./components/LifecycleChart";
 import ProfileDropdown from "./components/ProfileDropdown";
 
@@ -19,12 +20,13 @@ import PageMarketing      from "./pages/PageMarketing";
 import PageSettings       from "./pages/PageSettings";
 import PageUsers          from "./pages/PageUsers";
 import PageCompanies      from "./pages/PageCompanies";
+import PageDomains        from "./pages/PageDomains";
 import NotFound           from "./pages/NotFound";
 
 import T                    from "./theme";
-import { getContacts }      from "./api/contacts.api";
-import { logoutUser }       from "./api/auth.api";
-import { listCompanies }    from "./api/companies.api";
+import { getContacts }                    from "./api/contacts.api";
+import { logoutUser, selectCompany as selectCompanyApi } from "./api/auth.api";
+import { listCompanies }                 from "./api/companies.api";
 import { PageLoader, ContentLoader } from "./components/ui/Loader";
 
 // ─── App-wide context ─────────────────────────────────────────────────────────
@@ -56,9 +58,10 @@ function ContactsNavSidebar() {
 
 // ─── Company scope selector (super_admin only) ───────────────────────────────
 function CompanyScopeSelector() {
-  const { scopedCompany, setScopedCompany } = useApp();
+  const { scopedCompany, setScopedCompany, setCurrentUserAndToken } = useApp();
   const [companies, setCompanies] = useState([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]           = useState(false);
+  const [switching, setSwitching] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -70,6 +73,21 @@ function CompanyScopeSelector() {
 
   const selected = companies.find(c => c.prophone_id === scopedCompany);
   const label    = selected ? selected.name : "All";
+
+  async function handlePick(prophone_id) {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const data = await selectCompanyApi(prophone_id);
+      setCurrentUserAndToken(data.user, data.token);
+      setScopedCompany(prophone_id);
+    } catch {
+      // silent — company switch is best-effort
+    } finally {
+      setSwitching(false);
+      setOpen(false);
+    }
+  }
 
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
@@ -102,23 +120,25 @@ function CompanyScopeSelector() {
           <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.06em", textTransform: "uppercase", padding: "4px 8px 6px" }}>
             Company scope
           </div>
-          {[{ prophone_id: null, name: "All" }, ...companies].map(c => {
+          {companies.map(c => {
             const active = c.prophone_id === scopedCompany;
             return (
               <button
                 key={c.prophone_id ?? "__all__"}
-                onClick={() => { setScopedCompany(c.prophone_id); setOpen(false); }}
+                onClick={() => handlePick(c.prophone_id)}
+                disabled={switching}
                 style={{
                   display: "flex", alignItems: "center", gap: 8,
                   width: "100%", padding: "8px 10px",
                   background: active ? "#eef2ff" : "transparent",
-                  border: "none", borderRadius: 6, cursor: "pointer",
+                  border: "none", borderRadius: 6,
+                  cursor: switching ? "default" : "pointer",
                   fontFamily: "inherit", fontSize: 12,
                   fontWeight: active ? 700 : 400,
                   color: active ? "#4f46e5" : "#1e293b",
                   textAlign: "left",
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseEnter={e => { if (!active && !switching) e.currentTarget.style.background = "#f8fafc"; }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
               >
                 <Building2 size={12} style={{ color: active ? "#4f46e5" : "#94a3b8", flexShrink: 0 }} />
@@ -195,7 +215,7 @@ function AppLayout() {
   const isContacts = pathname === "/contacts";
   const isEmail    = pathname.startsWith("/email");
   const isProfile  = pathname === "/profile";
-  const isFullPage = isEmail || ["/marketing", "/settings", "/users", "/companies"].includes(pathname);
+  const isFullPage = isEmail || ["/marketing", "/settings", "/users", "/companies", "/domains"].includes(pathname);
   const showPanel  = !isFullPage && !isProfile && charted;
 
   return (
@@ -293,20 +313,52 @@ export default function App() {
   });
 
   // super_admin company scope: null = all companies, string = specific prophone_id
-  const [scopedCompany, setScopedCompany] = useState(null);
+  // Initialised from currentUser.prophone_id when it exists (set by selectCompany JWT flow)
+  const [scopedCompany, setScopedCompany] = useState(() =>
+    currentUser?.prophone_id || localStorage.getItem("prophone_scoped_company") || null
+  );
+
+  // Gate skip flag — persists across refreshes; cleared on logout
+  const [gateSkipped, setGateSkipped] = useState(() =>
+    !!localStorage.getItem("prophone_gate_skipped")
+  );
+
+  // Keep prophone_scoped_company in sync so API helpers can read it without prop drilling
+  useEffect(() => {
+    if (scopedCompany) localStorage.setItem("prophone_scoped_company", scopedCompany);
+    else localStorage.removeItem("prophone_scoped_company");
+  }, [scopedCompany]);
+
+  function setCurrentUserAndToken(user, token) {
+    localStorage.setItem("prophone_token", token);
+    localStorage.setItem("prophone_user", JSON.stringify(user));
+    setCurrentUser(user);
+  }
+
+  function skipGate() {
+    localStorage.setItem("prophone_gate_skipped", "1");
+    setGateSkipped(true);
+  }
 
   function handleSetUser(user) {
     if (user) localStorage.setItem("prophone_user", JSON.stringify(user));
     else logoutUser();
     setCurrentUser(user);
     setScopedCompany(null);
+    localStorage.removeItem("prophone_scoped_company");
+    if (!user) {
+      setGateSkipped(false);
+      localStorage.removeItem("prophone_gate_skipped");
+    }
   }
 
   const handleLogout = () => handleSetUser(null);
 
-  const isSuperAdmin = currentUser?.role === "super_admin";
-  const pool      = "prospect";
-  const clientId  = isSuperAdmin ? (scopedCompany ?? null) : currentUser?.prophone_id;
+  const isSuperAdmin     = currentUser?.role === "super_admin";
+  const showCompanyGate  = isSuperAdmin && !currentUser?.prophone_id && !gateSkipped;
+
+  const pool     = "prospect";
+  const clientId = currentUser?.prophone_id || (isSuperAdmin ? scopedCompany : null);
 
   const [viewMode,  setViewMode]  = useState("all");
   const [contacts,  setContacts]  = useState([]);
@@ -335,6 +387,7 @@ export default function App() {
 
   const ctx = {
     currentUser, handleSetUser, handleLogout,
+    setCurrentUserAndToken, skipGate,
     scopedCompany, setScopedCompany,
     pool, clientId,
     viewMode, setViewMode,
@@ -355,8 +408,20 @@ export default function App() {
             element={currentUser ? <Navigate to="/dashboard" replace /> : <LoginScreen onLogin={handleSetUser} />}
           />
 
-          {/* Protected */}
-          <Route element={currentUser ? <AppLayout /> : <Navigate to="/login" replace />}>
+          {/* Protected — gate shows company selector for super_admin on first login */}
+          <Route element={
+            !currentUser
+              ? <Navigate to="/login" replace />
+              : showCompanyGate
+              ? <CompanySelectScreen
+                  onSelect={(user, token) => {
+                    setCurrentUserAndToken(user, token);
+                    setScopedCompany(user.prophone_id);
+                  }}
+                  onBack={handleLogout}
+                />
+              : <AppLayout />
+          }>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard"         element={<DashboardRoute />} />
             <Route path="/contacts"          element={<ContactsRoute />} />
@@ -368,6 +433,7 @@ export default function App() {
             <Route path="/profile"           element={<ProfileRoute />} />
             <Route path="/users"             element={<UsersRoute />} />
             <Route path="/companies"         element={<CompaniesRoute />} />
+            <Route path="/domains"           element={<PageDomains />} />
             <Route path="*"                  element={<NotFound />} />
           </Route>
         </Routes>

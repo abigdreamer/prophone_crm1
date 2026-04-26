@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Truck, CheckCircle2, ChevronDown, Eye, EyeOff } from "lucide-react";
 import Avatar from "./ui/Avatar";
 import { loginUser, getQuickUsers } from "../api/auth.api";
+import { fmtRole } from "../utils/format";
 import { Spinner } from "./ui/Loader";
 
 const HIGHLIGHTS = [
@@ -41,7 +42,7 @@ function QuickLoginDropdown({ users, selectedEmail, onSelect }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", lineHeight: 1.2 }}>
             {selected?.name}
           </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{selected?.role}</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{fmtRole(selected?.role)}</div>
         </div>
         <ChevronDown
           size={15}
@@ -73,7 +74,7 @@ function QuickLoginDropdown({ users, selectedEmail, onSelect }) {
                       {u.name}
                     </div>
                     <div style={{ fontSize: 11, color: isActive ? "rgba(255,255,255,0.65)" : "#94a3b8", marginTop: 1 }}>
-                      {u.role}
+                      {fmtRole(u.role)}
                     </div>
                   </div>
                   {isActive && <CheckCircle2 size={14} color="#fff" />}

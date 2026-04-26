@@ -16,3 +16,11 @@ const fmt = {
 };
 
 export default fmt;
+
+// "super_admin" → "Super Admin",  "manager" → "Manager"
+export function fmtRole(role) {
+  return (role || "")
+    .split("_")
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}

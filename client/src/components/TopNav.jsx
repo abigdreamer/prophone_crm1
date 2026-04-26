@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, Megaphone, Mail, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Megaphone, Mail, Globe, Settings } from "lucide-react";
 
 const H = {
   text:   "#ffffff",
@@ -13,7 +13,8 @@ const NAV = [
   { label: "Dashboard",     path: "/dashboard",      icon: LayoutDashboard },
   { label: "Contacts",      path: "/contacts",        icon: Users           },
   { label: "Marketing",     path: "/marketing",       icon: Megaphone       },
-  { label: "Email Builder", path: "/email-templates", icon: Mail            },
+  { label: "Template",      path: "/email-templates", icon: Mail            },
+  { label: "Domains",       path: "/domains",         icon: Globe           },
   { label: "Settings",      path: "/settings",        icon: Settings        },
 ];
 

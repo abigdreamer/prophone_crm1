@@ -1,7 +1,6 @@
-import prisma from '../prisma.js';
 import { tenantWhere, tenantId, canAccessTenant } from '../lib/tenant.js';
-
-const ACTIVITY_SELECT = { id: true, type: true, note: true, by: true, ts: true };
+import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
+import * as contactRepo from '../repositories/contactRepository.js';
 
 function toContact(row) {
   if (!row) return null;
@@ -49,144 +48,112 @@ export async function listContacts(req, res) {
     const where = { ...tenantWhere(req), pool };
     if (pool === 'client' && clientId) where.client_id = clientId;
 
-    const rows = await prisma.contact.findMany({
-      where,
-      include: { activities: { select: ACTIVITY_SELECT } },
-      orderBy: { last_activity_at: 'desc' },
-    });
-    res.json(rows.map(toContact));
+    const rows = await contactRepo.findMany(where);
+    sendSuccess(res, rows.map(toContact));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'listContacts');
   }
 }
 
 export async function getContact(req, res) {
   try {
-    const row = await prisma.contact.findUnique({
-      where: { id: req.params.id },
-      include: { activities: { select: ACTIVITY_SELECT } },
-    });
-    if (!row) return res.status(404).json({ error: 'Contact not found' });
-    if (!canAccessTenant(req, row.prophone_id)) return res.status(403).json({ error: 'Forbidden' });
+    const row = await contactRepo.findById(req.params.id);
+    if (!row) return sendError(res, 'Contact not found', 404);
+    if (!canAccessTenant(req, row.prophone_id)) return sendError(res, 'Forbidden', 403);
 
-    res.json(toContact(row));
+    sendSuccess(res, toContact(row));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'getContact');
   }
 }
 
 export async function createContact(req, res) {
-  const { activities: initialActs = [], ...contact } = req.body;
+  const { activities: initialActs = [], ...contact } = req.body ?? {};
   const tid = tenantId(req);
-  if (!tid) {
-    return res.status(400).json({ error: 'prophone_id is required to create a contact' });
-  }
+  if (!tid) return sendError(res, 'prophone_id is required to create a contact', 400);
 
   try {
-    const row = await prisma.contact.create({
-      data: {
-        prophone_id:      tid,
-        pool:             contact.pool,
-        client_id:        contact.clientId || null,
-        first_name:       contact.firstName || '',
-        last_name:        contact.lastName || '',
-        email:            contact.email || '',
-        phone:            contact.phone || '',
-        company:          contact.company || '',
-        title:            contact.title || '',
-        website:          contact.website || '',
-        city:             contact.city || '',
-        trucks:           parseInt(contact.trucks) || 0,
-        lifecycle_stage:  contact.lifecycleStage || 'new',
-        lead_score:       contact.leadScore || 10,
-        status:           contact.status || 'active',
-        source:           contact.source || '',
-        campaign:         contact.campaign || '',
-        contract_value:   parseInt(contact.contractValue) || 0,
-        account_size:     contact.accountSize || '1-5',
-        tags:             contact.tags || [],
-        notes:            contact.notes || '',
-        owned_by:         contact.ownedBy || '',
-        added_by:         contact.addedBy || '',
-        last_activity_at: new Date(),
-        activities: initialActs.length > 0 ? {
-          create: initialActs.map(a => ({
-            type: a.type,
-            note: a.note || '',
-            by:   a.by || '',
-            ts:   a.ts ? new Date(a.ts) : new Date(),
-          })),
-        } : undefined,
-      },
-      include: { activities: { select: ACTIVITY_SELECT } },
-    });
-    res.status(201).json(toContact(row));
+    const row = await contactRepo.createContact({
+      prophone_id:      tid,
+      pool:             contact.pool,
+      client_id:        contact.clientId        || null,
+      first_name:       contact.firstName        || '',
+      last_name:        contact.lastName         || '',
+      email:            contact.email            || '',
+      phone:            contact.phone            || '',
+      company:          contact.company          || '',
+      title:            contact.title            || '',
+      website:          contact.website          || '',
+      city:             contact.city             || '',
+      trucks:           parseInt(contact.trucks) || 0,
+      lifecycle_stage:  contact.lifecycleStage   || 'new',
+      lead_score:       contact.leadScore        || 10,
+      status:           contact.status           || 'active',
+      source:           contact.source           || '',
+      campaign:         contact.campaign         || '',
+      contract_value:   parseInt(contact.contractValue) || 0,
+      account_size:     contact.accountSize      || '1-5',
+      tags:             contact.tags             || [],
+      notes:            contact.notes            || '',
+      owned_by:         contact.ownedBy          || '',
+      added_by:         contact.addedBy          || '',
+      last_activity_at: new Date(),
+    }, initialActs);
+
+    sendSuccess(res, toContact(row), 201);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'createContact');
   }
 }
 
 export async function updateContact(req, res) {
-  const contact = req.body;
+  const contact = req.body ?? {};
   try {
-    const existing = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { prophone_id: true } });
-    if (!existing) return res.status(404).json({ error: 'Contact not found' });
-    if (!canAccessTenant(req, existing.prophone_id)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await contactRepo.findTenantById(req.params.id);
+    if (!existing) return sendError(res, 'Contact not found', 404);
+    if (!canAccessTenant(req, existing.prophone_id)) return sendError(res, 'Forbidden', 403);
 
-    const row = await prisma.contact.update({
-      where: { id: req.params.id },
-      data: {
-        first_name:       contact.firstName || '',
-        last_name:        contact.lastName || '',
-        email:            contact.email || '',
-        phone:            contact.phone || '',
-        company:          contact.company || '',
-        title:            contact.title || '',
-        website:          contact.website || '',
-        city:             contact.city || '',
-        trucks:           parseInt(contact.trucks) || 0,
-        lifecycle_stage:  contact.lifecycleStage || 'new',
-        lead_score:       contact.leadScore || 0,
-        status:           contact.status || 'active',
-        source:           contact.source || '',
-        campaign:         contact.campaign || '',
-        contract_value:   parseInt(contact.contractValue) || 0,
-        account_size:     contact.accountSize || '1-5',
-        tags:             contact.tags || [],
-        notes:            contact.notes || '',
-        owned_by:         contact.ownedBy || '',
-        last_activity_at: contact.lastActivityAt ? new Date(contact.lastActivityAt) : new Date(),
-      },
-      include: { activities: { select: ACTIVITY_SELECT } },
+    const row = await contactRepo.updateContact(req.params.id, {
+      first_name:       contact.firstName        || '',
+      last_name:        contact.lastName         || '',
+      email:            contact.email            || '',
+      phone:            contact.phone            || '',
+      company:          contact.company          || '',
+      title:            contact.title            || '',
+      website:          contact.website          || '',
+      city:             contact.city             || '',
+      trucks:           parseInt(contact.trucks) || 0,
+      lifecycle_stage:  contact.lifecycleStage   || 'new',
+      lead_score:       contact.leadScore        || 0,
+      status:           contact.status           || 'active',
+      source:           contact.source           || '',
+      campaign:         contact.campaign         || '',
+      contract_value:   parseInt(contact.contractValue) || 0,
+      account_size:     contact.accountSize      || '1-5',
+      tags:             contact.tags             || [],
+      notes:            contact.notes            || '',
+      owned_by:         contact.ownedBy          || '',
+      last_activity_at: contact.lastActivityAt ? new Date(contact.lastActivityAt) : new Date(),
     });
-    res.json(toContact(row));
+
+    sendSuccess(res, toContact(row));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'updateContact');
   }
 }
 
 export async function addActivity(req, res) {
-  const { type, note, by, ts } = req.body;
-  try {
-    const contact = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { prophone_id: true } });
-    if (!contact) return res.status(404).json({ error: 'Contact not found' });
-    if (!canAccessTenant(req, contact.prophone_id)) return res.status(403).json({ error: 'Forbidden' });
+  const { type, note, by, ts } = req.body ?? {};
+  if (!type) return sendError(res, 'Activity type is required', 400);
 
-    await prisma.activity.create({
-      data: {
-        contact_id: req.params.id,
-        type,
-        note: note || '',
-        by:   by || '',
-        ts:   ts ? new Date(ts) : new Date(),
-      },
-    });
-    await prisma.contact.update({
-      where: { id: req.params.id },
-      data:  { last_activity_at: new Date() },
-    });
-    res.status(201).json({ ok: true });
+  try {
+    const contact = await contactRepo.findTenantById(req.params.id);
+    if (!contact) return sendError(res, 'Contact not found', 404);
+    if (!canAccessTenant(req, contact.prophone_id)) return sendError(res, 'Forbidden', 403);
+
+    await contactRepo.addActivity(req.params.id, { type, note, by, ts });
+    sendSuccess(res, { ok: true }, 201);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'addActivity');
   }
 }

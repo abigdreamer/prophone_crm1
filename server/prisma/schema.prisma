@@ -115,6 +115,82 @@ model email_template {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  campaigns campaign[]
+
   @@index([prophone_id, updated_at(sort: Desc)])
   @@map("email_templates")
+}
+
+// ── Sending Domains ────────────────────────────────────────────────────────────
+model domain {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id      String
+  domain           String
+  resend_domain_id String?
+  status           String    @default("pending")  // pending | verifying | verified | failed
+  dns_records      Json?
+  region           String    @default("us-east-1")
+  from_email       String    @default("")
+  verified_at      DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  @@unique([prophone_id, domain])
+  @@index([prophone_id])
+  @@map("domains")
+}
+
+// ── Campaigns ──────────────────────────────────────────────────────────────────
+model campaign {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prophone_id   String
+  name          String
+  subject       String   @default("")
+  from_name     String   @default("")
+  from_email    String   @default("")
+  template_id   String?  @db.Uuid
+  status        String   @default("draft")   // draft | running | paused | completed | failed
+  scheduled_at  DateTime?
+  sent_count    Int      @default(0)
+  opened_count  Int      @default(0)
+  clicked_count Int      @default(0)
+  bounced_count Int      @default(0)
+  failed_count  Int      @default(0)
+  html_snapshot String   @default("")        // frozen HTML rendered at send time
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  template   email_template?    @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  recipients campaign_recipient[]
+
+  @@index([prophone_id, status])
+  @@map("campaigns")
+}
+
+// ── Campaign Recipients ────────────────────────────────────────────────────────
+model campaign_recipient {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id   String    @db.Uuid
+  contact_id    String?   @db.Uuid
+  email         String
+  first_name    String    @default("")
+  last_name     String    @default("")
+  status        String    @default("pending") // pending | queued | sent | delivered | opened | clicked | bounced | failed
+  message_id    String    @default("")         // Resend email ID for webhook correlation
+  sent_at       DateTime?
+  delivered_at  DateTime?
+  opened_at     DateTime?
+  clicked_at    DateTime?
+  bounced_at    DateTime?
+  error_message String    @default("")
+  attempts      Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  campaign campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@unique([campaign_id, email])
+  @@index([campaign_id, status])
+  @@index([message_id])
+  @@map("campaign_recipients")
 }

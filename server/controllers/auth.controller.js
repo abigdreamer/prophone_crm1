@@ -1,176 +1,155 @@
-import bcrypt from 'bcryptjs';
-import prisma from '../prisma.js';
-import { signToken } from '../middleware/auth.js';
 import { tenantWhere, canAccessTenant } from '../lib/tenant.js';
+import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
+import { validateCredentials, buildTokenPayload, issueToken, hashPassword } from '../services/authService.js';
+import * as userRepo    from '../repositories/userRepository.js';
+import * as companyRepo from '../repositories/companyRepository.js';
 
-// Public — returns one user per role (super_admin, admin, manager) for the quick-login picker.
-// No passwords or sensitive data returned.
 export async function quickUsers(req, res) {
   try {
-    const roles = ['super_admin', 'admin', 'manager'];
-    const results = await Promise.all(
-      roles.map(role =>
-        prisma.user.findFirst({
-          where: { role },
-          select: { id: true, name: true, email: true, role: true, avatar: true, color: true },
-          orderBy: { created_at: 'asc' },
-        })
-      )
-    );
-    res.json(results.filter(Boolean));
+    const users = await userRepo.findQuickUsers();
+    sendSuccess(res, users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'quickUsers');
   }
 }
 
 export async function login(req, res) {
-  const { email, password } = req.body;
+  const { email, password } = req.body ?? {};
+  if (!email || !password) return sendError(res, 'Email and password are required', 400);
+
   try {
-    const user = await prisma.user.findFirst({
-      where:   { email: { equals: email, mode: 'insensitive' } },
-      include: { company: { select: { name: true, plan: true } } },
-    });
+    const user = await validateCredentials(email, password);
+    if (!user) return sendError(res, 'Invalid credentials', 401);
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const payload = {
-      id:           user.id,
-      email:        user.email,
-      name:         user.name,
-      role:         user.role,
-      avatar:       user.avatar,
-      color:        user.color,
-      prophone_id:  user.prophone_id,   // null for super_admin
-      company_name: user.company?.name || '',
-      plan:         user.company?.plan || '',
-    };
-
-    res.json({ user: payload, token: signToken(payload) });
+    const payload = buildTokenPayload(user);
+    sendSuccess(res, { user: payload, token: issueToken(payload) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'login');
   }
 }
 
-// List users — scoped to caller's company; super_admin sees all (or filtered via ?prophone_id=)
 export async function getUsers(req, res) {
   try {
-    const users = await prisma.user.findMany({
-      where: tenantWhere(req),
-      select: { id: true, prophone_id: true, email: true, name: true, role: true, avatar: true, color: true, created_at: true },
-      orderBy: { created_at: 'asc' },
-    });
-    res.json(users);
+    const users = await userRepo.findMany(tenantWhere(req));
+    sendSuccess(res, users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'getUsers');
   }
 }
 
-// Create user
-// - super_admin role  → prophone_id must be null (global user, no company)
-// - admin / rep role  → prophone_id is required
-//   · super_admin caller can supply any prophone_id in the body
-//   · admin caller always creates within their own company
 export async function createUser(req, res) {
-  const { email, password, name, role = 'rep', avatar, color, prophone_id } = req.body;
+  const { email, password, name, role = 'rep', avatar, color, prophone_id } = req.body ?? {};
 
   if (!email || !password || !name) {
-    return res.status(400).json({ error: 'email, password, and name are required' });
+    return sendError(res, 'email, password, and name are required', 400);
   }
   if (!['admin', 'super_admin'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Admin access required' });
+    return sendError(res, 'Admin access required', 403);
   }
   if (role === 'super_admin' && req.user.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Only super admins can create super admin accounts' });
+    return sendError(res, 'Only super admins can create super admin accounts', 403);
   }
 
   let targetTenant;
   if (role === 'super_admin') {
-    // Super admins are global — they must not be tied to any company.
     targetTenant = null;
   } else if (req.user.role === 'super_admin') {
-    // Super admin creating an admin/rep must specify which company they belong to.
-    if (!prophone_id) {
-      return res.status(400).json({ error: 'prophone_id is required when creating admin or rep users' });
-    }
+    if (!prophone_id) return sendError(res, 'prophone_id is required when creating admin or rep users', 400);
     targetTenant = prophone_id;
   } else {
-    // Admin creating a user within their own company.
     targetTenant = req.user.prophone_id;
   }
 
   try {
-    const hashed = await bcrypt.hash(password, 12);
-    const user = await prisma.user.create({
-      data: {
-        prophone_id: targetTenant,
-        email,
-        password:    hashed,
-        name,
-        role,
-        avatar: avatar || name.split(' ').map(w => w[0]).join('').toUpperCase(),
-        color:  color  || '#6366f1',
-      },
-      select: { id: true, prophone_id: true, email: true, name: true, role: true, avatar: true, color: true, created_at: true },
+    const hashed = await hashPassword(password);
+    const user = await userRepo.createUser({
+      prophone_id: targetTenant,
+      email,
+      password:    hashed,
+      name,
+      role,
+      avatar: avatar || name.split(' ').map(w => w[0]).join('').toUpperCase(),
+      color:  color  || '#6366f1',
     });
-    res.status(201).json(user);
+    sendSuccess(res, user, 201);
   } catch (err) {
-    if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'Email already exists' });
-    }
-    res.status(500).json({ error: err.message });
+    if (err.code === 'P2002') return sendError(res, 'Email already exists', 409);
+    sendServerError(res, err, 'createUser');
   }
 }
 
-// Update user — admin can update within their own company; super_admin can update anyone
 export async function updateUser(req, res) {
   if (!['admin', 'super_admin'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Admin access required' });
+    return sendError(res, 'Admin access required', 403);
   }
+
   try {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!target) return res.status(404).json({ error: 'User not found' });
-    if (!canAccessTenant(req, target.prophone_id)) return res.status(403).json({ error: 'Forbidden' });
+    const target = await userRepo.findById(req.params.id);
+    if (!target) return sendError(res, 'User not found', 404);
+    if (!canAccessTenant(req, target.prophone_id)) return sendError(res, 'Forbidden', 403);
 
-    const { name, role, avatar, color, password } = req.body;
-
+    const { name, role, avatar, color, password } = req.body ?? {};
     if (role === 'super_admin' && req.user.role !== 'super_admin') {
-      return res.status(403).json({ error: 'Only super admins can assign the super admin role' });
+      return sendError(res, 'Only super admins can assign the super admin role', 403);
     }
 
     const data = {};
-    if (name   !== undefined) data.name   = name;
-    if (role   !== undefined) data.role   = role;
-    if (avatar !== undefined) data.avatar = avatar;
-    if (color  !== undefined) data.color  = color;
-    if (password) data.password = await bcrypt.hash(password, 12);
+    if (name     !== undefined) data.name   = name;
+    if (role     !== undefined) data.role   = role;
+    if (avatar   !== undefined) data.avatar = avatar;
+    if (color    !== undefined) data.color  = color;
+    if (password)               data.password = await hashPassword(password);
 
-    const user = await prisma.user.update({
-      where: { id: req.params.id },
-      data,
-      select: { id: true, prophone_id: true, email: true, name: true, role: true, avatar: true, color: true, created_at: true },
-    });
-    res.json(user);
+    const user = await userRepo.updateUser(req.params.id, data);
+    sendSuccess(res, user);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'updateUser');
   }
 }
 
-// Delete user — admin can delete within their own company; super_admin can delete anyone
 export async function deleteUser(req, res) {
   if (!['admin', 'super_admin'].includes(req.user.role)) {
-    return res.status(403).json({ error: 'Admin access required' });
+    return sendError(res, 'Admin access required', 403);
   }
-  try {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!target) return res.status(404).json({ error: 'User not found' });
-    if (!canAccessTenant(req, target.prophone_id)) return res.status(403).json({ error: 'Forbidden' });
-    if (target.id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
 
-    await prisma.user.delete({ where: { id: req.params.id } });
-    res.json({ ok: true });
+  try {
+    const target = await userRepo.findById(req.params.id);
+    if (!target) return sendError(res, 'User not found', 404);
+    if (!canAccessTenant(req, target.prophone_id)) return sendError(res, 'Forbidden', 403);
+    if (target.id === req.user.id) return sendError(res, 'Cannot delete your own account', 400);
+
+    await userRepo.removeUser(req.params.id);
+    sendSuccess(res, { ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendServerError(res, err, 'deleteUser');
+  }
+}
+
+export async function getCompanies(req, res) {
+  try {
+    const companies = await companyRepo.findAllSummary();
+    sendSuccess(res, companies);
+  } catch (err) {
+    sendServerError(res, err, 'getCompanies');
+  }
+}
+
+export async function selectCompany(req, res) {
+  const { prophone_id } = req.body ?? {};
+  try {
+    const { iat, exp, ...base } = req.user;
+
+    if (!prophone_id) {
+      const payload = { ...base, prophone_id: null, company_name: '', plan: '' };
+      return sendSuccess(res, { token: issueToken(payload), user: payload });
+    }
+
+    const company = await companyRepo.findByPhoneId(prophone_id);
+    if (!company) return sendError(res, 'Company not found', 404);
+
+    const payload = { ...base, prophone_id, company_name: company.name, plan: company.plan };
+    sendSuccess(res, { token: issueToken(payload), user: payload });
+  } catch (err) {
+    sendServerError(res, err, 'selectCompany');
   }
 }

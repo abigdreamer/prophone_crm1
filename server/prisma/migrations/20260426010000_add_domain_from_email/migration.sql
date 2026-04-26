@@ -1,0 +1,1 @@
+ALTER TABLE "domains" ADD COLUMN "from_email" TEXT NOT NULL DEFAULT '';

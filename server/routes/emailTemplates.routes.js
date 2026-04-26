@@ -8,6 +8,7 @@ import {
   updateTemplate,
   deleteTemplate,
   duplicateTemplate,
+  sendTestEmail,
 } from '../controllers/emailTemplates.controller.js';
 
 const router = Router();
@@ -23,5 +24,6 @@ router.post('/',               createTemplate);
 router.put('/:id',             updateTemplate);
 router.delete('/:id',          deleteTemplate);
 router.post('/:id/duplicate',  duplicateTemplate);
+router.post('/:id/send-test',  sendTestEmail);
 
 export default router;

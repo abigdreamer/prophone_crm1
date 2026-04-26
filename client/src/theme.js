@@ -1,25 +1,34 @@
-// ─── Design Tokens ───────────────────────────────────────────────────────────
+/**
+ * Design tokens — used throughout the app with inline styles.
+ *
+ * Source of truth: src/constants/theme.js  (COLORS, THEME)
+ * This file provides the T shorthand that existing components already use,
+ * and re-exports THEME + COLORS so new components can import from either place.
+ */
+import { COLORS, THEME } from './constants/theme.js';
+
 const T = {
-  bg:        "#f1f5f9",
-  surface:   "#ffffff",
-  card:      "#ffffff",
-  panel:     "#f8fafc",
-  header:    "#1a3560",
-  border:    "#e2e8f0",
-  borderHi:  "#cbd5e1",
-  accent:    "#6366f1",
-  accentLow: "#eef2ff",
-  green:     "#16a34a",
-  amber:     "#d97706",
-  red:       "#dc2626",
-  blue:      "#0284c7",
-  purple:    "#9333ea",
-  teal:      "#0d9488",
-  orange:    "#ea580c",
-  muted:     "#64748b",
-  dim:       "#94a3b8",
-  sub:       "#475569",
-  text:      "#0f172a",
+  bg:        COLORS.background,
+  surface:   COLORS.surface,
+  card:      COLORS.surface,
+  panel:     COLORS.panel,
+  header:    COLORS.header,
+  border:    COLORS.border,
+  borderHi:  COLORS.borderHi,
+  accent:    COLORS.primary,
+  accentLow: COLORS.primaryTint,
+  green:     COLORS.success,
+  amber:     COLORS.warning,
+  red:       COLORS.danger,
+  blue:      COLORS.secondary,
+  purple:    COLORS.purple,
+  teal:      COLORS.teal,
+  orange:    COLORS.orange,
+  muted:     COLORS.textMuted,
+  dim:       COLORS.textDim,
+  sub:       COLORS.textSub,
+  text:      COLORS.text,
 };
 
+export { THEME, COLORS };
 export default T;

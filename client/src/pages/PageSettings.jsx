@@ -184,7 +184,7 @@ function RoleBadge({ role }) {
   const rc = ROLE_COLORS[role] || ROLE_COLORS.rep;
   return (
     <span style={{ fontSize: 10, fontWeight: 700, background: rc.bg, color: rc.color, border: "1px solid " + rc.border, borderRadius: 5, padding: "2px 8px", letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-      {role.replace(/_/g, " ")}
+      {role.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
     </span>
   );
 }

@@ -1,4 +1,5 @@
 import { ArrowLeft, Mail, Shield } from "lucide-react";
+import { fmtRole } from "../utils/format";
 import Avatar from "../components/ui/Avatar";
 import T from "../theme";
 
@@ -52,8 +53,8 @@ export default function PageProfile({ user, onBack }) {
               }}
             >
               <Shield size={10} color="rgba(255,255,255,0.65)" />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", textTransform: "capitalize", fontWeight: 600 }}>
-                {user.role}
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>
+                {fmtRole(user.role)}
               </span>
             </div>
           </div>
@@ -68,7 +69,7 @@ export default function PageProfile({ user, onBack }) {
           {[
             { label: "Full Name", value: user.name },
             { label: "Email",     value: user.email,  icon: <Mail size={12} color={T.accent} /> },
-            { label: "Role",      value: user.role    },
+            { label: "Role",      value: fmtRole(user.role) },
           ].map(({ label, value, icon }) => (
             <div
               key={label}
