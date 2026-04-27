@@ -1,10 +1,7 @@
-// ─── Dynamic Lead Score (0–100) ───────────────────────────────────────────────
-// Breakdown: stage base (50) + activity quality (30 cap) + recency (10) + value (10)
-
 const STAGE_BASE = {
   new: 5, contacted: 15, engaged: 28,
   proposal_sent: 42, negotiating: 50,
-  customer: 50,
+  customer: 100,
   not_qualified: 2, lost: 2,
 };
 
@@ -17,49 +14,33 @@ const ACT_PTS = {
   sms_sent: 2, page_visited: 1,
 };
 
-export function calcLeadScore(contact) {
-  const stage = contact.lifecycleStage || "new";
+export function calcLeadScore(contact = {}) {
+  const stage = contact.lifecycleStage || 'new';
+  if (stage === 'customer')      return 100;
+  if (stage === 'not_qualified') return 5;
+  if (stage === 'lost')          return 5;
 
-  // Terminals: customer always wins, lost/not_qualified always low
-  if (stage === "customer")       return 100;
-  if (stage === "not_qualified")  return 5;
-  if (stage === "lost")           return 5;
-
-  const acts = contact.activities || [];
-
-  // 1. Stage base (0–50)
   let score = STAGE_BASE[stage] ?? 5;
 
-  // 2. Activity quality — capped at 30
+  const acts = contact.activities || [];
   let actPts = 0;
-  for (const a of acts) {
-    actPts += ACT_PTS[a.type] || 0;
-  }
+  for (const a of acts) actPts += ACT_PTS[a.type] || 0;
   score += Math.min(Math.max(actPts, 0), 30);
 
-  // 3. Recency — 0–10
   if (contact.lastActivityAt) {
     const days = (Date.now() - new Date(contact.lastActivityAt)) / 86_400_000;
-    if (days <= 2)       score += 10;
+    if      (days <= 2)  score += 10;
     else if (days <= 7)  score += 7;
     else if (days <= 14) score += 4;
     else if (days <= 30) score += 2;
   }
 
-  // 4. Contract value — 0–10
-  const val = contact.contractValue || 0;
-  if      (val >= 10_000) score += 10;
-  else if (val >=  5_000) score += 7;
-  else if (val >=  2_000) score += 5;
-  else if (val >=    500) score += 3;
-  else if (val >      0)  score += 1;
-
   return Math.min(99, Math.max(0, Math.round(score)));
 }
 
 export function scoreMeta(score) {
-  if (score === 100)   return { label: "Customer", color: "#22c55e", bg: "#22c55e18" };
-  if (score >= 70)     return { label: "Hot",      color: "#f97316", bg: "#f9731618" };
-  if (score >= 40)     return { label: "Warm",     color: "#f59e0b", bg: "#f59e0b18" };
-  return                      { label: "Cold",     color: "#94a3b8", bg: "#94a3b818" };
+  if (score >= 70) return { label: "Hot",    color: "#22c55e" };
+  if (score >= 40) return { label: "Warm",   color: "#f59e0b" };
+  if (score >= 15) return { label: "Cool",   color: "#6366f1" };
+  return               { label: "Cold",   color: "#94a3b8" };
 }

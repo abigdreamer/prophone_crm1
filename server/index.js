@@ -9,6 +9,7 @@ import campaignRoutes      from './routes/campaigns.routes.js';
 import domainRoutes        from './routes/domains.routes.js';
 import groupRoutes         from './routes/groups.routes.js';
 import webhookRoutes       from './routes/webhooks.routes.js';
+import trackingRoutes      from './routes/tracking.routes.js';
 import { startEmailWorker } from './workers/emailWorker.js';
 
 const app = express();
@@ -17,7 +18,9 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 // Webhook route must receive raw body — mount BEFORE express.json()
 app.use('/api/webhooks', webhookRoutes);
-app.use(express.json());
+// Tracking routes — no auth required (email clients call these)
+app.use('/api/track', trackingRoutes);
+app.use(express.json({ limit: '15mb' }));
 
 app.use('/api',                 authRoutes);
 app.use('/api/contacts',        contactRoutes);

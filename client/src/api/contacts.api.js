@@ -1,7 +1,7 @@
 import { apiFetch, getSuperAdminTenantId } from './client.js';
 
-export async function getContacts(pool, scopeId) {
-  const params = new URLSearchParams({ pool });
+export async function getContacts(scopeId) {
+  const params = new URLSearchParams();
   if (scopeId) params.append('prophone_id', scopeId);
   return apiFetch(`/contacts?${params}`);
 }
@@ -34,5 +34,14 @@ export async function addActivity(contactId, activity) {
   return apiFetch(`/contacts/${contactId}/activities`, {
     method: 'POST',
     body:   JSON.stringify(activity),
+  });
+}
+
+export async function importContacts(contacts, groupId) {
+  const tid     = getSuperAdminTenantId();
+  const payload = { contacts, groupId, ...(tid ? { prophone_id: tid } : {}) };
+  return apiFetch('/contacts/import', {
+    method: 'POST',
+    body:   JSON.stringify(payload),
   });
 }

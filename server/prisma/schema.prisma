@@ -56,42 +56,30 @@ model user {
 
 // ── Contacts ───────────────────────────────────────────────────────────────────
 model contact {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   prophone_id     String
-  pool            String
-  client_id       String?
-  first_name      String   @default("")
-  last_name       String   @default("")
-  email           String   @default("")
-  phone           String   @default("")
-  company         String   @default("")
-  title           String   @default("")
-  website         String   @default("")
-  city            String   @default("")
-  trucks          Int      @default(0)
-  lifecycle_stage String   @default("new")
-  lead_score      Int      @default(0)
-  status          String   @default("active")
-  source          String   @default("")
-  campaign        String   @default("")
-  emails_sent     Int      @default(0)
-  emails_opened   Int      @default(0)
-  emails_clicked  Int      @default(0)
-  calls_made      Int      @default(0)
-  calls_answered  Int      @default(0)
+  first_name      String    @default("")
+  last_name       String    @default("")
+  email           String?
+  phone           String    @default("")
+  company         String    @default("")
+  title           String    @default("")
+  website         String    @default("")
+  city            String    @default("")
+  lifecycle_stage String    @default("new")
+  status          String    @default("active")
+  source          String    @default("")
+  tags            String[]  @default([])
+  notes           String    @default("")
+  owned_by        String    @default("")
+  added_by        String    @default("")
+  group_id        String?   @db.Uuid
   last_activity_at DateTime @default(now())
-  contract_value  Int      @default(0)
-  account_size    String   @default("1-5")
-  tags            String[] @default([])
-  notes           String   @default("")
-  owned_by        String   @default("")
-  added_by        String   @default("")
-  group_id        String?  @db.Uuid
-  created_at      DateTime @default(now())
+  created_at      DateTime  @default(now())
 
   company_rel company_profile @relation(fields: [prophone_id], references: [prophone_id])
   activities  activity[]
-  group       contact_group?  @relation(fields: [group_id], references: [id], onDelete: SetNull)
+  group       contact_group?  @relation(fields: [group_id], references: [id], onDelete: Cascade)
 
   @@index([prophone_id])
   @@index([group_id])
@@ -177,14 +165,17 @@ model campaign {
   template_id   String?  @db.Uuid
   status        String   @default("draft")   // draft | running | paused | completed | failed
   scheduled_at  DateTime?
-  sent_count    Int      @default(0)
-  opened_count  Int      @default(0)
-  clicked_count Int      @default(0)
-  bounced_count Int      @default(0)
-  failed_count  Int      @default(0)
-  html_snapshot String   @default("")        // frozen HTML rendered at send time
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  sent_count       Int      @default(0)
+  opened_count     Int      @default(0)
+  clicked_count    Int      @default(0)
+  bounced_count    Int      @default(0)
+  failed_count     Int      @default(0)
+  html_snapshot    String   @default("")
+  ab_subject_b     String   @default("")
+  ab_template_id_b String?  @db.Uuid
+  ab_html_snapshot String   @default("")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
   template   email_template?    @relation(fields: [template_id], references: [id], onDelete: SetNull)
   recipients campaign_recipient[]
@@ -201,8 +192,13 @@ model campaign_recipient {
   email         String
   first_name    String    @default("")
   last_name     String    @default("")
-  status        String    @default("pending") // pending | queued | sent | delivered | opened | clicked | bounced | failed
-  message_id    String    @default("")         // Resend email ID for webhook correlation
+  phone         String    @default("")
+  company       String    @default("")
+  city          String    @default("")
+  title         String    @default("")
+  ab_variant    String    @default("A")
+  status        String    @default("pending")
+  message_id    String    @default("")
   sent_at       DateTime?
   delivered_at  DateTime?
   opened_at     DateTime?

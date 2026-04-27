@@ -217,12 +217,6 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
                   <span style={{ color: T.text, fontWeight: 600 }}>{contact.phone}</span>
                 </div>
               )}
-              <div>
-                <span style={{ color: T.muted }}>Value: </span>
-                <span style={{ color: T.green, fontWeight: 600 }}>
-                  {contact.contractValue ? "$" + contact.contractValue.toLocaleString() : "—"}
-                </span>
-              </div>
               {contact.source && (
                 <div>
                   <span style={{ color: T.muted }}>Source: </span>

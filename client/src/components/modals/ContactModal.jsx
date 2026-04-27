@@ -8,8 +8,7 @@ import { getUsers } from "../../api/auth.api";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
 
-// ─── Add / Edit Contact modal ─────────────────────────────────────────────────
-export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser, groups = [] }) {
+export default function ContactModal({ contact, onSave, onClose, currentUser, groups = [] }) {
   const isEdit = !!contact;
   const [saving, setSaving] = useState(false);
   const [users,  setUsers]  = useState([]);
@@ -18,16 +17,15 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", city: "",
-    lifecycleStage: "new", source: "", campaign: "",
-    tags: [], notes: "", contractValue: "", accountSize: "1-5",
+    lifecycleStage: "new", source: "",
+    tags: [], notes: "",
     ownedBy: currentUser?.name || "",
     groupId: "",
-    pool, clientId,
   });
 
   useEffect(() => {
-    getUsers(clientId).then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
-  }, [clientId]);
+    getUsers().then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
+  }, []);
 
   const set = (k, v) => {
     setForm(p => ({ ...p, [k]: v }));
@@ -37,20 +35,13 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   async function handleSave() {
     const e = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
-    if (!form.email.trim())     e.email     = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Enter a valid email";
+    if (!form.groupId)          e.groupId   = "Group is required";
     if (Object.keys(e).length) { setErrors(e); return; }
     setErrors({});
 
     const saved = {
       ...form,
-      id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
-      leadScore:     contact?.leadScore     || 10,
-      emailsSent:    contact?.emailsSent    || 0,
-      emailsOpened:  contact?.emailsOpened  || 0,
-      emailsClicked: contact?.emailsClicked || 0,
-      callsMade:     contact?.callsMade     || 0,
-      callsAnswered: contact?.callsAnswered || 0,
+      id: contact?.id || ("c" + Date.now()),
       lastActivityAt: new Date().toISOString(),
       addedBy:  contact?.addedBy  || currentUser?.name || "Unknown",
       createdAt: contact?.createdAt || new Date().toISOString(),
@@ -61,7 +52,6 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         ts: new Date().toISOString(),
         by: currentUser?.name || "Unknown",
       }],
-      contractValue: parseInt(form.contractValue) || 0,
     };
     setSaving(true);
     try {
@@ -81,15 +71,15 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         />
         <Input label="Last Name" value={form.lastName} onChange={v => set("lastName", v)} placeholder="Johnson" />
         <Input
-          label="Email" required type="email"
+          label="Email" type="email"
           value={form.email} onChange={v => set("email", v)}
-          placeholder="mike@company.com" error={errors.email}
+          placeholder="mike@company.com"
         />
         <Input label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)} placeholder="(510) 555-1234" />
         <Input label="Company"   value={form.company} onChange={v => set("company", v)} placeholder="Acme Inc." />
         <Input label="Job Title" value={form.title}   onChange={v => set("title",   v)} placeholder="Owner" />
         <Input label="City"      value={form.city}    onChange={v => set("city",    v)} placeholder="Oakland, CA" />
-        <Input label="Contract Value ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="5000" />
+        <Input label="Source"    value={form.source}  onChange={v => set("source",  v)} placeholder="Referral" />
         <Sel
           label="Stage"
           value={form.lifecycleStage}
@@ -106,13 +96,16 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
           }
         />
         <Sel
-          label="Group (optional)"
+          label="Group"
+          required
           value={form.groupId || ""}
           onChange={v => set("groupId", v || null)}
-          options={[
-            { value: "", label: "— No group —" },
-            ...groups.map(g => ({ value: g.id, label: `${g.name} (${g.contactCount} contacts)` })),
-          ]}
+          error={errors.groupId}
+          options={
+            groups.length === 0
+              ? [{ value: "", label: "— No groups yet, create one first —" }]
+              : [{ value: "", label: "Select a group…" }, ...groups.map(g => ({ value: g.id, label: g.name }))]
+          }
         />
       </div>
 

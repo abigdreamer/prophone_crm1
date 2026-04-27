@@ -7,11 +7,13 @@ import {
   updateCampaign,
   deleteCampaign,
   addRecipients,
+  addGroupRecipients,
   listRecipients,
   removeAllRecipients,
   sendCampaign,
   pauseCampaign,
   resumeCampaign,
+  syncCampaign,
 } from '../controllers/campaigns.controller.js';
 
 const router = Router();
@@ -26,13 +28,15 @@ router.put('/:id', updateCampaign);
 router.delete('/:id', deleteCampaign);
 
 // Recipients management
-router.get('/:id/recipients',    listRecipients);
-router.post('/:id/recipients',   addRecipients);
-router.delete('/:id/recipients', removeAllRecipients);
+router.get('/:id/recipients',          listRecipients);
+router.post('/:id/recipients',         addRecipients);
+router.post('/:id/recipients/group',   addGroupRecipients);
+router.delete('/:id/recipients',       removeAllRecipients);
 
 // Campaign lifecycle
 router.post('/:id/send',   sendCampaign);
 router.post('/:id/pause',  pauseCampaign);
 router.post('/:id/resume', resumeCampaign);
+router.post('/:id/sync',   syncCampaign);
 
 export default router;

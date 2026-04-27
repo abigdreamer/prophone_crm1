@@ -9,7 +9,7 @@ export async function findMany(where) {
       sent_count: true, opened_count: true, clicked_count: true,
       bounced_count: true, failed_count: true,
       scheduled_at: true, created_at: true, updated_at: true,
-      template_id: true,
+      template_id: true, ab_subject_b: true, ab_template_id_b: true,
       template: { select: { id: true, name: true } },
     },
     orderBy: { created_at: 'desc' },
@@ -57,6 +57,14 @@ export async function groupRecipientsByStatus(campaignId) {
   });
 }
 
+export async function groupRecipientsByVariantAndStatus(campaignId) {
+  return prisma.campaign_recipient.groupBy({
+    by:    ['ab_variant', 'status'],
+    where: { campaign_id: campaignId },
+    _count: { status: true },
+  });
+}
+
 export async function findRecipients(campaignId, { status, skip, limit }) {
   const where = { campaign_id: campaignId };
   if (status) where.status = status;
@@ -69,7 +77,8 @@ export async function findRecipients(campaignId, { status, skip, limit }) {
       orderBy: { created_at: 'desc' },
       select: {
         id: true, email: true, first_name: true, last_name: true,
-        status: true, message_id: true,
+        phone: true, company: true, city: true, title: true,
+        ab_variant: true, status: true, message_id: true,
         sent_at: true, opened_at: true, clicked_at: true, bounced_at: true,
         error_message: true, attempts: true,
       },
@@ -85,8 +94,12 @@ export async function addRecipients(campaignId, contacts) {
       campaign_id: campaignId,
       contact_id:  c.id,
       email:       c.email,
-      first_name:  c.first_name,
-      last_name:   c.last_name,
+      first_name:  c.first_name  || '',
+      last_name:   c.last_name   || '',
+      phone:       c.phone       || '',
+      company:     c.company     || '',
+      city:        c.city        || '',
+      title:       c.title       || '',
       status:      'pending',
     })),
     skipDuplicates: true,
@@ -103,13 +116,40 @@ export async function countPendingRecipients(campaignId) {
   });
 }
 
+export async function findPendingRecipientIds(campaignId) {
+  const rows = await prisma.campaign_recipient.findMany({
+    where:  { campaign_id: campaignId, status: 'pending' },
+    select: { id: true },
+  });
+  return rows.map(r => r.id);
+}
+
+export async function assignVariants(campaignId, idsForB) {
+  if (!idsForB.length) return;
+  return prisma.campaign_recipient.updateMany({
+    where: { id: { in: idsForB } },
+    data:  { ab_variant: 'B' },
+  });
+}
+
 export async function findContactsByIds(contactIds, prophone_id) {
   return prisma.contact.findMany({
     where: {
       id:          { in: contactIds },
       prophone_id,
-      email:       { not: '' },
+      email:       { not: null },
     },
-    select: { id: true, email: true, first_name: true, last_name: true },
+    select: { id: true, email: true, first_name: true, last_name: true, phone: true, company: true, city: true, title: true },
+  });
+}
+
+export async function findContactsByGroup(groupId, prophone_id) {
+  return prisma.contact.findMany({
+    where: {
+      group_id:    groupId,
+      prophone_id,
+      email:       { not: null },
+    },
+    select: { id: true, email: true, first_name: true, last_name: true, phone: true, company: true, city: true, title: true },
   });
 }

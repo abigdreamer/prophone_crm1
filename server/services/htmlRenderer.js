@@ -216,12 +216,49 @@ function escapeHtmlValue(str) {
 
 /**
  * Substitute {{variable}} placeholders in rendered HTML.
+ * - {{firstName}} and {{fullName}} fall back to "there" if empty/missing.
+ * - All other variables fall back to "" (tag removed) if empty/missing.
  * Variable values are HTML-escaped before insertion.
  */
+const NAME_FALLBACK_KEYS = new Set(['firstName', 'fullName']);
+
 function substituteVariables(html, vars = {}) {
   return html.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-    return key in vars ? escapeHtmlValue(vars[key]) : match;
+    if (key in vars && vars[key] !== '' && vars[key] != null) {
+      return escapeHtmlValue(vars[key]);
+    }
+    if (NAME_FALLBACK_KEYS.has(key)) return 'there';
+    return '';
   });
+}
+
+/**
+ * Inject open-tracking pixel and rewrite links for click tracking.
+ * @param {string} html        - Rendered email HTML
+ * @param {string} recipientId - campaign_recipient.id
+ * @param {string} baseUrl     - e.g. https://app.example.com (falsy → return unchanged)
+ * @returns {string} HTML with tracking injected
+ */
+export function injectTracking(html, recipientId, baseUrl) {
+  if (!baseUrl) return html;
+
+  // 1. Rewrite href links (http/https) that don't already start with baseUrl
+  const rewritten = html.replace(
+    /href="(https?:\/\/[^"]+)"/gi,
+    (match, url) => {
+      if (url.startsWith(baseUrl)) return match; // already wrapped — skip
+      return `href="${baseUrl}/api/track/c/${recipientId}?u=${encodeURIComponent(url)}"`;
+    },
+  );
+
+  // 2. Build the tracking pixel
+  const pixel = `<img src="${baseUrl}/api/track/o/${recipientId}" width="1" height="1" style="display:none;border:0;" alt="" />`;
+
+  // 3. Inject before </body> or append at end
+  if (rewritten.includes('</body>')) {
+    return rewritten.replace('</body>', `${pixel}</body>`);
+  }
+  return rewritten + pixel;
 }
 
 /**
