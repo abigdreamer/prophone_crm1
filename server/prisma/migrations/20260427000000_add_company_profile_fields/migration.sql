@@ -1,0 +1,9 @@
+-- Add extended company profile fields (idempotent — uses IF NOT EXISTS)
+
+ALTER TABLE "company_profiles"
+  ADD COLUMN IF NOT EXISTS "zipcode"  TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "state"    TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "country"  TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "email"    TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "fax"      TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS "timezone" TEXT NOT NULL DEFAULT '';
