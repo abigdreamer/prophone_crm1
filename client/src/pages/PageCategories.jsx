@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Tag, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Tag, Plus, MoreHorizontal, Pencil, Trash2, Copy, Search } from "lucide-react";
 import Card from "../components/ui/Card";
 import Btn from "../components/ui/Btn";
 import { Spinner } from "../components/ui/Loader";
@@ -11,7 +11,7 @@ import { createGroup, updateGroup, deleteGroup } from "../api/groups.api";
 import { useToast } from "../hooks/useToast";
 
 // ─── Three-dot row menu ───────────────────────────────────────────────────────
-function RowMenu({ onEdit, onDelete }) {
+function RowMenu({ onEdit, onDuplicate, onDelete }) {
   const [open, setOpen] = useState(false);
   const [pos,  setPos]  = useState({ top: 0, left: 0 });
   const btnRef  = useRef(null);
@@ -52,7 +52,8 @@ function RowMenu({ onEdit, onDelete }) {
   function act(fn) { return e => { e.stopPropagation(); setOpen(false); fn(); }; }
 
   const items = [
-    { icon: Pencil, label: "Rename",       fn: onEdit },
+    { icon: Pencil, label: "Rename Group", fn: onEdit },
+    { icon: Copy,   label: "Duplicate",    fn: onDuplicate },
     { divider: true },
     { icon: Trash2, label: "Delete Group", fn: onDelete, danger: true },
   ];
@@ -110,7 +111,7 @@ function RowMenu({ onEdit, onDelete }) {
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function PageCategories({ groups = [], setGroups, currentUser, setContacts }) {
+export default function PageCategories({ groups = [], setGroups, currentUser, setContacts, onSelectGroup }) {
   const toast = useToast();
   const [newName,   setNewName]   = useState("");
   const [adding,    setAdding]    = useState(false);
@@ -120,6 +121,7 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
   const [editSaving,setEditSaving]= useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting,     setDeleting]     = useState(false);
+  const [search,       setSearch]       = useState("");
 
   async function handleAdd() {
     const name = newName.trim();
@@ -154,16 +156,24 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
     }
   }
 
+  async function handleDuplicate(g) {
+    try {
+      const copy = await createGroup(`${g.name} (Copy)`);
+      setGroups(prev => [copy, ...prev]);
+      toast.success(`Duplicated as "${copy.name}".`);
+    } catch (err) {
+      toast.error(err.message || "Failed to duplicate group.");
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       await deleteGroup(deleteTarget.id);
       setGroups(prev => prev.filter(g => g.id !== deleteTarget.id));
-      // Clear group reference from any contacts in local state (backend uses onDelete: SetNull)
-      setContacts?.(prev => prev.map(c =>
-        c.groupId === deleteTarget.id ? { ...c, groupId: null, groupName: null } : c
-      ));
+      // Remove contacts that belonged to this group (backend cascades the delete)
+      setContacts?.(prev => prev.filter(c => c.groupId !== deleteTarget.id));
       toast.success(`Group "${deleteTarget.name}" deleted.`);
       setDeleteTarget(null);
     } catch (err) {
@@ -188,11 +198,11 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
                   <strong style={{ color: "#dc2626" }}>
                     {deleteTarget.contactCount} contact{deleteTarget.contactCount !== 1 ? "s" : ""}
                   </strong>.
-                  {" "}Deleting the group will <strong>unassign</strong> all contacts from it —
-                  the contacts themselves will not be deleted.
+                  {" "}Deleting the group will <strong>permanently delete all contacts</strong> in it.
+                  This action cannot be undone.
                   {deleteTarget.contactCount > 20 && (
                     <span style={{ display: "block", marginTop: 8, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 10px", fontSize: 12 }}>
-                      ⚠ This group has many contacts. The operation may take a moment.
+                      This group has many contacts. The operation may take a moment.
                     </span>
                   )}
                 </>
@@ -205,7 +215,7 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
       )}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 17, fontWeight: 700, color: T.text }}>
             Contact Groups{" "}
@@ -220,31 +230,108 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
         </Btn>
       </div>
 
-      {/* New group input */}
-      {adding && (
-        <Card style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 8 }}>Group name</div>
-          <div style={{ display: "flex", gap: 8 }}>
+      {/* Search bar */}
+      <div style={{ position: "relative", marginBottom: 20 }}>
+        <Search size={14} color={T.muted} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search groups…"
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: T.surface, border: "1px solid " + T.border,
+            borderRadius: 10, padding: "10px 36px 10px 38px",
+            color: T.text, fontSize: 13, outline: "none",
+            fontFamily: "inherit", boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+            transition: "border-color 0.15s, box-shadow 0.15s",
+          }}
+          onFocus={e => { e.target.style.borderColor = T.accent; e.target.style.boxShadow = "0 0 0 3px " + T.accent + "20"; }}
+          onBlur={e  => { e.target.style.borderColor = T.border;  e.target.style.boxShadow = "0 1px 3px rgba(0,0,0,0.07)"; }}
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.muted, cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}
+          >✕</button>
+        )}
+      </div>
+
+      {adding && createPortal(
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => { setAdding(false); setNewName(""); }}
+        >
+          <div
+            style={{ background: "#fff", borderRadius: 14, padding: "28px 28px 24px", width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 20 }}>New Group</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Group name
+            </div>
             <input
               autoFocus
               value={newName}
               onChange={e => setNewName(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") { setAdding(false); setNewName(""); } }}
-              placeholder="e.g. VIP Clients, Q1 Campaign, Newsletter Group…"
+              placeholder="Enter group name"
               style={{
-                flex: 1, background: T.bg, border: "1px solid " + T.border,
-                borderRadius: 7, padding: "7px 12px",
-                color: T.text, fontSize: 13, outline: "none", fontFamily: "inherit",
+                width: "100%", boxSizing: "border-box",
+                background: T.bg, border: "1px solid " + T.border,
+                borderRadius: 8, padding: "9px 12px",
+                color: T.text, fontSize: 14, outline: "none", fontFamily: "inherit",
               }}
               onFocus={e => (e.target.style.borderColor = T.accent)}
-              onBlur={e  => (e.target.style.borderColor = T.border)}
+              onBlur={e => (e.target.style.borderColor = T.border)}
             />
-            <Btn onClick={handleAdd} disabled={!newName.trim() || saving}>
-              {saving ? <Spinner size={13} color="#fff" /> : "Create"}
-            </Btn>
-            <Btn variant="ghost" onClick={() => { setAdding(false); setNewName(""); }}>Cancel</Btn>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <Btn variant="ghost" onClick={() => { setAdding(false); setNewName(""); }}>Cancel</Btn>
+              <Btn onClick={handleAdd} disabled={!newName.trim() || saving}>
+                {saving ? <Spinner size={13} color="#fff" /> : "Create"}
+              </Btn>
+            </div>
           </div>
-        </Card>
+        </div>,
+        document.body
+      )}
+
+      {editId && createPortal(
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setEditId(null)}
+        >
+          <div
+            style={{ background: "#fff", borderRadius: 14, padding: "28px 28px 24px", width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text, marginBottom: 20 }}>Rename Group</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Group name
+            </div>
+            <input
+              autoFocus
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleEditSave(); if (e.key === "Escape") setEditId(null); }}
+              placeholder="Enter group name"
+              style={{
+                width: "100%", boxSizing: "border-box",
+                background: T.bg, border: "1px solid " + T.border,
+                borderRadius: 8, padding: "9px 12px",
+                color: T.text, fontSize: 14, outline: "none", fontFamily: "inherit",
+              }}
+              onFocus={e => (e.target.style.borderColor = T.accent)}
+              onBlur={e => (e.target.style.borderColor = T.border)}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <Btn variant="ghost" onClick={() => setEditId(null)}>Cancel</Btn>
+              <Btn onClick={handleEditSave} disabled={!editName.trim() || editSaving}>
+                {editSaving ? <Spinner size={13} color="#fff" /> : "Save"}
+              </Btn>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Table */}
@@ -257,17 +344,24 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
           </div>
         </Card>
       ) : groups.length > 0 && (
+        <div style={{ position: "relative" }}>
         <Card style={{ overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "35%" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "160px" }} />
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "72px" }} />
+            </colgroup>
             <thead>
               <tr style={{ background: T.panel }}>
-                {["Group Name", "Contacts", "Created By", "Created", ""].map((h, i) => (
+                {["Group Name", "Contacts", "Created By", "Created", "Action"].map((h, i) => (
                   <th key={i} style={{
                     padding: "9px 14px", textAlign: "left",
                     color: T.muted, fontWeight: 600, fontSize: 10,
                     textTransform: "uppercase", letterSpacing: "0.05em",
                     borderBottom: "1px solid " + T.border, whiteSpace: "nowrap",
-                    ...(i === 4 ? { width: 48 } : {}),
                   }}>
                     {h}
                   </th>
@@ -275,44 +369,25 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
               </tr>
             </thead>
             <tbody>
-              {groups.map(g => (
+              {groups.filter(g => !search.trim() || g.name.toLowerCase().includes(search.toLowerCase())).map(g => (
                 <tr key={g.id}
-                  style={{ borderBottom: "1px solid " + T.border }}
+                  onClick={() => onSelectGroup?.(g)}
+                  style={{ borderBottom: "1px solid " + T.border, cursor: "pointer" }}
                   onMouseEnter={e => (e.currentTarget.style.background = T.panel)}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                 >
                   {/* Name */}
                   <td style={{ padding: "12px 14px", verticalAlign: "middle" }}>
-                    {editId === g.id ? (
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <input
-                          autoFocus
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") handleEditSave(); if (e.key === "Escape") setEditId(null); }}
-                          style={{
-                            background: T.bg, border: "1px solid " + T.accent,
-                            borderRadius: 6, padding: "4px 9px",
-                            color: T.text, fontSize: 13, outline: "none", fontFamily: "inherit",
-                          }}
-                        />
-                        <Btn onClick={handleEditSave} disabled={!editName.trim() || editSaving}>
-                          {editSaving ? <Spinner size={13} color="#fff" /> : "Save"}
-                        </Btn>
-                        <Btn variant="ghost" onClick={() => setEditId(null)}>Cancel</Btn>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <div style={{
+                        width: 30, height: 30, borderRadius: 7, flexShrink: 0,
+                        background: T.accent + "15", border: "1px solid " + T.accent + "25",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <Tag size={13} color={T.accent} />
                       </div>
-                    ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{
-                          width: 30, height: 30, borderRadius: 7, flexShrink: 0,
-                          background: T.accent + "15", border: "1px solid " + T.accent + "25",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          <Tag size={13} color={T.accent} />
-                        </div>
-                        <span style={{ fontWeight: 600, color: T.text }}>{g.name}</span>
-                      </div>
-                    )}
+                      <span style={{ fontWeight: 600, color: T.text }}>{g.name}</span>
+                    </div>
                   </td>
 
                   {/* Contact count */}
@@ -338,9 +413,13 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
                   </td>
 
                   {/* Three-dot menu */}
-                  <td style={{ padding: "12px 8px", verticalAlign: "middle", textAlign: "right" }}>
+                  <td
+                    style={{ padding: "12px 14px", verticalAlign: "middle" }}
+                    onClick={e => e.stopPropagation()}
+                  >
                     <RowMenu
                       onEdit={() => { setEditId(g.id); setEditName(g.name); }}
+                      onDuplicate={() => handleDuplicate(g)}
                       onDelete={() => setDeleteTarget(g)}
                     />
                   </td>
@@ -349,6 +428,7 @@ export default function PageCategories({ groups = [], setGroups, currentUser, se
             </tbody>
           </table>
         </Card>
+        </div>
       )}
     </div>
   );

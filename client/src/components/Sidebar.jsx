@@ -1,25 +1,19 @@
 import { useState } from "react";
 import Hi from "./ui/Hi";
-import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
 import T from "../theme";
-import CLIENTS from "../data/clients";
 import { STAGE_DEF, CONTACT_STAGES, LEAD_STAGES, LOST_STAGES } from "../data/stages";
 import fmt from "../utils/format";
-import { calcLeadScore } from "../utils/scoring";
 import { createContact } from "../api/contacts.api";
 import { useToast } from "../hooks/useToast";
 
 export default function Sidebar({
-  pool, clientId, viewMode, selected, onSelect,
-  search, setSearch, searchRef, contacts, setContacts, currentUser,
+  viewMode, selected, onSelect,
+  search, setSearch, searchRef, contacts, setContacts, currentUser, groups = [],
 }) {
   const toast = useToast();
   const [sortF,    setSortF]    = useState("recent");
   const [addModal, setAddModal] = useState(false);
-
-  const client = CLIENTS.find(c => c.id === clientId);
-  const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   const modeFiltered = contacts.filter(c => {
     if (!viewMode || viewMode === "all")      return true;
@@ -36,14 +30,13 @@ export default function Sidebar({
       const q = search.toLowerCase();
       return (
         (c.firstName + " " + c.lastName).toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q) ||
         (c.company || "").toLowerCase().includes(q) ||
         (c.city || "").toLowerCase().includes(q)
       );
     })
     .sort((a, b) => {
-      if (sortF === "name")  return a.firstName.localeCompare(b.firstName);
-      if (sortF === "score") return calcLeadScore(b) - calcLeadScore(a);
+      if (sortF === "name") return a.firstName.localeCompare(b.firstName);
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
@@ -72,9 +65,8 @@ export default function Sidebar({
         <ContactModal
           onSave={handleAdd}
           onClose={() => setAddModal(false)}
-          pool={pool}
-          clientId={clientId}
           currentUser={currentUser}
+          groups={groups}
         />
       )}
 
@@ -86,15 +78,15 @@ export default function Sidebar({
           display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
         }}
       >
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: col }} />
+        <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent }} />
         <span style={{ fontSize: 12, fontWeight: 700, color: T.text, flex: 1 }}>
-          {pool === "prospect" ? "All Contacts" : (client?.name || "Client")}
+          All Contacts
         </span>
         <span style={{ fontSize: 10, color: T.muted }}>{filtered.length}/{contacts.length}</span>
         <button
           onClick={() => setAddModal(true)}
           style={{
-            background: col, border: "none", borderRadius: 5,
+            background: T.accent, border: "none", borderRadius: 5,
             color: "#fff", fontSize: 12, fontWeight: 700,
             padding: "3px 9px", cursor: "pointer", fontFamily: "inherit",
             transition: "opacity 0.1s",
@@ -125,14 +117,14 @@ export default function Sidebar({
             style={{
               width: "100%", boxSizing: "border-box",
               background: T.bg,
-              border: "1px solid " + (search ? col : T.border),
+              border: "1px solid " + (search ? T.accent : T.border),
               borderRadius: 6, padding: "7px 26px 7px 28px",
               color: T.text, fontSize: 12,
               outline: "none", fontFamily: "inherit",
               transition: "border-color 0.15s",
             }}
-            onFocus={e => (e.target.style.borderColor = col)}
-            onBlur={e  => (e.target.style.borderColor = search ? col : T.border)}
+            onFocus={e => (e.target.style.borderColor = T.accent)}
+            onBlur={e  => (e.target.style.borderColor = search ? T.accent : T.border)}
           />
           {search && (
             <button
@@ -160,7 +152,6 @@ export default function Sidebar({
         >
           <option value="recent">Sort: Recent activity</option>
           <option value="name">Sort: Name A→Z</option>
-          <option value="score">Sort: Score ↓</option>
         </select>
       </div>
 
@@ -183,8 +174,8 @@ export default function Sidebar({
                   padding: "10px 13px",
                   borderBottom: "1px solid " + T.border,
                   cursor: "pointer",
-                  background: isSel ? col + "10" : "transparent",
-                  borderLeft: isSel ? "3px solid " + col : "3px solid transparent",
+                  background: isSel ? T.accent + "10" : "transparent",
+                  borderLeft: isSel ? "3px solid " + T.accent : "3px solid transparent",
                   transition: "background 0.1s",
                 }}
                 onMouseEnter={e => {
@@ -206,8 +197,7 @@ export default function Sidebar({
                     📍 <Hi text={c.city} q={q} />
                   </div>
                 )}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                  <ScoreBar score={calcLeadScore(c)} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
                   <span style={{ fontSize: 10, color: T.muted, whiteSpace: "nowrap" }}>{fmt.ago(c.lastActivityAt)}</span>
                 </div>
               </div>

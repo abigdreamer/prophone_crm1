@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, forwardRef } from "react";
 import {
   Type, AlignLeft, Image as ImageIcon, MousePointerClick, Columns2,
   Minus, ArrowUpDown, PanelBottom, ChevronUp, ChevronDown, Copy, Plus,
@@ -11,6 +11,7 @@ import {
 import * as store from "../lib/templateStore";
 import { jsonToHtml } from "../lib/jsonToHtml";
 import { getDomains } from "../api/domains.api";
+import { MERGE_TAGS } from "../data/mergeTags";
 
 // ─── Theme ─────────────────────────────────────────────────────────────────────
 const W = {
@@ -363,8 +364,36 @@ function Sec({ title, children }) {
 }
 function Row({ label, children }) { return <div><PLabel ch={label} />{children}</div>; }
 function Hr() { return <div style={{ borderTop: "1px solid #f1f5f9", margin: "14px 0" }} />; }
-function Textarea({ value, onChange, rows }) {
-  return <textarea value={value || ""} onChange={e => onChange(e.target.value)} rows={rows || 3} style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, resize: "vertical", fontFamily: "inherit", outline: "none", color: W.text }} />;
+const Textarea = forwardRef(({ value, onChange, rows }, ref) => (
+  <textarea ref={ref} value={value || ""} onChange={e => onChange(e.target.value)} rows={rows || 3} style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", fontSize: 12, border: "1px solid #e2e8f0", borderRadius: 6, resize: "vertical", fontFamily: "inherit", outline: "none", color: W.text }} />
+));
+
+function MergeTagBar({ onInsert }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: W.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Merge Tags</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {MERGE_TAGS.map(tag => (
+          <button
+            key={tag.key}
+            type="button"
+            onClick={() => onInsert(`{{${tag.key}}}`)}
+            title={`Insert ${tag.label}`}
+            style={{
+              padding: "2px 8px", fontSize: 10, borderRadius: 4, cursor: "pointer",
+              background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4f46e5",
+              fontFamily: "monospace", lineHeight: 1.8, whiteSpace: "nowrap",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#e0e7ff"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#eef2ff"; }}
+          >
+            {`{{${tag.key}}}`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ─── Background editor ─────────────────────────────────────────────────────────
@@ -380,7 +409,7 @@ function BgEditor({ value = {}, onChange }) {
   function handleBgImageUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) { alert("Image too large (max 3 MB)."); return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Image too large (max 5 MB)."); return; }
     const reader = new FileReader();
     reader.onload = ev => onChange({ ...bg, image: { ...bg.image, url: ev.target.result } });
     reader.readAsDataURL(file);
@@ -505,7 +534,7 @@ function ImageUploadBtn({ onUpload }) {
   function handleFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 3 * 1024 * 1024) { alert("Image is too large (max 3 MB)."); e.target.value = ""; return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Image is too large (max 5 MB)."); e.target.value = ""; return; }
     const reader = new FileReader();
     reader.onload = () => onUpload(reader.result);
     reader.readAsDataURL(file);
@@ -544,6 +573,7 @@ function BgColorPicker({ value, onChange }) {
 
 // ─── Properties panel ──────────────────────────────────────────────────────────
 function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
+  const activeTextareaRef = useRef(null);
   if (!block) {
     return (
       <div style={{ padding: "0 16px 20px" }}>
@@ -578,6 +608,24 @@ function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
   const p = block.props;
   const label = block.type.charAt(0).toUpperCase() + block.type.slice(1);
 
+  function insertMergeTag(tag) {
+    const el = activeTextareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end   = el.selectionEnd   ?? el.value.length;
+    const before = el.value.slice(0, start);
+    const after  = el.value.slice(end);
+    const next   = before + tag + after;
+    const key    = el.dataset.propkey;
+    if (key) onProp(key, next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + tag.length, start + tag.length);
+    });
+  }
+
+  const TEXT_BLOCK_TYPES = ["heading", "text", "footer", "columns"];
+
   return (
     <div style={{ padding: "0 16px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0 10px", borderBottom: "1px solid #f1f5f9" }}>
@@ -588,9 +636,15 @@ function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
         </div>
       </div>
 
+      {TEXT_BLOCK_TYPES.includes(block.type) && (
+        <div style={{ paddingTop: 12 }}>
+          <MergeTagBar onInsert={insertMergeTag} />
+        </div>
+      )}
+
       {block.type === "heading" && (<>
         <Sec title="Content">
-          <Row label="Text"><Textarea value={p.text} onChange={v => onProp("text", v)} rows={2} /></Row>
+          <Row label="Text"><Textarea ref={el => { if (el) { el.dataset.propkey = "text"; activeTextareaRef.current = el; } }} value={p.text} onChange={v => onProp("text", v)} rows={2} /></Row>
           <Row label="Level"><SelInput value={p.level} onChange={v => { onProp("level", v); onProp("fontSize", v === "h1" ? 32 : v === "h2" ? 24 : 18); }} options={[{ value: "h1", label: "H1 — Large (32px)" }, { value: "h2", label: "H2 — Medium (24px)" }, { value: "h3", label: "H3 — Small (18px)" }]} /></Row>
         </Sec>
         <Sec title="Style">
@@ -604,7 +658,7 @@ function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
       </>)}
 
       {block.type === "text" && (<>
-        <Sec title="Content"><Row label="Text"><Textarea value={p.text} onChange={v => onProp("text", v)} rows={5} /></Row></Sec>
+        <Sec title="Content"><Row label="Text"><Textarea ref={el => { if (el) { el.dataset.propkey = "text"; activeTextareaRef.current = el; } }} value={p.text} onChange={v => onProp("text", v)} rows={5} /></Row></Sec>
         <Sec title="Style">
           <Row label="Text Color"><CInput value={p.color} onChange={v => onProp("color", v)} /></Row>
           <Row label="Block Background"><BgColorPicker value={p.background} onChange={v => onProp("background", v)} /></Row>
@@ -683,7 +737,7 @@ function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
       )}
 
       {block.type === "footer" && (<>
-        <Sec title="Content"><Row label="Text"><Textarea value={p.text} onChange={v => onProp("text", v)} rows={4} /></Row></Sec>
+        <Sec title="Content"><Row label="Text"><Textarea ref={el => { if (el) { el.dataset.propkey = "text"; activeTextareaRef.current = el; } }} value={p.text} onChange={v => onProp("text", v)} rows={4} /></Row></Sec>
         <Sec title="Style">
           <Row label="Text Color"><CInput value={p.color} onChange={v => onProp("color", v)} /></Row>
           <Row label="Block Background"><BgColorPicker value={p.background} onChange={v => onProp("background", v)} /></Row>
@@ -695,8 +749,8 @@ function PropsPanel({ json, setJson, block, onProp, onDelete, onDuplicate }) {
 
       {block.type === "columns" && (<>
         <Sec title="Content">
-          <Row label="Left Column"><Textarea value={p.leftText} onChange={v => onProp("leftText", v)} rows={4} /></Row>
-          <Row label="Right Column"><Textarea value={p.rightText} onChange={v => onProp("rightText", v)} rows={4} /></Row>
+          <Row label="Left Column"><Textarea ref={el => { if (el) { el.dataset.propkey = "leftText"; activeTextareaRef.current = el; } }} value={p.leftText} onChange={v => onProp("leftText", v)} rows={4} /></Row>
+          <Row label="Right Column"><Textarea ref={el => { if (el) { el.dataset.propkey = "rightText"; activeTextareaRef.current = el; } }} value={p.rightText} onChange={v => onProp("rightText", v)} rows={4} /></Row>
         </Sec>
         <Sec title="Style">
           <Row label="Text Color"><CInput value={p.color} onChange={v => onProp("color", v)} /></Row>
@@ -874,10 +928,13 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [propsOpen,   setPropsOpen]   = useState(true);
   const [verifiedDomains, setVerifiedDomains] = useState([]);
-  const [fromOpen, setFromOpen] = useState(false);
+  const [fromOpen,       setFromOpen]       = useState(false);
+  const [subjectTagOpen, setSubjectTagOpen] = useState(false);
   const [toast,    setToast]    = useState(null);
-  const toastTimer = useRef(null);
-  const fromRef    = useRef(null);
+  const toastTimer   = useRef(null);
+  const fromRef      = useRef(null);
+  const subjectRef   = useRef(null);
+  const subjectTagRef = useRef(null);
 
   function showToast(msg, type = "success") {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -904,10 +961,11 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       .catch(() => {});
   }, []);
 
-  // Close From dropdown on outside click
+  // Close From / subject-tag dropdowns on outside click
   useEffect(() => {
     function handle(e) {
       if (fromRef.current && !fromRef.current.contains(e.target)) setFromOpen(false);
+      if (subjectTagRef.current && !subjectTagRef.current.contains(e.target)) setSubjectTagOpen(false);
     }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -1048,7 +1106,7 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
     }
   }
 
-  function handlePublish() {
+  async function handlePublish() {
     const isVerified = verifiedDomains.some(d => (d.from_email || `noreply@${d.domain}`) === from);
     if (!isVerified) {
       showToast(
@@ -1059,7 +1117,8 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       );
       return;
     }
-    save("published");
+    await save("published");
+    onBack();
   }
 
   async function handleBack() {
@@ -1312,15 +1371,48 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
         {!isMobile && <>
           <div style={{ width: 1, height: 22, background: TB.border, flexShrink: 0, margin: "0 4px" }} />
 
-          {/* Subject */}
-          <input
-            value={subject}
-            onChange={e => setSubject(e.target.value)}
-            placeholder="Email subject…"
-            style={{ flex: 1, minWidth: 80, maxWidth: 220, border: "1px solid transparent", borderRadius: 8, padding: "5px 9px", fontSize: 12, color: TB.sub, background: "transparent", outline: "none", fontFamily: "inherit", transition: "all 0.12s" }}
-            onFocus={e => { e.currentTarget.style.background = TB.input; e.currentTarget.style.borderColor = TB.border; e.currentTarget.style.color = TB.text; }}
-            onBlur={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.color = TB.sub; }}
-          />
+          {/* Subject + merge tag picker */}
+          <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 80, maxWidth: 260, position: "relative" }}>
+            <input
+              ref={subjectRef}
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Email subject…"
+              style={{ flex: 1, border: "1px solid transparent", borderRadius: 8, padding: "5px 30px 5px 9px", fontSize: 12, color: TB.sub, background: "transparent", outline: "none", fontFamily: "inherit", transition: "all 0.12s", width: "100%" }}
+              onFocus={e => { e.currentTarget.style.background = TB.input; e.currentTarget.style.borderColor = TB.border; e.currentTarget.style.color = TB.text; }}
+              onBlur={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.color = TB.sub; }}
+            />
+            <div ref={subjectTagRef} style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}>
+              <button
+                title="Insert merge tag"
+                onClick={() => setSubjectTagOpen(o => !o)}
+                style={{ padding: "2px 5px", fontSize: 10, borderRadius: 4, border: "1px solid #c7d2fe", background: subjectTagOpen ? "#e0e7ff" : "#eef2ff", color: "#4f46e5", cursor: "pointer", fontFamily: "monospace", lineHeight: 1.6 }}
+              >{"{}"}</button>
+              {subjectTagOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,0.12)", zIndex: 300, padding: "8px", minWidth: 220 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Merge Tags</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {MERGE_TAGS.map(tag => (
+                      <button
+                        key={tag.key}
+                        onClick={() => {
+                          const el = subjectRef.current;
+                          if (!el) return;
+                          const s = el.selectionStart ?? subject.length;
+                          const e2 = el.selectionEnd ?? subject.length;
+                          const next = subject.slice(0, s) + `{{${tag.key}}}` + subject.slice(e2);
+                          setSubject(next);
+                          setSubjectTagOpen(false);
+                          requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s + tag.key.length + 4, s + tag.key.length + 4); });
+                        }}
+                        style={{ padding: "2px 8px", fontSize: 10, borderRadius: 4, cursor: "pointer", background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4f46e5", fontFamily: "monospace", lineHeight: 1.8 }}
+                      >{`{{${tag.key}}}`}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
           <div style={{ width: 1, height: 22, background: TB.border, flexShrink: 0, margin: "0 4px" }} />
 

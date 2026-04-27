@@ -64,3 +64,20 @@ export async function sendBatchEmails(emails) {
   const results = Array.isArray(data) ? data : (data?.data ?? []);
   return results;
 }
+
+/**
+ * Fetch the current status of a single sent email from Resend.
+ * Returns { status } where status is the Resend last_event string,
+ * or null if the email is not found / error.
+ */
+export async function getEmailStatus(messageId) {
+  if (!messageId) return null;
+  try {
+    const client = getClient();
+    const { data, error } = await client.emails.get(messageId);
+    if (error || !data) return null;
+    return { status: data.last_event ?? data.status ?? null };
+  } catch {
+    return null;
+  }
+}

@@ -66,3 +66,7 @@ export async function addActivity(contactId, activityData) {
     data:  { last_activity_at: new Date() },
   });
 }
+
+export async function bulkCreate(data) {
+  return prisma.contact.createMany({ data, skipDuplicates: true });
+}

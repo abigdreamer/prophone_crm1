@@ -2,6 +2,8 @@ import { tenantWhere, tenantId, canAccessTenant } from '../lib/tenant.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import { renderTemplate } from '../services/htmlRenderer.js';
 import * as campaignRepo from '../repositories/campaignRepository.js';
+import { getEmailStatus } from '../services/resendService.js';
+import prisma from '../prisma.js';
 
 export async function listCampaigns(req, res) {
   try {
@@ -21,27 +23,40 @@ export async function getCampaign(req, res) {
     const statusCounts = await campaignRepo.groupRecipientsByStatus(row.id);
     const stats = Object.fromEntries(statusCounts.map(s => [s.status, s._count.status]));
 
-    sendSuccess(res, { ...row, recipient_stats: stats });
+    // A/B per-variant stats
+    let ab_stats = null;
+    if (row.ab_subject_b) {
+      const variantRows = await campaignRepo.groupRecipientsByVariantAndStatus(row.id);
+      ab_stats = { A: {}, B: {} };
+      for (const r of variantRows) {
+        ab_stats[r.ab_variant] = ab_stats[r.ab_variant] || {};
+        ab_stats[r.ab_variant][r.status] = r._count.status;
+      }
+    }
+
+    sendSuccess(res, { ...row, recipient_stats: stats, ab_stats });
   } catch (err) {
     sendServerError(res, err, 'getCampaign');
   }
 }
 
 export async function createCampaign(req, res) {
-  const { name, subject, from_name, from_email, template_id, scheduled_at } = req.body ?? {};
+  const { name, subject, from_name, from_email, template_id, scheduled_at, ab_subject_b, ab_template_id_b } = req.body ?? {};
   const tid = tenantId(req);
   if (!tid)  return sendError(res, 'prophone_id is required', 400);
   if (!name) return sendError(res, 'name is required', 400);
 
   try {
     const row = await campaignRepo.createCampaign({
-      prophone_id:  tid,
+      prophone_id:      tid,
       name,
-      subject:      subject      || '',
-      from_name:    from_name    || '',
-      from_email:   from_email   || '',
-      template_id:  template_id  || null,
-      scheduled_at: scheduled_at ? new Date(scheduled_at) : null,
+      subject:          subject          || '',
+      from_name:        from_name        || '',
+      from_email:       from_email       || '',
+      template_id:      template_id      || null,
+      scheduled_at:     scheduled_at ? new Date(scheduled_at) : null,
+      ab_subject_b:     ab_subject_b     || '',
+      ab_template_id_b: ab_template_id_b || null,
     });
     sendSuccess(res, row, 201);
   } catch (err) {
@@ -58,14 +73,16 @@ export async function updateCampaign(req, res) {
       return sendError(res, 'Cannot edit a campaign while it is running. Pause it first.', 409);
     }
 
-    const { name, subject, from_name, from_email, template_id, scheduled_at } = req.body ?? {};
+    const { name, subject, from_name, from_email, template_id, scheduled_at, ab_subject_b, ab_template_id_b } = req.body ?? {};
     const data = {};
-    if (name         !== undefined) data.name         = name;
-    if (subject      !== undefined) data.subject      = subject;
-    if (from_name    !== undefined) data.from_name    = from_name;
-    if (from_email   !== undefined) data.from_email   = from_email;
-    if (template_id  !== undefined) data.template_id  = template_id || null;
-    if (scheduled_at !== undefined) data.scheduled_at = scheduled_at ? new Date(scheduled_at) : null;
+    if (name             !== undefined) data.name             = name;
+    if (subject          !== undefined) data.subject          = subject;
+    if (from_name        !== undefined) data.from_name        = from_name;
+    if (from_email       !== undefined) data.from_email       = from_email;
+    if (template_id      !== undefined) data.template_id      = template_id || null;
+    if (scheduled_at     !== undefined) data.scheduled_at     = scheduled_at ? new Date(scheduled_at) : null;
+    if (ab_subject_b     !== undefined) data.ab_subject_b     = ab_subject_b || '';
+    if (ab_template_id_b !== undefined) data.ab_template_id_b = ab_template_id_b || null;
 
     const row = await campaignRepo.updateCampaign(req.params.id, data);
     sendSuccess(res, row);
@@ -113,6 +130,30 @@ export async function addRecipients(req, res) {
     sendSuccess(res, { added: result.count, total_requested: contacts.length }, 201);
   } catch (err) {
     sendServerError(res, err, 'addRecipients');
+  }
+}
+
+export async function addGroupRecipients(req, res) {
+  const { groupId } = req.body ?? {};
+  if (!groupId) return sendError(res, 'groupId is required', 400);
+
+  try {
+    const campaign = await campaignRepo.findTenantById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    if (!canAccessTenant(req, campaign.prophone_id)) return sendError(res, 'Forbidden', 403);
+    if (campaign.status === 'running') {
+      return sendError(res, 'Cannot add recipients to a running campaign.', 409);
+    }
+
+    const contacts = await campaignRepo.findContactsByGroup(groupId, campaign.prophone_id);
+    if (contacts.length === 0) {
+      return sendError(res, 'No contacts with email addresses found in this group.', 400);
+    }
+
+    const result = await campaignRepo.addRecipients(req.params.id, contacts);
+    sendSuccess(res, { added: result.count, total_in_group: contacts.length }, 201);
+  } catch (err) {
+    sendServerError(res, err, 'addGroupRecipients');
   }
 }
 
@@ -181,6 +222,7 @@ export async function sendCampaign(req, res) {
       return sendError(res, 'Sender email (from_email) is required.', 400);
     }
 
+    // Render variant A HTML
     let htmlSnapshot = campaign.html_snapshot;
     if (!htmlSnapshot && campaign.template) {
       htmlSnapshot = renderTemplate(campaign.template.json_structure, {});
@@ -189,16 +231,36 @@ export async function sendCampaign(req, res) {
       return sendError(res, 'No template or HTML content found for this campaign.', 400);
     }
 
-    const updated = await campaignRepo.updateCampaign(campaign.id, {
-      status: 'running',
-      html_snapshot: htmlSnapshot,
-    });
+    const updateData = { status: 'running', html_snapshot: htmlSnapshot };
+
+    // A/B test: split recipients 50/50 and render variant B HTML
+    if (campaign.ab_subject_b) {
+      const pendingIds = await campaignRepo.findPendingRecipientIds(campaign.id);
+      const half = Math.floor(pendingIds.length / 2);
+      if (half > 0) {
+        await campaignRepo.assignVariants(campaign.id, pendingIds.slice(half));
+      }
+
+      let htmlB = campaign.ab_html_snapshot;
+      if (!htmlB) {
+        let templateB = campaign.template;
+        if (campaign.ab_template_id_b && campaign.ab_template_id_b !== campaign.template_id) {
+          const tB = await prisma.email_template.findUnique({ where: { id: campaign.ab_template_id_b } });
+          if (tB) templateB = tB;
+        }
+        if (templateB) htmlB = renderTemplate(templateB.json_structure, {});
+      }
+      updateData.ab_html_snapshot = htmlB || htmlSnapshot;
+    }
+
+    const updated = await campaignRepo.updateCampaign(campaign.id, updateData);
 
     sendSuccess(res, {
       ok:            true,
       campaign_id:   updated.id,
       status:        updated.status,
       pending_count: pendingCount,
+      ab_enabled:    !!campaign.ab_subject_b,
       message:       `Campaign is running. ${pendingCount} emails queued for delivery.`,
     });
   } catch (err) {
@@ -231,5 +293,92 @@ export async function resumeCampaign(req, res) {
     sendSuccess(res, row);
   } catch (err) {
     sendServerError(res, err, 'resumeCampaign');
+  }
+}
+
+// Status priority — higher value wins; bounced is always terminal
+const STATUS_PRIORITY = { pending: 1, queued: 2, sent: 3, delivered: 4, opened: 5, clicked: 6, bounced: 7, failed: 0 };
+
+function resendEventToStatus(event) {
+  switch (event) {
+    case 'delivered':        return 'delivered';
+    case 'opened':           return 'opened';
+    case 'clicked':          return 'clicked';
+    case 'bounced':          return 'bounced';
+    case 'complained':       return 'bounced';
+    case 'failed':           return 'failed';
+    case 'sent':             return 'sent';
+    default:                 return null; // delivery_delayed, queued, cancelled — ignore
+  }
+}
+
+/**
+ * Pull latest email statuses from Resend for every sent recipient and update the DB.
+ * Works without webhooks — useful for local dev and as a manual refresh.
+ */
+export async function syncCampaign(req, res) {
+  try {
+    const campaign = await campaignRepo.findTenantById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    if (!canAccessTenant(req, campaign.prophone_id)) return sendError(res, 'Forbidden', 403);
+
+    // Get all recipients that have a Resend message_id
+    const recipients = await prisma.campaign_recipient.findMany({
+      where: { campaign_id: campaign.id, message_id: { not: '' } },
+      select: { id: true, message_id: true, status: true, campaign_id: true },
+    });
+
+    if (recipients.length === 0) {
+      return sendSuccess(res, { updated: 0, message: 'No sent recipients to sync.' });
+    }
+
+    let updated = 0;
+    const now = new Date();
+
+    for (const r of recipients) {
+      const result = await getEmailStatus(r.message_id);
+      if (!result?.status) continue;
+
+      const newStatus = resendEventToStatus(result.status);
+      if (!newStatus) continue;
+
+      const currentPriority = STATUS_PRIORITY[r.status] ?? 0;
+      const newPriority     = STATUS_PRIORITY[newStatus] ?? 0;
+
+      // Only advance — never regress (bounced is always terminal)
+      if (newPriority <= currentPriority && newStatus !== 'bounced') continue;
+
+      const data = { status: newStatus };
+      if (newStatus === 'delivered' && !r.delivered_at) data.delivered_at = now;
+      if (newStatus === 'opened'    && !r.opened_at)    data.opened_at    = now;
+      if (newStatus === 'clicked'   && !r.clicked_at)   data.clicked_at   = now;
+      if (newStatus === 'bounced'   && !r.bounced_at)   data.bounced_at   = now;
+
+      await prisma.campaign_recipient.update({ where: { id: r.id }, data });
+      updated++;
+    }
+
+    // Recount all campaign aggregates from scratch
+    const counts = await prisma.campaign_recipient.groupBy({
+      by: ['status'],
+      where: { campaign_id: campaign.id },
+      _count: { status: true },
+    });
+    const byStatus = Object.fromEntries(counts.map(c => [c.status, c._count.status]));
+
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        sent_count:    (byStatus.sent    || 0) + (byStatus.delivered || 0) + (byStatus.opened || 0) + (byStatus.clicked || 0) + (byStatus.bounced || 0),
+        opened_count:  (byStatus.opened  || 0) + (byStatus.clicked   || 0),
+        clicked_count:  byStatus.clicked  || 0,
+        bounced_count:  byStatus.bounced  || 0,
+        failed_count:   byStatus.failed   || 0,
+      },
+    });
+
+    sendSuccess(res, { updated, total_checked: recipients.length });
+  } catch (err) {
+    sendServerError(res, err, 'syncCampaign');
   }
 }

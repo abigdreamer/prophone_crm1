@@ -13,7 +13,7 @@
 
 import prisma from '../prisma.js';
 import { sendBatchEmails } from '../services/resendService.js';
-import { substituteIntoHtml } from '../services/htmlRenderer.js';
+import { substituteIntoHtml, injectTracking } from '../services/htmlRenderer.js';
 
 const BATCH_SIZE   = 50;   // Resend batch limit is 100; use 50 for safety
 const MAX_ATTEMPTS = 3;
@@ -27,13 +27,14 @@ async function processBatch() {
   _running = true;
 
   try {
-    // 1. Claim pending recipients (attempts < MAX_ATTEMPTS, not already queued)
+    // 1. Claim pending recipients — only from actively running campaigns
     const pending = await prisma.campaign_recipient.findMany({
       where: {
         status:   'pending',
         attempts: { lt: MAX_ATTEMPTS },
+        campaign: { status: 'running' },
       },
-      include: { campaign: { select: { id: true, subject: true, from_name: true, from_email: true, html_snapshot: true, status: true } } },
+      include: { campaign: { select: { id: true, subject: true, from_name: true, from_email: true, html_snapshot: true, ab_subject_b: true, ab_html_snapshot: true, status: true } } },
       take: BATCH_SIZE,
     });
 
@@ -48,23 +49,59 @@ async function processBatch() {
     });
 
     // 3. Build Resend payloads — personalise HTML per recipient
-    const payloads = pending.map(r => {
+    // Separate out recipients whose campaign has no HTML (can't send — mark failed immediately)
+    const noHtml = [];
+    const sendable = [];
+
+    for (const r of pending) {
+      const isB    = r.ab_variant === 'B' && r.campaign.ab_subject_b;
+      const subject = isB ? r.campaign.ab_subject_b : r.campaign.subject;
+      const rawHtml = isB ? (r.campaign.ab_html_snapshot || r.campaign.html_snapshot) : r.campaign.html_snapshot;
+
+      if (!rawHtml) {
+        noHtml.push(r);
+        continue;
+      }
+
       const vars = {
-        firstName: r.first_name,
-        lastName:  r.last_name,
-        fullName:  `${r.first_name} ${r.last_name}`.trim(),
+        firstName: r.first_name || 'there',
+        lastName:  r.last_name  || '',
+        fullName:  (r.first_name || r.last_name)
+          ? `${r.first_name || ''} ${r.last_name || ''}`.trim()
+          : 'there',
         email:     r.email,
+        phone:     r.phone    || '',
+        company:   r.company  || '',
+        city:      r.city     || '',
+        title:     r.title    || '',
       };
-      return {
+      const personalisedHtml    = substituteIntoHtml(rawHtml, vars);
+      const personalisedSubject = substituteIntoHtml(subject, vars);
+      const appUrl = process.env.APP_URL || '';
+      const finalHtml = appUrl ? injectTracking(personalisedHtml, r.id, appUrl) : personalisedHtml;
+      sendable.push({
         recipientId: r.id,
         campaignId:  r.campaign_id,
         to:          r.email,
         from:        r.campaign.from_email,
         fromName:    r.campaign.from_name,
-        subject:     r.campaign.subject,
-        html:        substituteIntoHtml(r.campaign.html_snapshot, vars),
-      };
-    });
+        subject:     personalisedSubject,
+        html:        finalHtml,
+        _recipient:  r,
+      });
+    }
+
+    // Mark no-html recipients as permanently failed
+    for (const r of noHtml) {
+      await prisma.campaign_recipient.update({
+        where: { id: r.id },
+        data:  { status: 'failed', error_message: 'Campaign has no email template — set a template and resend.', attempts: r.attempts + 1 },
+      });
+    }
+
+    if (sendable.length === 0) return;
+
+    const payloads = sendable;
 
     // 4. Send via Resend batch API
     let results = null;
@@ -81,8 +118,8 @@ async function processBatch() {
     const now = new Date();
     const campaignIncrements = {}; // { campaignId: { sent, failed } }
 
-    for (let i = 0; i < pending.length; i++) {
-      const recipient = pending[i];
+    for (let i = 0; i < sendable.length; i++) {
+      const recipient = sendable[i]._recipient;
       const cid = recipient.campaign_id;
       campaignIncrements[cid] ??= { sent: 0, failed: 0 };
 

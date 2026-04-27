@@ -10,9 +10,11 @@ export const getRecipients = (id, params = {}) => {
   const q = new URLSearchParams(params).toString();
   return apiFetch(`/campaigns/${id}/recipients${q ? '?' + q : ''}`);
 };
-export const addRecipients       = (id, contactIds) => apiFetch(`/campaigns/${id}/recipients`, { method: 'POST',   body: JSON.stringify({ contactIds }) });
-export const removeAllRecipients = (id)             => apiFetch(`/campaigns/${id}/recipients`, { method: 'DELETE' });
+export const addRecipients       = (id, contactIds) => apiFetch(`/campaigns/${id}/recipients`,       { method: 'POST', body: JSON.stringify({ contactIds }) });
+export const addGroupRecipients  = (id, groupId)    => apiFetch(`/campaigns/${id}/recipients/group`, { method: 'POST', body: JSON.stringify({ groupId }) });
+export const removeAllRecipients = (id)             => apiFetch(`/campaigns/${id}/recipients`,       { method: 'DELETE' });
 
 export const sendCampaign   = (id) => apiFetch(`/campaigns/${id}/send`,   { method: 'POST' });
 export const pauseCampaign  = (id) => apiFetch(`/campaigns/${id}/pause`,  { method: 'POST' });
 export const resumeCampaign = (id) => apiFetch(`/campaigns/${id}/resume`, { method: 'POST' });
+export const syncCampaign   = (id) => apiFetch(`/campaigns/${id}/sync`,   { method: 'POST' });

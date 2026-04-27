@@ -199,10 +199,9 @@ function DashboardRoute() {
 }
 
 function ContactsRoute() {
-  const { pool, clientId, viewMode, setViewMode, contacts, setContacts, groups, currentUser, handleSelect } = useApp();
+  const { viewMode, setViewMode, contacts, setContacts, groups, currentUser, handleSelect } = useApp();
   return (
     <PageTable
-      pool={pool} clientId={clientId}
       viewMode={viewMode} setViewMode={setViewMode}
       contacts={contacts} setContacts={setContacts}
       groups={groups}
@@ -213,7 +212,14 @@ function ContactsRoute() {
 
 function CategoriesRoute() {
   const { groups, setGroups, currentUser, setContacts } = useApp();
-  return <PageCategories groups={groups} setGroups={setGroups} currentUser={currentUser} setContacts={setContacts} />;
+  const navigate = useNavigate();
+  return (
+    <PageCategories
+      groups={groups} setGroups={setGroups}
+      currentUser={currentUser} setContacts={setContacts}
+      onSelectGroup={g => navigate(`/contacts?group=${g.id}`)}
+    />
+  );
 }
 
 function EmailTemplatesRoute() {
@@ -393,7 +399,6 @@ export default function App() {
   const isSuperAdmin     = currentUser?.role === "super_admin";
   const showCompanyGate  = isSuperAdmin && !currentUser?.prophone_id && !gateSkipped;
 
-  const pool     = "prospect";
   const clientId = currentUser?.prophone_id || (isSuperAdmin ? scopedCompany : null);
 
   const [viewMode,  setViewMode]  = useState("all");
@@ -409,7 +414,7 @@ export default function App() {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      getContacts(pool, clientId),
+      getContacts(clientId),
       listGroups(),
     ])
       .then(([contactData, groupData]) => {
@@ -436,7 +441,7 @@ export default function App() {
     currentUser, handleSetUser, handleLogout,
     setCurrentUserAndToken, skipGate,
     scopedCompany, setScopedCompany,
-    pool, clientId,
+    clientId,
     viewMode, setViewMode,
     contacts, setContacts,
     groups,   setGroups,
