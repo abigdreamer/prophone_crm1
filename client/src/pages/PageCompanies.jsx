@@ -638,22 +638,7 @@ const TIMEZONES = [
   { value: "America/Phoenix",     label: "(GMT-07:00) Arizona"                     },
 ];
 
-const COMMISSION_OPTIONS = [
-  { value: "",            label: "Select Commission Type" },
-  { value: "flat",        label: "Flat Rate"              },
-  { value: "percentage",  label: "Percentage"             },
-  { value: "per_call",    label: "Per Call"               },
-  { value: "hourly",      label: "Hourly"                 },
-];
-
 // ── Regular user: My Company profile ─────────────────────────────────────────
-
-const BLANK_PROFILE = {
-  name: "", address: "", city: "", zipcode: "", state: "", timezone: "",
-  country: "", email: "", phone: "", fax: "", website: "", industry: "",
-  ca_number: "", usdot: "", enable_vehicle_locator: false, include_price: false,
-  hostname: "", notes: "", commission_type: "", plan: "starter",
-};
 
 function MyCompanyView({ currentUser }) {
   const toast = useToast();
@@ -666,26 +651,20 @@ function MyCompanyView({ currentUser }) {
     if (!currentUser?.prophone_id) { setLoading(false); return; }
     getCompany(currentUser.prophone_id)
       .then(d => setForm({
-        name:                   d.name                   || "",
-        address:                d.address                || "",
-        city:                   d.city                   || "",
-        zipcode:                d.zipcode                || "",
-        state:                  d.state                  || "",
-        timezone:               d.timezone               || "",
-        country:                d.country                || "",
-        email:                  d.email                  || "",
-        phone:                  d.phone                  || "",
-        fax:                    d.fax                    || "",
-        website:                d.website                || "",
-        industry:               d.industry               || "",
-        ca_number:              d.ca_number              || "",
-        usdot:                  d.usdot                  || "",
-        enable_vehicle_locator: d.enable_vehicle_locator ?? false,
-        include_price:          d.include_price          ?? false,
-        hostname:               d.hostname               || "",
-        notes:                  d.notes                  || "",
-        commission_type:        d.commission_type        || "",
-        plan:                   d.plan                   || "starter",
+        name:     d.name     || "",
+        address:  d.address  || "",
+        city:     d.city     || "",
+        zipcode:  d.zipcode  || "",
+        state:    d.state    || "",
+        timezone: d.timezone || "",
+        country:  d.country  || "",
+        email:    d.email    || "",
+        phone:    d.phone    || "",
+        fax:      d.fax      || "",
+        website:  d.website  || "",
+        industry: d.industry || "",
+        notes:    d.notes    || "",
+        plan:     d.plan     || "starter",
       }))
       .catch(() => toast.error("Failed to load company."))
       .finally(() => setLoading(false));
@@ -754,20 +733,6 @@ function MyCompanyView({ currentUser }) {
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
-    );
-  }
-
-  function FCheck({ checked, onChange, label }) {
-    return (
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: D ? "not-allowed" : "pointer", fontSize: 13, color: T.sub }}>
-        <input
-          type="checkbox" checked={checked}
-          onChange={e => !D && onChange?.(e.target.checked)}
-          disabled={D}
-          style={{ width: 16, height: 16, cursor: D ? "not-allowed" : "pointer", accentColor: T.accent }}
-        />
-        {label}
-      </label>
     );
   }
 
@@ -843,27 +808,16 @@ function MyCompanyView({ currentUser }) {
                   <FSelect value={form.state} onChange={canEdit ? set("state") : undefined} options={US_STATES} />
                 </FGroup>
               </div>
-              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
-                <FCheck
-                  checked={form.state !== ""}
-                  onChange={v => { if (!v) set("state")(""); }}
-                  label="Auto Select State"
-                />
-              </div>
-            </FRow>
-
-            <FRow>
-              <div style={{ flex: 1 }}>
-                <FGroup label="Time Zone" mb={0}>
-                  <FSelect value={form.timezone} onChange={canEdit ? set("timezone") : undefined} options={TIMEZONES} />
-                </FGroup>
-              </div>
               <div style={{ flex: 1 }}>
                 <FGroup label="Country" mb={0}>
                   <FInput value={form.country} onChange={canEdit ? set("country") : undefined} placeholder="United States" />
                 </FGroup>
               </div>
             </FRow>
+
+            <FGroup label="Time Zone" mb={18}>
+              <FSelect value={form.timezone} onChange={canEdit ? set("timezone") : undefined} options={TIMEZONES} />
+            </FGroup>
 
             <FGroup label="Email" mb={18}>
               <FInput type="email" value={form.email} onChange={canEdit ? set("email") : undefined} placeholder="contact@acmetowing.com" />
@@ -883,35 +837,30 @@ function MyCompanyView({ currentUser }) {
             </FRow>
           </div>
 
-          {/* ── RIGHT: License Information ── */}
+          {/* ── RIGHT: Additional Details ── */}
           <div style={{ paddingLeft: 32, paddingBottom: 32 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 20, paddingBottom: 12, borderBottom: "1px solid " + T.border }}>
-              License Information
+              Additional Details
             </div>
 
-            <FGroup label="CA Number" mb={18}>
-              <FInput value={form.ca_number} onChange={canEdit ? set("ca_number") : undefined} placeholder="165455" />
+            <FGroup label="Website" mb={18}>
+              <FInput value={form.website} onChange={canEdit ? set("website") : undefined} placeholder="https://yourcompany.com" />
             </FGroup>
 
-            <FGroup label="USDOT" mb={18}>
-              <FInput value={form.usdot} onChange={canEdit ? set("usdot") : undefined} placeholder="2669538" />
+            <FGroup label="Industry" mb={18}>
+              <FInput value={form.industry} onChange={canEdit ? set("industry") : undefined} placeholder="e.g. Technology, Retail, Logistics…" />
             </FGroup>
 
-            {/* Vehicle Locator */}
             <div style={{ marginBottom: 18 }}>
-              <FLabel>Vehicle Locator</FLabel>
-              <div style={{ display: "flex", gap: 24, padding: "10px 14px", background: T.panel, borderRadius: 8, border: "1px solid " + T.border }}>
-                <FCheck checked={form.enable_vehicle_locator} onChange={canEdit ? set("enable_vehicle_locator") : undefined} label="Enable Vehicle Locator" />
-                <FCheck checked={form.include_price} onChange={canEdit ? set("include_price") : undefined} label="Include Price" />
+              <FLabel>Plan</FLabel>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 8, border: "1px solid " + T.border, background: T.panel }}>
+                <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>
+                  {PLAN_META[form.plan]?.label || "Starter"}
+                </span>
+                <span style={{ fontSize: 10, color: T.muted }}>— managed by super admin</span>
               </div>
             </div>
 
-            {/* Hostname */}
-            <FGroup label="Hostname" mb={18}>
-              <FInput value={form.hostname} onChange={canEdit ? set("hostname") : undefined} placeholder="ACME" />
-            </FGroup>
-
-            {/* Notes */}
             <div style={{ marginBottom: 18 }}>
               <FLabel>Notes</FLabel>
               <textarea
@@ -919,15 +868,10 @@ function MyCompanyView({ currentUser }) {
                 onChange={canEdit ? e => setForm(f => ({ ...f, notes: e.target.value })) : undefined}
                 disabled={D}
                 placeholder="Any additional information…"
-                rows={4}
+                rows={7}
                 style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", background: D ? T.panel : T.surface, border: "1.5px solid " + T.border, borderRadius: 8, fontSize: 13, color: D ? T.muted : T.text, fontFamily: "inherit", outline: "none", resize: "vertical" }}
               />
             </div>
-
-            {/* Commission Type */}
-            <FGroup label="Commission Type" mb={18}>
-              <FSelect value={form.commission_type} onChange={canEdit ? set("commission_type") : undefined} options={COMMISSION_OPTIONS} />
-            </FGroup>
           </div>
         </div>
       </div>
