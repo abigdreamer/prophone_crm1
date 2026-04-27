@@ -119,18 +119,16 @@ export async function sendTestEmail(req, res) {
     const template = await templateRepo.findById(req.params.id);
     if (!template) return sendError(res, 'Template not found', 404);
     if (!canAccessTenant(req, template.prophone_id)) return sendError(res, 'Forbidden', 403);
-    if (template.status !== 'published') {
-      return sendError(res, 'Only published templates can be sent as test emails', 400);
-    }
     if (!template.html_output) {
-      return sendError(res, 'Template has no HTML content to send', 400);
+      return sendError(res, 'Template has no HTML content yet. Save the template in the builder first.', 400);
     }
 
     const tid = tenantId(req);
     const verifiedDomain = tid ? await domainRepo.findFirstVerified(tid) : null;
-    const fromEmail = verifiedDomain
-      ? (verifiedDomain.from_email || `noreply@${verifiedDomain.domain}`)
-      : null;
+    if (!verifiedDomain) {
+      return sendError(res, 'No verified sending domain found. Add and verify a domain under Domains before sending.', 400);
+    }
+    const fromEmail = verifiedDomain.from_email || `noreply@${verifiedDomain.domain}`;
 
     const result = await sendSingleEmail({
       to:      email,

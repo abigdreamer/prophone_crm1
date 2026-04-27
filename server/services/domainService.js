@@ -84,7 +84,12 @@ export async function checkDomainVerification(resendDomainId, fallbackDomainName
     recovered = { id: currentId, dns_records: full?.records ?? null, region: full?.region ?? null };
   }
 
-  await resend.domains.verify(currentId).catch(() => {});
+  // Check current status first — if already verified, skip re-triggering verify()
+  // (calling verify() on an already-verified domain can temporarily reset its status)
+  const { data: current } = await resend.domains.get(currentId).catch(() => ({ data: null }));
+  if (!current || current.status !== 'verified') {
+    await resend.domains.verify(currentId).catch(() => {});
+  }
 
   const { data, error } = await resend.domains.get(currentId);
   if (error) throw new Error(error.message || 'Failed to fetch domain status from Resend');

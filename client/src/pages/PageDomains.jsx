@@ -746,8 +746,17 @@ export default function PageDomains() {
 
   async function load() {
     setLoading(true);
-    try { setDomains(await api.getDomains()); }
-    catch { setDomains([]); }
+    try {
+      const rows = await api.getDomains();
+      setDomains(rows);
+      // Silently sync status for any non-verified domain in the background
+      rows.filter(d => d.status !== "verified").forEach(async d => {
+        try {
+          const updated = await api.verifyDomain(d.id);
+          setDomains(p => p.map(x => x.id === updated.id ? updated : x));
+        } catch { /* silent — stale status is acceptable */ }
+      });
+    } catch { setDomains([]); }
     finally { setLoading(false); }
   }
 
