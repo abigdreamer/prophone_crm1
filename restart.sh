@@ -12,7 +12,6 @@ git pull
 # Backend setup
 echo "Backend setup..."
 cd "$APP_DIR/server"
-npm ci
 npx prisma generate
 npx prisma migrate deploy
 
@@ -23,7 +22,6 @@ node prisma/seed.js || echo "Seed skipped or partially failed — continuing dep
 # Frontend build
 echo "Frontend build..."
 cd "$APP_DIR/client"
-npm ci
 npm run build
 
 # PM2 reload (zero downtime)
