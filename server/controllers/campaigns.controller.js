@@ -160,7 +160,7 @@ export async function addGroupRecipients(req, res) {
 }
 
 export async function listRecipients(req, res) {
-  const { status, variant, page = 1, limit = 50 } = req.query;
+  const { status, variant, search, page = 1, limit = 50 } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
 
   try {
@@ -171,6 +171,7 @@ export async function listRecipients(req, res) {
     const { rows, total } = await campaignRepo.findRecipients(req.params.id, {
       status,
       variant: variant === 'A' || variant === 'B' ? variant : undefined,
+      search:  search?.trim() || undefined,
       skip,
       limit: Number(limit),
     });

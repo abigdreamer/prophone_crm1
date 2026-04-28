@@ -65,10 +65,17 @@ export async function groupRecipientsByVariantAndStatus(campaignId) {
   });
 }
 
-export async function findRecipients(campaignId, { status, variant, skip, limit }) {
+export async function findRecipients(campaignId, { status, variant, search, skip, limit }) {
   const where = { campaign_id: campaignId };
   if (status)  where.status     = status;
   if (variant) where.ab_variant = variant;
+  if (search) {
+    where.OR = [
+      { email:      { contains: search, mode: 'insensitive' } },
+      { first_name: { contains: search, mode: 'insensitive' } },
+      { last_name:  { contains: search, mode: 'insensitive' } },
+    ];
+  }
 
   const [rows, total] = await Promise.all([
     prisma.campaign_recipient.findMany({

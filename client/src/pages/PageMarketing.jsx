@@ -905,6 +905,8 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const [variantFilter, setVariantFilter] = useState("");
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
   const [loading, setLoading] = useState(true);
   const [recipLoading, setRecipLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -935,12 +937,18 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     }
   }, [campaignId]);
 
+  useEffect(() => {
+    const t = setTimeout(() => { setSearchDebounced(recipientSearch); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [recipientSearch]);
+
   const loadRecipients = useCallback(async () => {
     setRecipLoading(true);
     try {
       const params = { page, limit: 50 };
-      if (statusFilter)  params.status  = statusFilter;
-      if (variantFilter) params.variant = variantFilter;
+      if (statusFilter)    params.status  = statusFilter;
+      if (variantFilter)   params.variant = variantFilter;
+      if (searchDebounced) params.search  = searchDebounced;
       const data = await getRecipients(campaignId, params);
       setRecipients(data.data);
       setRecipientTotal(data.total);
@@ -949,7 +957,7 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     } finally {
       setRecipLoading(false);
     }
-  }, [campaignId, page, statusFilter, variantFilter]);
+  }, [campaignId, page, statusFilter, variantFilter, searchDebounced]);
 
   useEffect(() => { loadCampaign(); }, [loadCampaign]);
   useEffect(() => { if (campaign) loadRecipients(); }, [campaign, loadRecipients]);
@@ -1054,7 +1062,14 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
             Recipients <span style={{ fontSize: 11, color: T.muted, fontWeight: 400 }}>({fmt(recipientTotal)} total)</span>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Search name or email…"
+              value={recipientSearch}
+              onChange={e => setRecipientSearch(e.target.value)}
+              style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", width: 200, outline: "none" }}
+            />
             {campaign.ab_subject_b && (
               <select value={variantFilter} onChange={e => { setVariantFilter(e.target.value); setPage(1); }} style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
                 <option value="">All variants</option>
@@ -1089,7 +1104,7 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
                   <div onClick={() => toggleRecipientEvents(r)} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 80px 1fr 1fr 1fr", padding: "10px 16px", fontSize: 12, color: T.text, alignItems: "center", cursor: "pointer", background: expanded ? T.panel : "transparent", transition: "background 0.1s" }}
                     onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = T.panel + "80"; }}
                     onMouseLeave={e => { if (!expanded) e.currentTarget.style.background = "transparent"; }}>
-                    <div style={{ fontWeight: 500 }}>{r.first_name} {r.last_name || ""}</div>
+                    <div style={{ fontWeight: 500 }}>{(r.first_name || r.last_name) ? `${r.first_name || ""} ${r.last_name || ""}`.trim() : r.email}</div>
                     <div style={{ color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email}</div>
                     <div>
                       {r.ab_variant === "B"
