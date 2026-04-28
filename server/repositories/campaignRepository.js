@@ -65,9 +65,10 @@ export async function groupRecipientsByVariantAndStatus(campaignId) {
   });
 }
 
-export async function findRecipients(campaignId, { status, skip, limit }) {
+export async function findRecipients(campaignId, { status, variant, skip, limit }) {
   const where = { campaign_id: campaignId };
-  if (status) where.status = status;
+  if (status)  where.status     = status;
+  if (variant) where.ab_variant = variant;
 
   const [rows, total] = await Promise.all([
     prisma.campaign_recipient.findMany({
@@ -88,7 +89,7 @@ export async function findRecipients(campaignId, { status, skip, limit }) {
   return { rows, total };
 }
 
-export async function addRecipients(campaignId, contacts) {
+export async function addRecipients(campaignId, contacts, variant = null) {
   return prisma.campaign_recipient.createMany({
     data: contacts.map(c => ({
       campaign_id: campaignId,
@@ -101,6 +102,7 @@ export async function addRecipients(campaignId, contacts) {
       city:        c.city        || '',
       title:       c.title       || '',
       status:      'pending',
+      ...(variant ? { ab_variant: variant } : {}),
     })),
     skipDuplicates: true,
   });
@@ -140,6 +142,20 @@ export async function findContactsByIds(contactIds, prophone_id) {
       email:       { not: null },
     },
     select: { id: true, email: true, first_name: true, last_name: true, phone: true, company: true, city: true, title: true },
+  });
+}
+
+export async function logEvent(recipientId, campaignId, event, metadata = null) {
+  return prisma.campaign_recipient_event.create({
+    data: { recipient_id: recipientId, campaign_id: campaignId, event, metadata },
+  }).catch(() => {}); // non-blocking
+}
+
+export async function getRecipientEvents(recipientId) {
+  return prisma.campaign_recipient_event.findMany({
+    where:   { recipient_id: recipientId },
+    orderBy: { occurred_at: 'asc' },
+    select:  { id: true, event: true, occurred_at: true, metadata: true },
   });
 }
 

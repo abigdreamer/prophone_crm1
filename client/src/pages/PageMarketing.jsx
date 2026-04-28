@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { useSSE } from "../hooks/useSSE";
 import {
   Megaphone, Plus, Send, Pause, Play, Trash2,
   ChevronLeft, Users, Mail, Eye, MousePointerClick,
-  AlertCircle, CheckCircle2, Loader2, Search,
-  RefreshCw, FlaskConical, BarChart2, MoreVertical, Pencil,
+  AlertCircle, CheckCircle2, Loader2, Search, Check,
+  RefreshCw, FlaskConical, BarChart2, MoreVertical, Pencil, Copy,
 } from "lucide-react";
 import T from "../theme";
 import { useApp } from "../App";
@@ -11,9 +12,11 @@ import { useToast } from "../hooks/useToast";
 import {
   getCampaigns, getCampaign, createCampaign, updateCampaign, deleteCampaign,
   getRecipients, addRecipients, addGroupRecipients,
-  sendCampaign, pauseCampaign, resumeCampaign, syncCampaign,
+  sendCampaign, pauseCampaign, resumeCampaign,
+  getRecipientEvents,
 } from "../api/campaigns.api";
 import { getEmailTemplates } from "../api/emailTemplates.api";
+import { getCompany } from "../api/companies.api";
 import { MERGE_TAGS } from "../data/mergeTags";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -196,7 +199,7 @@ function CreateCampaignModal({ onClose, onCreate, onUpdate, scopedCompany, exist
               <div>
                 <label style={labelStyle}>Template * (published only)</label>
                 <select style={{ ...inputStyle, cursor: "pointer" }} value={form.template_id} onChange={e => handleTemplateChange(e.target.value)}>
-                  <option value="">— Select a template —</option>
+                  <option value="">Select a template</option>
                   {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 {templates.length === 0 && (
@@ -241,7 +244,7 @@ function CreateCampaignModal({ onClose, onCreate, onUpdate, scopedCompany, exist
                 <div>
                   <label style={labelStyle}>Template B (optional — defaults to Template A)</label>
                   <select style={{ ...inputStyle, cursor: "pointer" }} value={form.ab_template_id_b} onChange={e => set("ab_template_id_b", e.target.value)}>
-                    <option value="">— Same as Variant A —</option>
+                    <option value="">Same as Variant A</option>
                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
@@ -281,8 +284,307 @@ function CreateCampaignModal({ onClose, onCreate, onUpdate, scopedCompany, exist
   );
 }
 
+// ─── Template preview card (used in wizard step 2) ────────────────────────────
+function TemplatePreviewCard({ template, selected, onSelect }) {
+  return (
+    <div onClick={onSelect} style={{
+      border: "2px solid " + (selected ? T.accent : T.border),
+      borderRadius: 10, cursor: "pointer", overflow: "hidden",
+      height: 160, position: "relative",
+      boxShadow: selected ? "0 0 0 3px " + T.accent + "30" : "none",
+      transition: "all 0.15s",
+    }}>
+      <div style={{ height: 126, overflow: "hidden", position: "relative", background: "#f8fafc" }}>
+        {template.html_output ? (
+          <iframe srcDoc={template.html_output} sandbox="allow-same-origin"
+            style={{ position: "absolute", top: 0, left: 0, width: 600, height: 480, border: "none", pointerEvents: "none", transformOrigin: "top left", transform: "scale(0.295)" }}
+            title="preview" />
+        ) : (
+          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, fontSize: 12 }}>No preview</div>
+        )}
+        {selected && (
+          <div style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: "50%", background: T.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Check size={11} color="#fff" />
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "5px 8px", background: "#fff", borderTop: "1px solid " + T.border }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Create Campaign Wizard (new campaigns only) ───────────────────────────────
+function CreateCampaignWizard({ onClose, onCreate, scopedCompany }) {
+  const { clientId } = useApp();
+  const [step,      setStep]      = useState(1);
+  const [templates, setTemplates] = useState([]);
+  const [loading,   setLoading]   = useState(false);
+  const [form,      setForm]      = useState({
+    type: "regular", name: "", template_id: "", subject: "",
+    from_name: "", from_email: "", ab_subject_b: "", ab_template_id_b: "", ab_same_as_a: false,
+  });
+  const toast = useToast();
+  const set   = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const total = 2;
+
+  useEffect(() => {
+    getEmailTemplates()
+      .then(all => setTemplates((all || []).filter(t => t.status === "published")))
+      .catch(() => {});
+    const pid = clientId || scopedCompany;
+    if (pid) {
+      getCompany(pid)
+        .then(c => { if (c?.name) set("from_name", c.name); })
+        .catch(() => {});
+    }
+  }, []);
+
+  function handleTemplateSelect(t) {
+    set("template_id", t.id);
+    if (t.subject) set("subject", t.subject);
+    const fe = t.json_structure?.from || "";
+    if (fe) set("from_email", fe);
+  }
+
+  function handleTemplateBSelect(t) {
+    set("ab_template_id_b", t.id);
+    if (t.subject) set("ab_subject_b", t.subject);
+  }
+
+  function canNext() {
+    if (step === 1) return form.name.trim().length > 0;
+    if (step === 2) {
+      const base = !!form.template_id && form.subject.trim().length > 0;
+      if (form.type === "ab") return base && form.ab_subject_b.trim().length > 0;
+      return base;
+    }
+    return false;
+  }
+
+  async function handleCreate() {
+    setLoading(true);
+    try {
+      const payload = {
+        name:             form.name.trim(),
+        subject:          form.subject.trim(),
+        from_name:        form.from_name.trim(),
+        from_email:       form.from_email.trim(),
+        template_id:      form.template_id || null,
+        ab_subject_b:     form.type === "ab" ? form.ab_subject_b.trim() : "",
+        ab_template_id_b: form.type === "ab" ? (form.ab_same_as_a ? null : (form.ab_template_id_b || null)) : null,
+      };
+      if (scopedCompany) payload.prophone_id = scopedCompany;
+      const row = await createCampaign(payload);
+      onCreate?.(row);
+      toast.success("Campaign created.");
+      onClose();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inp = { width: "100%", padding: "9px 12px", boxSizing: "border-box", background: T.panel, border: "1px solid " + T.border, borderRadius: 7, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none" };
+  const lbl = { fontSize: 11, fontWeight: 600, color: T.sub, display: "block", marginBottom: 5 };
+  const stepLabels = ["Campaign info", "Template & content"];
+  const isAB = form.type === "ab";
+  const modalWidth = step === 2 && isAB ? 860 : 600;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: T.surface, borderRadius: 16, width: modalWidth, maxWidth: "96vw", maxHeight: "90vh", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column", overflow: "hidden", transition: "width 0.2s" }}>
+
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid " + T.border, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>Create an email campaign</div>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+          </div>
+          {/* Step indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+            {Array.from({ length: total }, (_, i) => (
+              <Fragment key={i}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, background: step > i + 1 ? T.accent : step === i + 1 ? T.accent : T.border, color: step >= i + 1 ? "#fff" : T.muted }}>
+                    {step > i + 1 ? "✓" : i + 1}
+                  </div>
+                  <span style={{ fontSize: 12, color: step === i + 1 ? T.text : T.muted, fontWeight: step === i + 1 ? 600 : 400 }}>{stepLabels[i]}</span>
+                </div>
+                {i < total - 1 && <div style={{ flex: 1, height: 1, background: T.border, margin: "0 10px" }} />}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+
+          {/* Step 1 */}
+          {step === 1 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={lbl}>Campaign type</label>
+                <div style={{ display: "flex", background: T.panel, borderRadius: 10, padding: 3, border: "1px solid " + T.border }}>
+                  {[{ v: "regular", label: "Regular" }, { v: "ab", label: "A/B Test" }].map(({ v, label }) => (
+                    <button key={v} type="button" onClick={() => set("type", v)}
+                      style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: form.type === v ? 700 : 400, background: form.type === v ? T.surface : "transparent", color: form.type === v ? T.accent : T.muted, boxShadow: form.type === v ? "0 1px 4px rgba(0,0,0,0.08)" : "none", transition: "all 0.15s" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {isAB && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: T.muted, padding: "8px 12px", background: T.panel, borderRadius: 7, border: "1px solid " + T.border, display: "flex", alignItems: "center", gap: 7 }}>
+                    <FlaskConical size={12} color={T.accent} />
+                    Recipients will be split 50/50 between Variant A and Variant B.
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Campaign name *</label>
+                <input style={inp} value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Q2 Towing Outreach" autoFocus />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — Regular */}
+          {step === 2 && !isAB && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={lbl}>Select a template * <span style={{ fontWeight: 400, color: T.muted }}>(published only)</span></label>
+                {templates.length === 0 ? (
+                  <div style={{ padding: "14px 16px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 13, color: "#92400e" }}>
+                    No published templates. Publish a template in the Email Builder first.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                    {templates.map(t => (
+                      <TemplatePreviewCard key={t.id} template={t} selected={form.template_id === t.id} onSelect={() => handleTemplateSelect(t)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Subject line *</label>
+                <input style={inp} value={form.subject} onChange={e => set("subject", e.target.value)} placeholder="e.g. {{firstName}}, let's talk fleet savings" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={lbl}>From name</label>
+                  <input style={inp} value={form.from_name} onChange={e => set("from_name", e.target.value)} placeholder="ProPhone CRM" />
+                </div>
+                <div>
+                  <label style={lbl}>From email</label>
+                  <input style={inp} type="email" value={form.from_email} onChange={e => set("from_email", e.target.value)} placeholder="hello@yourdomain.com" />
+                </div>
+              </div>
+              <div style={{ padding: "9px 12px", background: T.panel, borderRadius: 7, fontSize: 11, color: T.muted, border: "1px solid " + T.border }}>
+                <strong style={{ color: T.sub }}>Merge tags:</strong>{" "}
+                {MERGE_TAGS.map(t => <code key={t.key} style={{ background: T.border, borderRadius: 3, padding: "1px 5px", marginRight: 4, fontSize: 10, color: T.accent }}>{`{{${t.key}}}`}</code>)}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — A/B side by side */}
+          {step === 2 && isAB && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Variant A */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, background: T.panel, border: "1px solid " + T.accent + "50", borderRadius: 10, padding: "14px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: "0.06em" }}>VARIANT A</div>
+                  <div>
+                    <label style={lbl}>Template * <span style={{ fontWeight: 400, color: T.muted }}>(published)</span></label>
+                    {templates.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 6 }}>No published templates.</div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {templates.map(t => (
+                          <TemplatePreviewCard key={t.id} template={t} selected={form.template_id === t.id} onSelect={() => handleTemplateSelect(t)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={lbl}>Subject A *</label>
+                    <input style={inp} value={form.subject} onChange={e => set("subject", e.target.value)} placeholder="e.g. {{firstName}}, let's talk savings" />
+                  </div>
+                </div>
+
+                {/* Variant B */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, background: T.panel, border: "1px solid #f59e0b50", borderRadius: 10, padding: "14px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em" }}>VARIANT B</div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <label style={{ ...lbl, marginBottom: 0 }}>Template</label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 12, color: T.muted, fontWeight: 400 }}>
+                        <input type="checkbox" checked={form.ab_same_as_a}
+                          onChange={e => set("ab_same_as_a", e.target.checked)}
+                          style={{ cursor: "pointer", accentColor: "#f59e0b" }} />
+                        Same as A
+                      </label>
+                    </div>
+                    {form.ab_same_as_a ? (
+                      <div style={{ padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 7, fontSize: 12, color: "#92400e" }}>
+                        Using the same template as Variant A.
+                      </div>
+                    ) : templates.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 6 }}>No published templates.</div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {templates.map(t => (
+                          <TemplatePreviewCard key={t.id} template={t} selected={form.ab_template_id_b === t.id} onSelect={() => handleTemplateBSelect(t)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={lbl}>Subject B *</label>
+                    <input style={inp} value={form.ab_subject_b} onChange={e => set("ab_subject_b", e.target.value)} placeholder="e.g. Special offer inside, {{firstName}}" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Shared sender info */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={lbl}>From name</label>
+                  <input style={inp} value={form.from_name} onChange={e => set("from_name", e.target.value)} placeholder="ProPhone CRM" />
+                </div>
+                <div>
+                  <label style={lbl}>From email</label>
+                  <input style={inp} type="email" value={form.from_email} onChange={e => set("from_email", e.target.value)} placeholder="hello@yourdomain.com" />
+                </div>
+              </div>
+              <div style={{ padding: "9px 12px", background: T.panel, borderRadius: 7, fontSize: 11, color: T.muted, border: "1px solid " + T.border }}>
+                <strong style={{ color: T.sub }}>Merge tags:</strong>{" "}
+                {MERGE_TAGS.map(t => <code key={t.key} style={{ background: T.border, borderRadius: 3, padding: "1px 5px", marginRight: 4, fontSize: 10, color: T.accent }}>{`{{${t.key}}}`}</code>)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 24px", borderTop: "1px solid " + T.border, display: "flex", justifyContent: "space-between", flexShrink: 0 }}>
+          <button type="button" onClick={step === 1 ? onClose : () => setStep(s => s - 1)}
+            style={{ padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>
+            {step === 1 ? "Cancel" : "← Back"}
+          </button>
+          <button type="button" disabled={!canNext() || loading} onClick={step === total ? handleCreate : () => setStep(s => s + 1)}
+            style={{ padding: "8px 22px", borderRadius: 7, border: "none", background: T.accent, color: "#fff", cursor: (!canNext() || loading) ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, opacity: canNext() ? 1 : 0.55, display: "flex", alignItems: "center", gap: 7 }}>
+            {loading && <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />}
+            {step === total ? "Create campaign" : "Next →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Add Recipients Modal ──────────────────────────────────────────────────────
-function AddRecipientsModal({ campaignId, onClose, onAdded, groups = [] }) {
+function AddRecipientsModal({ campaignId, campaign, onClose, onAdded, groups = [] }) {
   const { contacts } = useApp();
   const [tab, setTab] = useState("individual"); // "individual" | "group"
   const [search, setSearch] = useState("");
@@ -363,6 +665,7 @@ function AddRecipientsModal({ campaignId, onClose, onAdded, groups = [] }) {
           </div>
         </div>
 
+
         {tab === "individual" ? (
           <>
             <div style={{ padding: "12px 22px", borderBottom: "1px solid " + T.border, flexShrink: 0 }}>
@@ -411,7 +714,7 @@ function AddRecipientsModal({ campaignId, onClose, onAdded, groups = [] }) {
                     onChange={e => setSelectedGroup(e.target.value)}
                     style={{ width: "100%", padding: "10px 12px", background: T.panel, border: "1px solid " + T.border, borderRadius: 7, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none", cursor: "pointer" }}
                   >
-                    <option value="">— Choose a group —</option>
+                    <option value="">Choose a group </option>
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   </select>
                 </div>
@@ -448,7 +751,14 @@ function AddRecipientsModal({ campaignId, onClose, onAdded, groups = [] }) {
 // ─── Delete Campaign Modal ─────────────────────────────────────────────────────
 function DeleteCampaignModal({ campaign, onConfirm, onClose, loading }) {
   const [inputValue, setInputValue] = useState("");
+  const [copied, setCopied] = useState(false);
   const canDelete = inputValue === campaign.name;
+
+  function copyName() {
+    navigator.clipboard.writeText(campaign.name).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   return (
     <div style={{
@@ -478,8 +788,18 @@ function DeleteCampaignModal({ campaign, onConfirm, onClose, loading }) {
             This action cannot be undone.
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: T.sub, display: "block", marginBottom: 6 }}>
-              Type <strong style={{ color: T.text }}>{campaign.name}</strong> to confirm
+            <label style={{ fontSize: 11, fontWeight: 600, color: T.sub, display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+              Type <strong style={{ color: T.text }}>{campaign.name}</strong>
+              <button
+                type="button"
+                onClick={copyName}
+                title="Copy campaign name"
+                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 5, border: "1px solid " + T.border, background: copied ? "#dcfce7" : T.panel, color: copied ? "#16a34a" : T.muted, cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 600, transition: "all 0.15s" }}
+              >
+                {copied ? <Check size={10} /> : <Copy size={10} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+              to confirm
             </label>
             <input
               style={{
@@ -531,23 +851,23 @@ function ABStatsPanel({ campaign }) {
   const A = campaign.ab_stats.A || {};
   const B = campaign.ab_stats.B || {};
 
-  const sentA = A.sent || 0;
-  const sentB = B.sent || 0;
-  const openA = pct(A.opened || 0, sentA);
-  const openB = pct(B.opened || 0, sentB);
-  const clickA = pct(A.clicked || 0, sentA);
-  const clickB = pct(B.clicked || 0, sentB);
+  const sentA   = A.sent    || 0;
+  const sentB   = B.sent    || 0;
+  const openA   = A.opened  || 0;
+  const openB   = B.opened  || 0;
+  const clickA  = A.clicked || 0;
+  const clickB  = B.clicked || 0;
 
   const winner = openA > openB ? "A" : openB > openA ? "B" : null;
 
   const col = (label, val, color) => (
     <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: color || T.text }}>{val}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: color || T.text }}>{fmt(val)}</div>
       <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{label}</div>
     </div>
   );
 
-  const card = (variant, subject, sent, openRate, clickRate, accent) => (
+  const card = (variant, subject, sent, opened, clicked, accent) => (
     <div style={{ flex: 1, background: T.surface, border: "2px solid " + (winner === variant ? accent : T.border), borderRadius: 10, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 10, fontWeight: 700, background: accent + "20", color: accent, borderRadius: 4, padding: "2px 7px" }}>VARIANT {variant}</span>
@@ -555,9 +875,9 @@ function ABStatsPanel({ campaign }) {
       </div>
       <div style={{ fontSize: 12, color: T.sub, marginBottom: 12, fontStyle: "italic" }}>"{subject}"</div>
       <div style={{ display: "flex", gap: 16, justifyContent: "space-between" }}>
-        {col("Sent", fmt(sent), T.text)}
-        {col("Open Rate", openRate + "%", openRate > 0 ? T.green : T.muted)}
-        {col("CTR", clickRate + "%", clickRate > 0 ? T.blue : T.muted)}
+        {col("Sent",    sent,    T.text)}
+        {col("Opened",  opened,  opened  > 0 ? T.green : T.muted)}
+        {col("Clicked", clicked, clicked > 0 ? T.blue  : T.muted)}
       </div>
     </div>
   );
@@ -584,12 +904,25 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
   const [recipientTotal, setRecipientTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
+  const [variantFilter, setVariantFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [recipLoading, setRecipLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddModal,      setShowAddModal]      = useState(false);
+  const [expandedRecipient, setExpandedRecipient] = useState(null);
+  const [recipientEvents,   setRecipientEvents]   = useState({});
   const toast = useToast();
+
+  async function toggleRecipientEvents(r) {
+    const next = expandedRecipient === r.id ? null : r.id;
+    setExpandedRecipient(next);
+    if (next && !recipientEvents[next]) {
+      try {
+        const evts = await getRecipientEvents(campaignId, next);
+        setRecipientEvents(m => ({ ...m, [next]: evts }));
+      } catch { /* ignore */ }
+    }
+  }
 
   const loadCampaign = useCallback(async () => {
     try {
@@ -606,7 +939,8 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     setRecipLoading(true);
     try {
       const params = { page, limit: 50 };
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilter)  params.status  = statusFilter;
+      if (variantFilter) params.variant = variantFilter;
       const data = await getRecipients(campaignId, params);
       setRecipients(data.data);
       setRecipientTotal(data.total);
@@ -615,10 +949,18 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     } finally {
       setRecipLoading(false);
     }
-  }, [campaignId, page, statusFilter]);
+  }, [campaignId, page, statusFilter, variantFilter]);
 
   useEffect(() => { loadCampaign(); }, [loadCampaign]);
   useEffect(() => { if (campaign) loadRecipients(); }, [campaign, loadRecipients]);
+
+  // Real-time stats from Resend webhooks via SSE
+  const handleSSE = useCallback((event, data) => {
+    if (event === "campaign_update" && data.campaign_id === campaignId) {
+      setCampaign(prev => prev ? { ...prev, ...data } : prev);
+    }
+  }, [campaignId]);
+  useSSE(handleSSE);
 
   async function handleAction(action) {
     setActionLoading(true);
@@ -638,30 +980,18 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     }
   }
 
-  async function handleSync() {
-    setSyncLoading(true);
-    try {
-      const result = await syncCampaign(campaignId);
-      toast.success(`Synced ${result.updated} of ${result.total_checked} emails from Resend.`);
-      await loadCampaign();
-      await loadRecipients();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSyncLoading(false);
-    }
-  }
-
   if (loading || !campaign) {
     return <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 size={22} color={T.accent} style={{ animation: "spin 1s linear infinite" }} /></div>;
   }
 
-  const sentCount   = campaign.sent_count || 0;
-  const openRate    = pct(campaign.opened_count,  sentCount);
-  const clickRate   = pct(campaign.clicked_count, sentCount);
-  const totalRecips = campaign.recipient_stats
-    ? Object.values(campaign.recipient_stats).reduce((a, b) => a + b, 0)
-    : recipientTotal;
+  const sentCount = campaign.sent_count || 0;
+  const rs = campaign.recipient_stats || {};
+  // Cumulative: a "clicked" recipient also counts as opened and delivered
+  const deliveredCount = (rs.delivered || 0) + (rs.opened || 0) + (rs.clicked || 0);
+  const openedCount    = (rs.opened    || 0) + (rs.clicked || 0);
+  const clickedCount   = rs.clicked  || 0;
+  const bouncedCount   = rs.bounced  || 0;
+  const totalRecips    = Object.values(rs).reduce((a, b) => a + b, 0) || recipientTotal;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -700,9 +1030,6 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
               {actionLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} Resume
             </button>
           )}
-          <button onClick={handleSync} disabled={syncLoading} title="Sync stats from Resend" style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: syncLoading ? T.muted : T.accent, cursor: syncLoading ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 500, opacity: syncLoading ? 0.7 : 1 }}>
-            {syncLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={13} />} Sync Stats
-          </button>
           <button onClick={loadCampaign} title="Refresh" style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.muted, cursor: "pointer" }}>
             <RefreshCw size={13} />
           </button>
@@ -712,10 +1039,10 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
       {/* Overall stats */}
       <div style={{ padding: "16px 24px", borderBottom: "1px solid " + T.border, background: T.panel, flexShrink: 0, display: "flex", gap: 12 }}>
         <StatCard icon={Users}             label="Total Recipients"  value={fmt(totalRecips)} />
-        <StatCard icon={Mail}              label="Sent"              value={fmt(sentCount)} />
-        <StatCard icon={Eye}               label="Opened"            value={fmt(campaign.opened_count)}  sub={openRate + "% open rate"}  color={T.green} />
-        <StatCard icon={MousePointerClick} label="Clicked"           value={fmt(campaign.clicked_count)} sub={clickRate + "% CTR"}       color={T.blue} />
-        <StatCard icon={AlertCircle}       label="Bounced"           value={fmt(campaign.bounced_count)} color={T.red} />
+        <StatCard icon={Mail}              label="Sent"              value={fmt(sentCount)}    sub={deliveredCount > 0 ? `${deliveredCount} delivered` : "awaiting delivery"} />
+        <StatCard icon={Eye}               label="Opened"            value={fmt(openedCount)}  color={T.green} sub={`${pct(openedCount, sentCount)}% open rate`} />
+        <StatCard icon={MousePointerClick} label="Clicked"           value={fmt(clickedCount)} color={T.blue}  sub={`${pct(clickedCount, openedCount)}% click rate`} />
+        <StatCard icon={AlertCircle}       label="Bounced"           value={fmt(bouncedCount)} color={T.red}   sub={bouncedCount > 0 ? `${pct(bouncedCount, sentCount)}% bounce rate` : undefined} />
       </div>
 
       {/* A/B results panel */}
@@ -727,10 +1054,19 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
             Recipients <span style={{ fontSize: 11, color: T.muted, fontWeight: 400 }}>({fmt(recipientTotal)} total)</span>
           </div>
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
-            <option value="">All statuses</option>
-            {Object.entries(RECIPIENT_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
+          <div style={{ display: "flex", gap: 8 }}>
+            {campaign.ab_subject_b && (
+              <select value={variantFilter} onChange={e => { setVariantFilter(e.target.value); setPage(1); }} style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
+                <option value="">All variants</option>
+                <option value="A">Variant A</option>
+                <option value="B">Variant B</option>
+              </select>
+            )}
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }} style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>
+              <option value="">All statuses</option>
+              {Object.entries(RECIPIENT_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
         </div>
 
         {recipLoading ? (
@@ -745,23 +1081,47 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
               <div>Contact</div><div>Email</div><div>Variant</div><div>Status</div><div>Sent</div><div>Opened</div>
             </div>
             {recipients.map(r => {
-              const cfg = RECIPIENT_STATUS_CFG[r.status] || { label: r.status, color: T.muted };
+              const cfg      = RECIPIENT_STATUS_CFG[r.status] || { label: r.status, color: T.muted };
+              const expanded = expandedRecipient === r.id;
+              const evts     = recipientEvents[r.id] || [];
               return (
-                <div key={r.id} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 80px 1fr 1fr 1fr", padding: "10px 16px", borderBottom: "1px solid " + T.border, fontSize: 12, color: T.text, alignItems: "center" }}>
-                  <div style={{ fontWeight: 500 }}>{r.first_name} {r.last_name || ""}</div>
-                  <div style={{ color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email}</div>
-                  <div>
-                    {r.ab_variant === "B"
-                      ? <span style={{ fontSize: 10, fontWeight: 700, background: "#f59e0b20", color: "#f59e0b", borderRadius: 3, padding: "2px 6px" }}>B</span>
-                      : <span style={{ fontSize: 10, fontWeight: 700, background: T.accent + "20", color: T.accent, borderRadius: 3, padding: "2px 6px" }}>A</span>
-                    }
+                <div key={r.id} style={{ borderBottom: "1px solid " + T.border }}>
+                  <div onClick={() => toggleRecipientEvents(r)} style={{ display: "grid", gridTemplateColumns: "2fr 2fr 80px 1fr 1fr 1fr", padding: "10px 16px", fontSize: 12, color: T.text, alignItems: "center", cursor: "pointer", background: expanded ? T.panel : "transparent", transition: "background 0.1s" }}
+                    onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = T.panel + "80"; }}
+                    onMouseLeave={e => { if (!expanded) e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ fontWeight: 500 }}>{r.first_name} {r.last_name || ""}</div>
+                    <div style={{ color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email}</div>
+                    <div>
+                      {r.ab_variant === "B"
+                        ? <span style={{ fontSize: 10, fontWeight: 700, background: "#f59e0b20", color: "#f59e0b", borderRadius: 3, padding: "2px 6px" }}>B</span>
+                        : <span style={{ fontSize: 10, fontWeight: 700, background: T.accent + "20", color: T.accent, borderRadius: 3, padding: "2px 6px" }}>A</span>
+                      }
+                    </div>
+                    <div>
+                      <span style={{ color: cfg.color, fontWeight: 600, fontSize: 11 }}>{cfg.label}</span>
+                      {r.error_message && <div style={{ fontSize: 10, color: T.red, marginTop: 2 }}>{r.error_message}</div>}
+                    </div>
+                    <div style={{ color: T.muted }}>{fmtTime(r.sent_at)}</div>
+                    <div style={{ color: T.muted }}>{fmtTime(r.opened_at)}</div>
                   </div>
-                  <div>
-                    <span style={{ color: cfg.color, fontWeight: 600, fontSize: 11 }}>{cfg.label}</span>
-                    {r.error_message && <div style={{ fontSize: 10, color: T.red, marginTop: 2 }}>{r.error_message}</div>}
-                  </div>
-                  <div style={{ color: T.muted }}>{fmtTime(r.sent_at)}</div>
-                  <div style={{ color: T.muted }}>{fmtTime(r.opened_at)}</div>
+                  {expanded && (
+                    <div style={{ padding: "10px 16px 14px 16px", background: "#f8fafc", borderTop: "1px solid " + T.border }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Event History</div>
+                      {evts.length === 0 ? (
+                        <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No events recorded yet.</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {evts.map(e => (
+                            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: (RECIPIENT_STATUS_CFG[e.event] || { color: T.muted }).color, flexShrink: 0 }} />
+                              <span style={{ fontWeight: 600, color: (RECIPIENT_STATUS_CFG[e.event] || { color: T.text }).color, textTransform: "capitalize" }}>{e.event}</span>
+                              <span style={{ color: T.muted }}>{fmtTime(e.occurred_at)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -780,6 +1140,7 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
       {showAddModal && (
         <AddRecipientsModal
           campaignId={campaignId}
+          campaign={campaign}
           groups={groups}
           onClose={() => setShowAddModal(false)}
           onAdded={() => { loadCampaign(); loadRecipients(); }}
@@ -794,11 +1155,22 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
+  const [duplicating, setDuplicating] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editCampaign, setEditCampaign] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(null); // campaign id with open menu
+  const [menuOpen, setMenuOpen] = useState(null);
+  const menuRef = useRef(null);
   const toast = useToast();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(null);
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [menuOpen]);
 
   const load = useCallback(async () => {
     try {
@@ -816,6 +1188,31 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
   function handleDelete(campaign, e) {
     e.stopPropagation();
     setDeleteTarget(campaign);
+  }
+
+  async function handleDuplicate(c, e) {
+    e.stopPropagation();
+    setMenuOpen(null);
+    setDuplicating(c.id);
+    try {
+      const payload = {
+        name:             c.name + " (Copy)",
+        subject:          c.subject          || "",
+        from_name:        c.from_name        || "",
+        from_email:       c.from_email       || "",
+        template_id:      c.template_id      || null,
+        ab_subject_b:     c.ab_subject_b     || "",
+        ab_template_id_b: c.ab_template_id_b || null,
+      };
+      if (scopedCompany) payload.prophone_id = scopedCompany;
+      const row = await createCampaign(payload);
+      setCampaigns(cs => [row, ...cs]);
+      toast.success("Campaign duplicated.");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setDuplicating(null);
+    }
   }
 
   async function confirmDelete(campaign) {
@@ -868,12 +1265,11 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
         ) : (
           <div style={{ border: "1px solid " + T.border, borderRadius: 10, background: T.surface }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px 80px 80px 80px 120px", padding: "10px 16px", background: T.panel, borderBottom: "1px solid " + T.border, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em", borderRadius: "10px 10px 0 0" }}>
-              <div>Campaign</div><div>Status</div><div>Sent</div><div>Open %</div><div>Click %</div><div>Bounced</div><div>Created</div>
+              <div>Campaign</div><div>Status</div><div>Sent</div><div>Opened</div><div>Clicked</div><div>Bounced</div><div>Created</div>
             </div>
             {campaigns.map(c => {
-              const openRate  = pct(c.opened_count,  c.sent_count);
-              const clickRate = pct(c.clicked_count, c.sent_count);
               const isDel = deleting === c.id;
+              const isDup = duplicating === c.id;
               const isMenuOpen = menuOpen === c.id;
               return (
                 <div key={c.id} onClick={() => { setMenuOpen(null); onSelect(c.id); }} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 80px 80px 80px 80px 120px", padding: "12px 16px", borderBottom: "1px solid " + T.border, cursor: "pointer", transition: "background 0.1s", alignItems: "center", position: "relative" }}
@@ -892,27 +1288,35 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
                   </div>
                   <div><StatusBadge status={c.status} /></div>
                   <div style={{ fontSize: 12, color: T.text }}>{fmt(c.sent_count)}</div>
-                  <div style={{ fontSize: 12, color: openRate > 0 ? T.green : T.muted }}>{openRate}%</div>
-                  <div style={{ fontSize: 12, color: clickRate > 0 ? T.blue : T.muted }}>{clickRate}%</div>
-                  <div style={{ fontSize: 12, color: c.bounced_count > 0 ? T.red : T.muted }}>{fmt(c.bounced_count)}</div>
+                  <div style={{ fontSize: 12, color: c.opened_count  > 0 ? T.green : T.muted }}>{fmt(c.opened_count)}</div>
+                  <div style={{ fontSize: 12, color: c.clicked_count > 0 ? T.blue  : T.muted }}>{fmt(c.clicked_count)}</div>
+                  <div style={{ fontSize: 12, color: c.bounced_count > 0 ? T.red   : T.muted }}>{fmt(c.bounced_count)}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }} onClick={e => e.stopPropagation()}>
                     <span style={{ fontSize: 11, color: T.muted }}>{fmtDate(c.created_at)}</span>
                     <div style={{ position: "relative" }}>
                       <button
                         onClick={e => { e.stopPropagation(); setMenuOpen(isMenuOpen ? null : c.id); }}
-                        disabled={isDel}
+                        disabled={isDel || isDup}
                         style={{ padding: "4px 6px", borderRadius: 5, border: "none", background: "transparent", color: T.muted, cursor: "pointer", display: "flex", alignItems: "center" }}
                       >
-                        {isDel ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <MoreVertical size={14} />}
+                        {(isDel || isDup) ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <MoreVertical size={14} />}
                       </button>
                       {isMenuOpen && (
-                        <div style={{ position: "absolute", right: 0, bottom: "100%", marginBottom: 4, zIndex: 200, background: T.surface, border: "1px solid " + T.border, borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 130, overflow: "hidden" }}>
+                        <div ref={menuRef} style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: T.surface, border: "1px solid " + T.border, borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: 130, overflow: "hidden" }}>
                           <button
                             onClick={e => { e.stopPropagation(); setEditCampaign(c); setMenuOpen(null); }}
                             disabled={c.status === "running"}
                             style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", border: "none", background: "transparent", color: c.status === "running" ? T.muted : T.text, cursor: c.status === "running" ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 13, textAlign: "left" }}
                           >
                             <Pencil size={13} /> Edit
+                          </button>
+                          <div style={{ height: 1, background: T.border }} />
+                          <button
+                            onClick={e => handleDuplicate(c, e)}
+                            disabled={isDup}
+                            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", border: "none", background: "transparent", color: T.text, cursor: isDup ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 13, textAlign: "left", opacity: isDup ? 0.6 : 1 }}
+                          >
+                            {isDup ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Copy size={13} />} Duplicate
                           </button>
                           <div style={{ height: 1, background: T.border }} />
                           <button
@@ -934,7 +1338,7 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
       </div>
 
       {showCreate && (
-        <CreateCampaignModal
+        <CreateCampaignWizard
           scopedCompany={scopedCompany}
           onClose={() => setShowCreate(false)}
           onCreate={row => { setCampaigns(cs => [row, ...cs]); onCreated?.(row); }}

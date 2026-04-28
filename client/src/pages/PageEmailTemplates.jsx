@@ -149,6 +149,33 @@ function MiniEmailPreview({ template }) {
     return () => ro.disconnect();
   }, []);
 
+  if (template.source_type === "html") {
+    if (template.html_output) {
+      return (
+        <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative" }}>
+          <iframe
+            srcDoc={template.html_output}
+            sandbox="allow-same-origin"
+            style={{
+              position: "absolute", top: 0, left: 0,
+              width: EMAIL_W, height: "600px",
+              border: "none", pointerEvents: "none",
+              transformOrigin: "top left",
+              transform: `scale(${w / EMAIL_W})`,
+            }}
+            title="preview"
+          />
+        </div>
+      );
+    }
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#0d1117", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <Code2 size={28} color="#79c0ff" strokeWidth={1.5} />
+        <span style={{ fontSize: 12, color: "#8b949e", fontFamily: "monospace" }}>HTML Template</span>
+      </div>
+    );
+  }
+
   const blocks  = template.json_structure?.blocks || [];
   const emailBg = template.json_structure?.containerBg || "#ffffff";
   const pageBg  = template.json_structure?.backgroundColor || "#f4f4f4";
@@ -288,9 +315,10 @@ function SendTestModal({ template, onClose }) {
 
 // ─── Options dropdown ──────────────────────────────────────────────────────────
 function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onDeleteRequest, onSendTest }) {
-  const isPub = template.status === "published";
+  const isPub   = template.status === "published";
+  const editLabel = template.source_type === "html" ? "Edit HTML" : "Continue editing";
   const items = [
-    { label: "Continue editing",              Icon: Pencil, action: () => { onEdit();          onClose(); } },
+    { label: editLabel,                       Icon: template.source_type === "html" ? Code2 : Pencil, action: () => { onEdit(); onClose(); } },
     { label: "View details",                  Icon: Info,   action: () => { onDetails();       onClose(); } },
     null,
     { label: isPub ? "Unpublish" : "Publish template", Icon: Send, action: () => { onPublish(); onClose(); } },
@@ -528,7 +556,8 @@ const STATUS_OPTIONS = [
 ];
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function PageEmailTemplates({ onOpenBuilder }) {
+export default function PageEmailTemplates({ onOpenBuilder, onOpenHtmlEditor }) {
+  const openEditor = (t) => t.source_type === "html" ? onOpenHtmlEditor?.(t.id) : onOpenBuilder(t.id);
   const [templates,      setTemplates]      = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
@@ -627,7 +656,7 @@ export default function PageEmailTemplates({ onOpenBuilder }) {
             onClick={() => onOpenBuilder(null)}
             style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(99,102,241,0.28)" }}
           >
-            <Plus size={15} /> Create template
+            <Plus size={15} /> New builder
           </button>
         </div>
       </div>
@@ -698,7 +727,7 @@ export default function PageEmailTemplates({ onOpenBuilder }) {
               template={t}
               menuOpenId={menuOpenId}
               onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
-              onEdit={() => onOpenBuilder(t.id)}
+              onEdit={() => openEditor(t)}
               onDuplicate={() => handleDuplicate(t.id)}
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
@@ -733,7 +762,7 @@ export default function PageEmailTemplates({ onOpenBuilder }) {
         <DetailsModal
           template={detailsTarget}
           onClose={() => setDetailsTarget(null)}
-          onEdit={() => onOpenBuilder(detailsTarget.id)}
+          onEdit={() => openEditor(detailsTarget)}
         />
       )}
       {sendTestTarget && (

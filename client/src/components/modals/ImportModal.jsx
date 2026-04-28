@@ -27,6 +27,11 @@ function normalizeKey(raw) {
   return COL_MAP[raw.toLowerCase().trim()] || null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+function isValidEmail(email) {
+  return typeof email === "string" && EMAIL_RE.test(email.trim());
+}
+
 function rowToContact(raw) {
   const out = {};
   for (const [k, v] of Object.entries(raw)) {
@@ -97,15 +102,17 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
   const fileRef = useRef(null);
 
   // phase: idle | processing | group | importing | done | error
-  const [phase,    setPhase]    = useState("idle");
-  const [stageId,  setStageId]  = useState(null);
-  const [pct,      setPct]      = useState(0);
-  const [parsed,   setParsed]   = useState([]);  // normalized contact objects
-  const [stats,    setStats]    = useState(null); // { total, valid, invalid }
-  const [groupId,  setGroupId]  = useState("");
-  const [result,   setResult]   = useState(null); // { imported, skipped }
-  const [error,    setError]    = useState(null);
-  const [fileName, setFileName] = useState("");
+  const [phase,         setPhase]         = useState("idle");
+  const [stageId,       setStageId]       = useState(null);
+  const [pct,           setPct]           = useState(0);
+  const [parsed,        setParsed]        = useState([]);  // valid contacts
+  const [invalidEmails, setInvalidEmails] = useState([]); // contacts with bad/missing email
+  const [stats,         setStats]         = useState(null); // { total, valid, invalidEmail, noName }
+  const [groupId,       setGroupId]       = useState("");
+  const [result,        setResult]        = useState(null);
+  const [error,         setError]         = useState(null);
+  const [fileName,      setFileName]      = useState("");
+  const [showInvalid,   setShowInvalid]   = useState(false);
 
   function progress(sid, p) {
     setStageId(sid);
@@ -142,12 +149,19 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
       progress("validating", 55);
       await tick();
 
-      const valid   = contacts.filter(c => c.firstName || c.email);
-      const invalid = contacts.length - valid.length;
+      const withName      = contacts.filter(c => c.firstName || c.email);
+      const badEmail      = withName.filter(c => c.email && !isValidEmail(c.email));
+      const noEmail       = withName.filter(c => !c.email);
+      const valid         = withName.filter(c => !c.email || isValidEmail(c.email));
+      const invalidReport = [
+        ...badEmail.map(c => ({ ...c, reason: "Invalid email format" })),
+        ...noEmail.map(c => ({ ...c, reason: "No email address" })),
+      ];
 
       progress("group", 60);
       setParsed(valid);
-      setStats({ total: rawRows.length, valid: valid.length, invalid });
+      setInvalidEmails(invalidReport);
+      setStats({ total: rawRows.length, valid: valid.length, invalidEmail: badEmail.length, noEmail: noEmail.length, noName: contacts.length - withName.length });
       setPhase("group");
     } catch (err) {
       setError(err.message || "Failed to parse file.");
@@ -299,20 +313,41 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
               </div>
 
               {/* Stats */}
-              <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                 {[
-                  { label: "Total rows",  value: stats.total,   color: T.text },
-                  { label: "Valid",       value: stats.valid,   color: "#22c55e" },
-                  { label: "Skipped",     value: stats.invalid, color: stats.invalid ? "#f59e0b" : T.muted },
+                  { label: "Total rows",    value: stats.total,        color: T.text },
+                  { label: "Will import",   value: stats.valid,        color: "#22c55e" },
+                  { label: "Invalid email", value: stats.invalidEmail, color: stats.invalidEmail ? "#f59e0b" : T.muted },
+                  { label: "No email",      value: stats.noEmail,      color: stats.noEmail ? "#94a3b8" : T.muted },
                 ].map(({ label, value, color }) => (
-                  <div key={label} style={{
-                    flex: 1, background: T.panel, borderRadius: 10, padding: "12px 14px", textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{label}</div>
+                  <div key={label} style={{ flex: 1, background: T.panel, borderRadius: 10, padding: "10px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
+                    <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{label}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Invalid contacts report */}
+              {invalidEmails.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <button onClick={() => setShowInvalid(v => !v)}
+                    style={{ width: "100%", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: "#92400e", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>⚠ {invalidEmails.length} contact{invalidEmails.length !== 1 ? "s" : ""} will be skipped — view details</span>
+                    <span style={{ fontSize: 10 }}>{showInvalid ? "▲ Hide" : "▼ Show"}</span>
+                  </button>
+                  {showInvalid && (
+                    <div style={{ border: "1px solid #fde68a", borderTop: "none", borderRadius: "0 0 8px 8px", background: "#fff", maxHeight: 160, overflowY: "auto" }}>
+                      {invalidEmails.map((c, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", padding: "7px 12px", borderBottom: "1px solid #f1f5f9", gap: 10, fontSize: 12 }}>
+                          <span style={{ flex: 1, color: T.text }}>{c.firstName || ""} {c.lastName || ""}</span>
+                          <span style={{ color: T.muted, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: "#92400e", background: "#fef3c7", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{c.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Group selector */}
               <div style={{ marginBottom: 6, fontSize: 11, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>

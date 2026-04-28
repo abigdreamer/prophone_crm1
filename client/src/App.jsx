@@ -227,6 +227,7 @@ function EmailTemplatesRoute() {
   return (
     <PageEmailTemplates
       onOpenBuilder={id => navigate(id ? `/email-builder/${id}` : "/email-builder")}
+      onOpenHtmlEditor={id => navigate(id ? `/email-builder/${id}` : "/email-builder")}
     />
   );
 }

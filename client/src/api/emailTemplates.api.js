@@ -21,10 +21,10 @@ export async function getEmailTemplate(id) {
   return apiFetch(`/email-templates/${id}`);
 }
 
-export async function createEmailTemplate({ name, subject, json_structure, html_output, status = 'draft' }) {
+export async function createEmailTemplate({ name, subject, source_type = 'builder', json_structure, html_output, status = 'draft' }) {
   return apiFetch('/email-templates', {
     method: 'POST',
-    body:   JSON.stringify({ name, subject, json_structure, html_output, status }),
+    body:   JSON.stringify({ name, subject, source_type, json_structure, html_output, status }),
   });
 }
 

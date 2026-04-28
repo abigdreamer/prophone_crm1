@@ -122,6 +122,7 @@ model email_template {
   prophone_id    String
   name           String
   subject        String   @default("")
+  source_type    String   @default("builder")   // builder | html
   json_structure Json     @default("{\"version\":1,\"blocks\":[]}")
   html_output    String   @default("")
   status         String   @default("draft")
@@ -210,9 +211,26 @@ model campaign_recipient {
   updated_at    DateTime  @updatedAt
 
   campaign campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  events   campaign_recipient_event[]
 
   @@unique([campaign_id, email])
   @@index([campaign_id, status])
   @@index([message_id])
   @@map("campaign_recipients")
+}
+
+// ── Campaign Recipient Events (full event history) ─────────────────────────────
+model campaign_recipient_event {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipient_id String   @db.Uuid
+  campaign_id  String   @db.Uuid
+  event        String   // sent, delivered, opened, clicked, bounced, failed, unsubscribed
+  occurred_at  DateTime @default(now())
+  metadata     Json?
+
+  recipient campaign_recipient @relation(fields: [recipient_id], references: [id], onDelete: Cascade)
+
+  @@index([recipient_id])
+  @@index([campaign_id, event])
+  @@map("campaign_recipient_events")
 }
