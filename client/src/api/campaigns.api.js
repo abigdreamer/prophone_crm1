@@ -7,12 +7,15 @@ export const updateCampaign = (id, data)  => apiFetch(`/campaigns/${id}`, { meth
 export const deleteCampaign = (id)        => apiFetch(`/campaigns/${id}`, { method: 'DELETE' });
 
 export const getRecipients = (id, params = {}) => {
-  const q = new URLSearchParams(params).toString();
+  const filtered = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "" && v != null));
+  const q = new URLSearchParams(filtered).toString();
   return apiFetch(`/campaigns/${id}/recipients${q ? '?' + q : ''}`);
 };
-export const addRecipients       = (id, contactIds) => apiFetch(`/campaigns/${id}/recipients`,       { method: 'POST', body: JSON.stringify({ contactIds }) });
-export const addGroupRecipients  = (id, groupId)    => apiFetch(`/campaigns/${id}/recipients/group`, { method: 'POST', body: JSON.stringify({ groupId }) });
+export const addRecipients       = (id, contactIds, variant) => apiFetch(`/campaigns/${id}/recipients`,       { method: 'POST', body: JSON.stringify({ contactIds, ...(variant ? { variant } : {}) }) });
+export const addGroupRecipients  = (id, groupId, variant)    => apiFetch(`/campaigns/${id}/recipients/group`, { method: 'POST', body: JSON.stringify({ groupId,    ...(variant ? { variant } : {}) }) });
 export const removeAllRecipients = (id)             => apiFetch(`/campaigns/${id}/recipients`,       { method: 'DELETE' });
+
+export const getRecipientEvents = (campaignId, recipientId) => apiFetch(`/campaigns/${campaignId}/recipients/${recipientId}/events`);
 
 export const sendCampaign   = (id) => apiFetch(`/campaigns/${id}/send`,   { method: 'POST' });
 export const pauseCampaign  = (id) => apiFetch(`/campaigns/${id}/pause`,  { method: 'POST' });

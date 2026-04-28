@@ -108,10 +108,11 @@ export async function deleteCampaign(req, res) {
 }
 
 export async function addRecipients(req, res) {
-  const { contactIds = [] } = req.body ?? {};
+  const { contactIds = [], variant } = req.body ?? {};
   if (!Array.isArray(contactIds) || contactIds.length === 0) {
     return sendError(res, 'contactIds must be a non-empty array', 400);
   }
+  const resolvedVariant = variant === 'A' || variant === 'B' ? variant : null;
 
   try {
     const campaign = await campaignRepo.findTenantById(req.params.id);
@@ -126,7 +127,7 @@ export async function addRecipients(req, res) {
       return sendError(res, 'No valid contacts with email addresses found.', 400);
     }
 
-    const result = await campaignRepo.addRecipients(req.params.id, contacts);
+    const result = await campaignRepo.addRecipients(req.params.id, contacts, resolvedVariant);
     sendSuccess(res, { added: result.count, total_requested: contacts.length }, 201);
   } catch (err) {
     sendServerError(res, err, 'addRecipients');
@@ -134,8 +135,9 @@ export async function addRecipients(req, res) {
 }
 
 export async function addGroupRecipients(req, res) {
-  const { groupId } = req.body ?? {};
+  const { groupId, variant } = req.body ?? {};
   if (!groupId) return sendError(res, 'groupId is required', 400);
+  const resolvedVariant = variant === 'A' || variant === 'B' ? variant : null;
 
   try {
     const campaign = await campaignRepo.findTenantById(req.params.id);
@@ -150,7 +152,7 @@ export async function addGroupRecipients(req, res) {
       return sendError(res, 'No contacts with email addresses found in this group.', 400);
     }
 
-    const result = await campaignRepo.addRecipients(req.params.id, contacts);
+    const result = await campaignRepo.addRecipients(req.params.id, contacts, resolvedVariant);
     sendSuccess(res, { added: result.count, total_in_group: contacts.length }, 201);
   } catch (err) {
     sendServerError(res, err, 'addGroupRecipients');
@@ -158,7 +160,7 @@ export async function addGroupRecipients(req, res) {
 }
 
 export async function listRecipients(req, res) {
-  const { status, page = 1, limit = 50 } = req.query;
+  const { status, variant, page = 1, limit = 50 } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
 
   try {
@@ -168,6 +170,7 @@ export async function listRecipients(req, res) {
 
     const { rows, total } = await campaignRepo.findRecipients(req.params.id, {
       status,
+      variant: variant === 'A' || variant === 'B' ? variant : undefined,
       skip,
       limit: Number(limit),
     });
@@ -225,7 +228,9 @@ export async function sendCampaign(req, res) {
     // Render variant A HTML
     let htmlSnapshot = campaign.html_snapshot;
     if (!htmlSnapshot && campaign.template) {
-      htmlSnapshot = renderTemplate(campaign.template.json_structure, {});
+      htmlSnapshot = campaign.template.source_type === 'html'
+        ? campaign.template.html_output
+        : renderTemplate(campaign.template.json_structure, {});
     }
     if (!htmlSnapshot) {
       return sendError(res, 'No template or HTML content found for this campaign.', 400);
@@ -248,7 +253,11 @@ export async function sendCampaign(req, res) {
           const tB = await prisma.email_template.findUnique({ where: { id: campaign.ab_template_id_b } });
           if (tB) templateB = tB;
         }
-        if (templateB) htmlB = renderTemplate(templateB.json_structure, {});
+        if (templateB) {
+          htmlB = templateB.source_type === 'html'
+            ? templateB.html_output
+            : renderTemplate(templateB.json_structure, {});
+        }
       }
       updateData.ab_html_snapshot = htmlB || htmlSnapshot;
     }
@@ -316,6 +325,19 @@ function resendEventToStatus(event) {
  * Pull latest email statuses from Resend for every sent recipient and update the DB.
  * Works without webhooks — useful for local dev and as a manual refresh.
  */
+export async function getRecipientEvents(req, res) {
+  try {
+    const campaign = await campaignRepo.findTenantById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    if (!canAccessTenant(req, campaign.prophone_id)) return sendError(res, 'Forbidden', 403);
+
+    const events = await campaignRepo.getRecipientEvents(req.params.rid);
+    sendSuccess(res, events);
+  } catch (err) {
+    sendServerError(res, err, 'getRecipientEvents');
+  }
+}
+
 export async function syncCampaign(req, res) {
   try {
     const campaign = await campaignRepo.findTenantById(req.params.id);

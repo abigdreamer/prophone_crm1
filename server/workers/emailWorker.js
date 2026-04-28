@@ -53,6 +53,8 @@ async function processBatch() {
     const noHtml = [];
     const sendable = [];
 
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     for (const r of pending) {
       const isB    = r.ab_variant === 'B' && r.campaign.ab_subject_b;
       const subject = isB ? r.campaign.ab_subject_b : r.campaign.subject;
@@ -60,6 +62,15 @@ async function processBatch() {
 
       if (!rawHtml) {
         noHtml.push(r);
+        continue;
+      }
+
+      // Resend rejects blank or malformed addresses — fail fast instead of poisoning the whole batch
+      if (!r.email || !EMAIL_RE.test(r.email.trim())) {
+        await prisma.campaign_recipient.update({
+          where: { id: r.id },
+          data:  { status: 'failed', error_message: 'Invalid or missing email address', attempts: r.attempts + 1 },
+        });
         continue;
       }
 

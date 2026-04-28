@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSSE } from "../hooks/useSSE";
 import {
   Plus, Search, ChevronDown, LoaderCircle, Globe,
   CheckCircle2, Clock, AlertCircle, XCircle,
@@ -738,6 +739,18 @@ export default function PageDomains() {
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
+
+  // Real-time domain verification updates via Resend webhook → SSE
+  const handleSSE = useCallback((event, data) => {
+    if (event === "domain_update") {
+      setDomains(prev => prev.map(d =>
+        d.id === data.domain_id
+          ? { ...d, status: data.status, verified_at: new Date().toISOString() }
+          : d
+      ));
+    }
+  }, []);
+  useSSE(handleSSE);
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });

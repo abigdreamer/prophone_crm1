@@ -27,3 +27,7 @@ export async function updateDomain(id, data) {
 export async function removeDomain(id) {
   return prisma.domain.delete({ where: { id } });
 }
+
+export async function findByResendId(resendDomainId) {
+  return prisma.domain.findFirst({ where: { resend_domain_id: resendDomainId } });
+}

@@ -10,16 +10,26 @@ import domainRoutes        from './routes/domains.routes.js';
 import groupRoutes         from './routes/groups.routes.js';
 import webhookRoutes       from './routes/webhooks.routes.js';
 import trackingRoutes      from './routes/tracking.routes.js';
+import sseRoutes           from './routes/sse.routes.js';
 import { startEmailWorker } from './workers/emailWorker.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    version: "v1",
+    message: "Welcome to Prophone CRM API"
+  });
+});
 
 app.use(cors());
 // Webhook route must receive raw body — mount BEFORE express.json()
 app.use('/api/webhooks', webhookRoutes);
 // Tracking routes — no auth required (email clients call these)
 app.use('/api/track', trackingRoutes);
+// SSE — long-lived connections, no body needed
+app.use('/api/sse', sseRoutes);
 app.use(express.json({ limit: '15mb' }));
 
 app.use('/api',                 authRoutes);

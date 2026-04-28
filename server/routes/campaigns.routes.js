@@ -14,6 +14,7 @@ import {
   pauseCampaign,
   resumeCampaign,
   syncCampaign,
+  getRecipientEvents,
 } from '../controllers/campaigns.controller.js';
 
 const router = Router();
@@ -28,7 +29,8 @@ router.put('/:id', updateCampaign);
 router.delete('/:id', deleteCampaign);
 
 // Recipients management
-router.get('/:id/recipients',          listRecipients);
+router.get('/:id/recipients',                           listRecipients);
+router.get('/:id/recipients/:rid/events',               getRecipientEvents);
 router.post('/:id/recipients',         addRecipients);
 router.post('/:id/recipients/group',   addGroupRecipients);
 router.delete('/:id/recipients',       removeAllRecipients);

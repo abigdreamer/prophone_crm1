@@ -35,7 +35,7 @@ export async function getTemplate(req, res) {
 }
 
 export async function createTemplate(req, res) {
-  const { name, subject, json_structure, html_output, status = 'draft' } = req.body ?? {};
+  const { name, subject, source_type = 'builder', json_structure, html_output, status = 'draft' } = req.body ?? {};
   const tid = tenantId(req);
   if (!tid) return sendError(res, 'prophone_id is required to create a template', 400);
   if (!name) return sendError(res, 'name is required', 400);
@@ -45,6 +45,7 @@ export async function createTemplate(req, res) {
       prophone_id:    tid,
       name,
       subject:        subject        || '',
+      source_type,
       json_structure: json_structure ?? { version: 1, blocks: [] },
       html_output:    html_output    || '',
       status,
@@ -65,6 +66,7 @@ export async function updateTemplate(req, res) {
     const data    = {};
     if (updates.name           !== undefined) data.name           = updates.name;
     if (updates.subject        !== undefined) data.subject        = updates.subject;
+    if (updates.source_type    !== undefined) data.source_type    = updates.source_type;
     if (updates.json_structure !== undefined) data.json_structure = updates.json_structure;
     if (updates.html_output    !== undefined) data.html_output    = updates.html_output;
     if (updates.status         !== undefined) data.status         = updates.status;

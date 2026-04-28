@@ -6,7 +6,7 @@ import {
   Folder, AlertCircle, Mail, AlignCenter, AlignRight as AlignRightIcon,
   LayoutTemplate, Layers, Monitor, Smartphone, Tablet, TriangleAlert,
   PanelLeft, PanelRight, PanelLeftOpen, PanelRightOpen, LoaderCircle,
-  Variable,
+  Variable, Upload, Code2,
 } from "lucide-react";
 import * as store from "../lib/templateStore";
 import { jsonToHtml } from "../lib/jsonToHtml";
@@ -930,11 +930,19 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   const [verifiedDomains, setVerifiedDomains] = useState([]);
   const [fromOpen,       setFromOpen]       = useState(false);
   const [subjectTagOpen, setSubjectTagOpen] = useState(false);
-  const [toast,    setToast]    = useState(null);
-  const toastTimer   = useRef(null);
-  const fromRef      = useRef(null);
-  const subjectRef   = useRef(null);
+  const [toast,         setToast]         = useState(null);
+  const [mode,          setMode]          = useState(null);       // null=picker, "builder", "html"
+  const [rawHtml,       setRawHtml]       = useState("");
+  const [showHtmlMerge, setShowHtmlMerge] = useState(false);
+  const toastTimer    = useRef(null);
+  const fromRef       = useRef(null);
+  const subjectRef    = useRef(null);
   const subjectTagRef = useRef(null);
+  const htmlFileRef   = useRef(null);
+  const htmlTextaRef  = useRef(null);
+  const htmlMergeRef  = useRef(null);
+  const rawHtmlRef    = useRef("");
+  const modeRef       = useRef(null);
 
   function showToast(msg, type = "success") {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -944,9 +952,10 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
 
   const isDirtyRef         = useRef(false);
   const saveStateRef       = useRef({});
-  const lastSavedTidRef    = useRef(null);   // sync capture after save to avoid race with setTid
-  const lastSavedStatusRef = useRef(null);   // tracks explicitly saved status (prevents draft downgrade)
-  const initializedRef     = useRef(false);  // true once initial load/render is settled
+  const lastSavedTidRef    = useRef(null);
+  const lastSavedStatusRef = useRef(null);
+  const initializedRef     = useRef(false);
+  const skipCleanupSaveRef = useRef(false);  // set before onBack() to prevent duplicate auto-save
 
   const { width: winWidth } = useWindowSize();
   const isMobile = winWidth < 640;
@@ -975,6 +984,17 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   useEffect(() => {
     saveStateRef.current = { json, name, subject, from, tid };
   }, [json, name, subject, from, tid]);
+  useEffect(() => { rawHtmlRef.current = rawHtml; }, [rawHtml]);
+  useEffect(() => { modeRef.current    = mode;    }, [mode]);
+
+  // Close HTML merge-tags dropdown on outside click
+  useEffect(() => {
+    function handle(e) {
+      if (htmlMergeRef.current && !htmlMergeRef.current.contains(e.target)) setShowHtmlMerge(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
 
   // Load template
   useEffect(() => {
@@ -985,24 +1005,28 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
         if (t) {
           setName(t.name || "Untitled");
           setSubject(t.subject || "");
-          setFrom(t.json_structure?.from || "");
-          setJson(t.json_structure || makeDefaultJson());
           setTid(t.id);
           lastSavedTidRef.current    = t.id;
           lastSavedStatusRef.current = t.status || "draft";
+          if (t.source_type === "html") {
+            setRawHtml(t.html_output || "");
+            rawHtmlRef.current = t.html_output || "";
+            setFrom(t.json_structure?.from || "");
+            setMode("html");
+          } else {
+            setFrom(t.json_structure?.from || "");
+            setJson(t.json_structure || makeDefaultJson());
+            setMode("builder");
+          }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [initId]);
 
-  // Mark dirty only after initial setup settles (skip the first qualifying fire so
-  // opening a new blank builder and immediately going back never creates a template)
+  // Mark dirty only after initial setup settles
   useEffect(() => {
     if (!initializedRef.current) {
-      // For new templates loading=false from the start; for existing, loading
-      // becomes false once the load batch completes. Either way, the first time
-      // we reach here with loading=false we just mark initialized and skip.
       if (!loading) initializedRef.current = true;
       return;
     }
@@ -1010,25 +1034,41 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [json, name, subject, from]);
 
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    isDirtyRef.current = true;
+  }, [rawHtml]);
+
   // Auto-save as draft on unmount (handles route navigation, browser back, etc.)
   useEffect(() => {
     return () => {
-      if (!isDirtyRef.current) return;
+      if (skipCleanupSaveRef.current)                 return; // explicit save already happened
+      // Never run while still on the mode picker, and never after a successful publish
+      if (modeRef.current === null)                   return;
       if (lastSavedStatusRef.current === "published") return;
-      const { json: j, name: n, subject: s, from: f } = saveStateRef.current;
+      if (!isDirtyRef.current)                        return;
+
+      const { name: n, subject: s, from: f } = saveStateRef.current;
       const id = lastSavedTidRef.current || saveStateRef.current.tid;
-      // Never auto-create an empty nameless template (guards against React StrictMode
-      // double-invoke and the case where the user opens the builder and immediately leaves)
-      const hasContent = (j?.blocks?.length > 0) || (n && n.trim() && n.trim() !== "Untitled");
-      if (!id && !hasContent) return;
+
+      if (modeRef.current === "html") {
+        const htmlContent = rawHtmlRef.current;
+        if (!id && !htmlContent?.trim()) return;
+        const payload = { name: n || "Untitled", subject: s, source_type: "html", html_output: htmlContent, json_structure: { version: 1, blocks: [], from: f }, status: "draft" };
+        if (id) store.updateTemplate(id, payload).catch(() => {});
+        else    store.createTemplate(payload).catch(() => {});
+        return;
+      }
+
+      const { json: j } = saveStateRef.current;
+      // Don't auto-create a template for a never-touched "Untitled" blank slate
+      const userNamedIt = n && n.trim() && n.trim() !== "Untitled";
+      if (!id && !userNamedIt) return;
       const jsonWithMeta = { ...j, from: f };
       const html = jsonToHtml(jsonWithMeta);
       const payload = { name: n || "Untitled", subject: s, json_structure: jsonWithMeta, html_output: html, status: "draft" };
-      if (id) {
-        store.updateTemplate(id, payload).catch(() => {});
-      } else {
-        store.createTemplate(payload).catch(() => {});
-      }
+      if (id) store.updateTemplate(id, payload).catch(() => {});
+      else    store.createTemplate(payload).catch(() => {});
     };
   }, []); // intentionally empty — runs only on unmount
 
@@ -1081,9 +1121,14 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   async function save(status = "draft") {
     setSaving(true);
     try {
-      const jsonWithMeta = { ...json, from };
-      const html = jsonToHtml(jsonWithMeta);
-      const payload = { name: name || "Untitled", subject, json_structure: jsonWithMeta, html_output: html, status };
+      let payload;
+      if (mode === "html") {
+        payload = { name: name || "Untitled", subject, source_type: "html", html_output: rawHtml, json_structure: { version: 1, blocks: [], from }, status };
+      } else {
+        const jsonWithMeta = { ...json, from };
+        const html = jsonToHtml(jsonWithMeta);
+        payload = { name: name || "Untitled", subject, json_structure: jsonWithMeta, html_output: html, status };
+      }
       let result;
       if (tid) {
         result = await store.updateTemplate(tid, payload);
@@ -1094,11 +1139,7 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       lastSavedTidRef.current    = result.id;
       lastSavedStatusRef.current = status;
       isDirtyRef.current = false;
-      if (status === "published") {
-        showToast("Template published successfully!", "success");
-      } else {
-        showToast("Draft saved.", "success");
-      }
+      showToast(status === "published" ? "Template published successfully!" : "Draft saved.", "success");
     } catch (err) {
       showToast(err?.message || "Couldn't save — check your connection.", "error");
     } finally {
@@ -1117,16 +1158,39 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       );
       return;
     }
+    skipCleanupSaveRef.current = true;
     await save("published");
     onBack();
   }
 
   async function handleBack() {
-    const hasContent = (json.blocks?.length > 0) || (name && name.trim() && name.trim() !== "Untitled");
+    const hasContent = mode === "html"
+      ? rawHtml.trim().length > 0
+      : (json.blocks?.length > 0) || (name && name.trim() && name.trim() !== "Untitled");
     if (isDirtyRef.current && lastSavedStatusRef.current !== "published" && (tid || hasContent)) {
+      skipCleanupSaveRef.current = true;
       await save("draft");
     }
     onBack();
+  }
+
+  function handleHtmlFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.match(/\.(html?|htm)$/i)) { showToast("Please select an .html file.", "error"); return; }
+    const reader = new FileReader();
+    reader.onload = evt => { setRawHtml(evt.target.result || ""); isDirtyRef.current = true; showToast(`Loaded "${file.name}"`); };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function insertHtmlTag(key) {
+    const el = htmlTextaRef.current;
+    if (!el) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    const tag = `{{${key}}}`;
+    setRawHtml(prev => prev.slice(0, start) + tag + prev.slice(end));
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(start + tag.length, start + tag.length); });
   }
 
   function exportHtml() {
@@ -1144,6 +1208,56 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   const onDragOver  = (e, i) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(i); };
   const onDrop      = (e, i) => { e.preventDefault(); if (dragSrc !== null) moveBlock(dragSrc, i); setDragSrc(null); setDragOver(null); };
   const onDragEnd   = ()     => { setDragSrc(null); setDragOver(null); };
+
+  // ── Mode picker (new templates only) ─────────────────────────────────────────
+  if (!loading && mode === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: W.bg, fontFamily: "'Inter','DM Sans',system-ui,sans-serif" }}>
+        <style>{`@keyframes _spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+        {/* Mini toolbar */}
+        <div style={{ height: 54, flexShrink: 0, background: TB.bg, borderBottom: `1px solid ${TB.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", padding: "0 14px", gap: 6 }}>
+          <button onClick={() => onBack()} style={{ background: "none", border: "none", padding: "5px 4px", cursor: "pointer", color: TB.muted, fontFamily: "inherit", fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}
+            onMouseEnter={e => e.currentTarget.style.color = TB.text}
+            onMouseLeave={e => e.currentTarget.style.color = TB.muted}>
+            <ArrowLeft size={15} /> Templates
+          </button>
+          <div style={{ width: 1, height: 22, background: TB.border, margin: "0 4px" }} />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Template name"
+            style={{ border: "1px solid transparent", borderRadius: 8, padding: "5px 9px", fontSize: 13, fontWeight: 700, color: TB.text, background: "transparent", outline: "none", fontFamily: "inherit" }}
+            onFocus={e => { e.currentTarget.style.background = TB.input; e.currentTarget.style.borderColor = TB.border; }}
+            onBlur={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
+          />
+        </div>
+        {/* Picker cards */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: W.text, marginBottom: 4 }}>Choose how to create</div>
+          <div style={{ fontSize: 14, color: W.muted, marginBottom: 28 }}>Start with the visual builder or write / import HTML directly</div>
+          <div style={{ display: "flex", gap: 20 }}>
+            {[
+              { m: "builder", Icon: LayoutTemplate, iconBg: W.accentLo, iconColor: W.accent, label: "Visual Builder", desc: "Drag & drop blocks to design your email" },
+              { m: "html",    Icon: Code2,           iconBg: "#0d1117",  iconColor: "#79c0ff", label: "HTML Code",       desc: "Import a .html file or write raw HTML" },
+            ].map(({ m, Icon, iconBg, iconColor, label, desc }) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{ width: 230, padding: "32px 24px", background: W.surface, border: `2px solid ${W.border}`, borderRadius: 16, cursor: "pointer", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14, fontFamily: "inherit", transition: "all 0.15s", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = W.accent; e.currentTarget.style.boxShadow = "0 4px 20px rgba(99,102,241,0.18)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = W.border; e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.06)"; }}
+              >
+                <div style={{ width: 52, height: 52, background: iconBg, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Icon size={24} color={iconColor} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: W.text, marginBottom: 5 }}>{label}</div>
+                  <div style={{ fontSize: 12, color: W.muted, lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -1221,10 +1335,79 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       style={{ flex: 1, display: isMobile && mobileTab !== "canvas" ? "none" : undefined, overflowY: "auto", minHeight: 0, background: W.bg, padding: isMobile ? "16px 12px" : "32px 20px", boxSizing: "border-box" }}
       onClick={e => { if (e.target === e.currentTarget) setSelectedId(null); }}
     >
-      <div
-        style={{ width: Math.min(json.containerWidth || 600, isMobile ? winWidth - 24 : 700), maxWidth: "100%", margin: "0 auto", background: json.containerBg || "#fff", borderRadius: 8, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", overflow: "hidden", minHeight: 200 }}
-        onClick={e => { if (e.target === e.currentTarget) setSelectedId(null); }}
-      >
+      <div style={{ width: Math.min(json.containerWidth || 600, isMobile ? winWidth - 24 : 700), maxWidth: "100%", margin: "0 auto", boxShadow: "0 4px 24px rgba(0,0,0,0.08)", borderRadius: 10 }}>
+
+        {/* ── Email client header ── */}
+        <div style={{ background: "#fff", border: "1px solid " + W.border, borderBottom: "none", borderRadius: "10px 10px 0 0", padding: "0 0" }}>
+          {/* From row */}
+          <div style={{ display: "flex", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid " + W.border, gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: W.muted, minWidth: 54, textTransform: "uppercase", letterSpacing: "0.04em" }}>From</span>
+            <div ref={fromRef} style={{ flex: 1, position: "relative" }}>
+              <div
+                onClick={() => setFromOpen(p => !p)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", borderRadius: 6, border: "1px solid " + (fromOpen ? W.accent : "transparent"), background: fromOpen ? W.accentLo : "transparent", cursor: "pointer", fontSize: 13, color: from ? W.text : W.muted, fontFamily: "inherit", transition: "all 0.12s" }}
+              >
+                <span>{from || "Select sending domain…"}</span>
+                <ChevronDown size={12} color={W.muted} />
+              </div>
+              {fromOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: W.surface, border: "1px solid " + W.border, borderRadius: 8, zIndex: 300, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
+                  {verifiedDomains.length === 0 ? (
+                    <div style={{ padding: "10px 14px", fontSize: 12, color: W.muted, fontStyle: "italic" }}>No verified domains — verify a domain first.</div>
+                  ) : verifiedDomains.map(d => {
+                    const email = d.from_email || `noreply@${d.domain}`;
+                    return (
+                      <div key={d.id} onClick={() => { setFrom(email); setFromOpen(false); }}
+                        style={{ padding: "9px 14px", fontSize: 13, color: W.text, cursor: "pointer", background: from === email ? W.accentLo : "transparent" }}
+                        onMouseEnter={e => { if (from !== email) e.currentTarget.style.background = W.panel; }}
+                        onMouseLeave={e => { if (from !== email) e.currentTarget.style.background = "transparent"; }}>
+                        {email}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Subject row */}
+          <div style={{ display: "flex", alignItems: "center", padding: "10px 16px", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: W.muted, minWidth: 54, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subject</span>
+            <input
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              placeholder="Enter subject line…"
+              style={{ flex: 1, border: "1px solid transparent", borderRadius: 6, padding: "5px 10px", fontSize: 13, color: W.text, background: "transparent", outline: "none", fontFamily: "inherit" }}
+              onFocus={e => { e.currentTarget.style.borderColor = W.accent; e.currentTarget.style.background = W.accentLo; }}
+              onBlur={e => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "transparent"; }}
+            />
+            <div ref={subjectTagRef} style={{ position: "relative", flexShrink: 0 }}>
+              <button onClick={() => setSubjectTagOpen(p => !p)}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid " + W.border, background: subjectTagOpen ? W.accentLo : W.panel, color: W.muted, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit" }}>
+                <Variable size={10} /> Tags
+              </button>
+              {subjectTagOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, background: W.surface, border: "1px solid " + W.border, borderRadius: 8, zIndex: 300, minWidth: 180, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
+                  <div style={{ padding: "6px 12px", borderBottom: "1px solid " + W.border, fontSize: 10, fontWeight: 700, color: W.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Insert tag</div>
+                  {MERGE_TAGS.map(tag => (
+                    <div key={tag.key} onClick={() => { setSubject(s => s + `{{${tag.key}}}`); setSubjectTagOpen(false); }}
+                      style={{ padding: "7px 12px", fontSize: 12, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                      onMouseEnter={e => e.currentTarget.style.background = W.panel}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{ color: W.accent, fontFamily: "monospace" }}>{`{{${tag.key}}}`}</span>
+                      <span style={{ fontSize: 10, color: W.muted }}>{tag.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Email body ── */}
+        <div
+          style={{ background: json.containerBg || "#fff", borderRadius: "0 0 10px 10px", border: "1px solid " + W.border, borderTop: "none", overflow: "hidden", minHeight: 200 }}
+          onClick={e => { if (e.target === e.currentTarget) setSelectedId(null); }}
+        >
         {json.blocks.length === 0 && (
           <div style={{ padding: "64px 32px", textAlign: "center", color: W.muted, fontSize: 13 }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}><Mail size={36} color={W.muted} /></div>
@@ -1279,6 +1462,7 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
             </div>
           );
         })}
+        </div>
       </div>
       {!isMobile && (
         <div style={{ marginTop: 16, fontSize: 10, color: W.muted, textAlign: "center" }}>
@@ -1348,11 +1532,11 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
         <button
           onClick={handleBack}
           disabled={saving}
-          style={{ background: TB.hover, border: `1px solid ${TB.border}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: saving ? "wait" : "pointer", color: TB.sub, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: saving ? 0.6 : 1, transition: "all 0.12s" }}
-          onMouseEnter={e => { if (!saving) { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = TB.text; } }}
-          onMouseLeave={e => { e.currentTarget.style.background = TB.hover; e.currentTarget.style.color = TB.sub; }}
+          style={{ background: "none", border: "none", padding: "5px 4px", cursor: saving ? "wait" : "pointer", color: TB.muted, fontFamily: "inherit", fontSize: 13, display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: saving ? 0.6 : 1 }}
+          onMouseEnter={e => { if (!saving) e.currentTarget.style.color = TB.text; }}
+          onMouseLeave={e => { e.currentTarget.style.color = TB.muted; }}
         >
-          <ArrowLeft size={13} />
+          <ArrowLeft size={15} />
           {!isMobile && "Templates"}
         </button>
 
@@ -1368,138 +1552,6 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
           onBlur={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
         />
 
-        {!isMobile && <>
-          <div style={{ width: 1, height: 22, background: TB.border, flexShrink: 0, margin: "0 4px" }} />
-
-          {/* Subject + merge tag picker */}
-          <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 80, maxWidth: 260, position: "relative" }}>
-            <input
-              ref={subjectRef}
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              placeholder="Email subject…"
-              style={{ flex: 1, border: "1px solid transparent", borderRadius: 8, padding: "5px 30px 5px 9px", fontSize: 12, color: TB.sub, background: "transparent", outline: "none", fontFamily: "inherit", transition: "all 0.12s", width: "100%" }}
-              onFocus={e => { e.currentTarget.style.background = TB.input; e.currentTarget.style.borderColor = TB.border; e.currentTarget.style.color = TB.text; }}
-              onBlur={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.color = TB.sub; }}
-            />
-            <div ref={subjectTagRef} style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}>
-              <button
-                title="Insert merge tag"
-                onClick={() => setSubjectTagOpen(o => !o)}
-                style={{ padding: "2px 5px", fontSize: 10, borderRadius: 4, border: "1px solid #c7d2fe", background: subjectTagOpen ? "#e0e7ff" : "#eef2ff", color: "#4f46e5", cursor: "pointer", fontFamily: "monospace", lineHeight: 1.6 }}
-              >{"{}"}</button>
-              {subjectTagOpen && (
-                <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,0.12)", zIndex: 300, padding: "8px", minWidth: 220 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Merge Tags</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {MERGE_TAGS.map(tag => (
-                      <button
-                        key={tag.key}
-                        onClick={() => {
-                          const el = subjectRef.current;
-                          if (!el) return;
-                          const s = el.selectionStart ?? subject.length;
-                          const e2 = el.selectionEnd ?? subject.length;
-                          const next = subject.slice(0, s) + `{{${tag.key}}}` + subject.slice(e2);
-                          setSubject(next);
-                          setSubjectTagOpen(false);
-                          requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s + tag.key.length + 4, s + tag.key.length + 4); });
-                        }}
-                        style={{ padding: "2px 8px", fontSize: 10, borderRadius: 4, cursor: "pointer", background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4f46e5", fontFamily: "monospace", lineHeight: 1.8 }}
-                      >{`{{${tag.key}}}`}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ width: 1, height: 22, background: TB.border, flexShrink: 0, margin: "0 4px" }} />
-
-          {/* From — verified domain picker */}
-          {(() => {
-            const isVerified = verifiedDomains.some(d => (d.from_email || `noreply@${d.domain}`) === from);
-            const hasFrom    = !!from;
-            const showWarn   = !isVerified;
-
-            return (
-              <div ref={fromRef} style={{ position: "relative", flexShrink: 0, minWidth: 180, maxWidth: 240 }}>
-                <button
-                  onClick={() => setFromOpen(o => !o)}
-                  style={{
-                    width: "100%", background: fromOpen ? TB.input : "transparent",
-                    border: `1px solid ${fromOpen ? TB.border : "transparent"}`,
-                    borderRadius: 8, padding: "5px 9px 5px 8px", fontSize: 12,
-                    color: hasFrom ? TB.text : TB.muted,
-                    cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                    display: "flex", alignItems: "center", gap: 6, transition: "all 0.12s",
-                  }}
-                  onMouseEnter={e => { if (!fromOpen) { e.currentTarget.style.background = TB.input; e.currentTarget.style.borderColor = TB.border; } }}
-                  onMouseLeave={e => { if (!fromOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; } }}
-                >
-                  {/* Status dot / warning flag */}
-                  {hasFrom && isVerified && (
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
-                  )}
-                  {showWarn && (
-                    <TriangleAlert size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
-                  )}
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {from || "From: select domain"}
-                  </span>
-                  <ChevronDown size={11} color={TB.muted} style={{ flexShrink: 0, transform: fromOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
-                </button>
-
-                {/* Unverified warning tag */}
-                {hasFrom && !isVerified && (
-                  <div style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, fontSize: 10, fontWeight: 600, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 5, padding: "2px 7px", whiteSpace: "nowrap", zIndex: 999 }}>
-                    Domain not verified — Publish blocked
-                  </div>
-                )}
-
-                {fromOpen && (
-                  <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 260, background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, zIndex: 1000, boxShadow: "0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)", padding: "4px 0", overflow: "hidden" }}>
-                    {/* Header */}
-                    <div style={{ padding: "8px 12px 7px", borderBottom: "1px solid #f1f5f9" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", letterSpacing: "0.01em" }}>Sending domain</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>Only verified domains</div>
-                    </div>
-
-                    {verifiedDomains.length === 0 ? (
-                      <div style={{ padding: "14px 12px", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                        <TriangleAlert size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", marginBottom: 3 }}>No verified domains</div>
-                          <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>Go to <strong>Domains</strong> in the navbar to add and verify a domain.</div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ padding: "4px 0" }}>
-                        {verifiedDomains.map(d => {
-                          const email  = d.from_email || `noreply@${d.domain}`;
-                          const active = from === email;
-                          return (
-                            <button
-                              key={d.id}
-                              onClick={() => { setFrom(email); setFromOpen(false); }}
-                              style={{ width: "100%", background: active ? "#eef2ff" : "transparent", border: "none", padding: "8px 12px", fontSize: 12, fontWeight: active ? 600 : 400, color: active ? "#4f46e5" : "#0f172a", cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 8, transition: "background 0.1s", boxSizing: "border-box" }}
-                              onMouseEnter={e => { if (!active) e.currentTarget.style.background = "#f8fafc"; }}
-                              onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
-                            >
-                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", flexShrink: 0, boxShadow: "0 0 4px rgba(34,197,94,0.5)" }} />
-                              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{email}</span>
-                              {active && <Check size={12} color="#4f46e5" style={{ flexShrink: 0 }} />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </>}
 
         {/* Spacer */}
         <div style={{ marginLeft: "auto" }} />
@@ -1508,7 +1560,7 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
           {!isMobile && (
             <button
-              onClick={() => { setPreviewHtml({ html: jsonToHtml({ ...json, from }), from, subject, name }); }}
+              onClick={() => { setPreviewHtml({ html: mode === "html" ? rawHtml : jsonToHtml({ ...json, from }), from, subject, name }); }}
               style={{ background: TB.hover, border: `1px solid ${TB.border}`, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", color: TB.sub, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, transition: "all 0.12s" }}
               onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = TB.text; }}
               onMouseLeave={e => { e.currentTarget.style.background = TB.hover; e.currentTarget.style.color = TB.sub; }}
@@ -1545,11 +1597,100 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
       <Toast toast={toast} />
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <style>{`@keyframes _spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} @keyframes tbToastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <style>{`@keyframes _spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} @keyframes tbToastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}} textarea:focus{outline:none}`}</style>
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {palettePanel}
-        {canvasPanel}
-        {propsPanel}
+        {mode === "html" ? (<>
+          {/* Hidden file input */}
+          <input ref={htmlFileRef} type="file" accept=".html,.htm" onChange={handleHtmlFileChange} style={{ display: "none" }} />
+          {/* Left: code editor */}
+          <div style={{ flex: "0 0 50%", display: "flex", flexDirection: "column", borderRight: `1px solid ${W.border}`, background: "#0d1117" }}>
+            <div style={{ flexShrink: 0, background: "#161b22", borderBottom: "1px solid #30363d", padding: "7px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+              <Code2 size={12} color="#8b949e" />
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#8b949e", flex: 1 }}>HTML Editor</span>
+              <button onClick={() => htmlFileRef.current?.click()}
+                style={{ background: "transparent", border: "1px solid #30363d", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#8b949e", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
+                <Upload size={10} /> Import .html
+              </button>
+              <div ref={htmlMergeRef} style={{ position: "relative" }}>
+                <button onClick={() => setShowHtmlMerge(p => !p)}
+                  style={{ background: "transparent", border: "1px solid #30363d", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: "#8b949e", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
+                  <Variable size={10} /> Tags
+                </button>
+                {showHtmlMerge && (
+                  <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 10, zIndex: 300, minWidth: 200, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                    <div style={{ padding: "7px 12px", borderBottom: "1px solid #30363d", fontSize: 10, fontWeight: 700, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.06em" }}>Click to insert</div>
+                    {MERGE_TAGS.map(tag => (
+                      <button key={tag.key} onClick={() => { insertHtmlTag(tag.key); setShowHtmlMerge(false); }}
+                        style={{ width: "100%", background: "transparent", border: "none", padding: "7px 12px", fontSize: 12, color: "#e6edf3", cursor: "pointer", fontFamily: "monospace", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#1f2937"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                        <span style={{ color: "#79c0ff" }}>{`{{${tag.key}}}`}</span>
+                        <span style={{ fontSize: 10, color: "#8b949e" }}>{tag.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <textarea
+              ref={htmlTextaRef}
+              value={rawHtml}
+              onChange={e => setRawHtml(e.target.value)}
+              spellCheck={false}
+              style={{ flex: 1, resize: "none", border: "none", background: "#0d1117", color: "#e6edf3", fontFamily: "'JetBrains Mono','Fira Code',Consolas,'Courier New',monospace", fontSize: 12.5, lineHeight: 1.75, padding: "14px 18px", tabSize: 2 }}
+            />
+          </div>
+          {/* Right: live preview */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", background: W.bg }}>
+            <div style={{ flexShrink: 0, background: W.surface, borderBottom: `1px solid ${W.border}`, padding: "7px 12px", display: "flex", alignItems: "center", gap: 7 }}>
+              <Eye size={12} color={W.muted} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: W.sub }}>Live Preview</span>
+            </div>
+            {/* From / Subject header */}
+            <div style={{ flexShrink: 0, background: W.surface, borderBottom: `1px solid ${W.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", padding: "8px 14px", borderBottom: `1px solid ${W.border}`, gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: W.muted, minWidth: 54, textTransform: "uppercase", letterSpacing: "0.04em" }}>From</span>
+                <div ref={fromRef} style={{ flex: 1, position: "relative" }}>
+                  <div onClick={() => setFromOpen(p => !p)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", borderRadius: 6, border: `1px solid ${fromOpen ? W.accent : "transparent"}`, background: fromOpen ? W.accentLo : "transparent", cursor: "pointer", fontSize: 13, color: from ? W.text : W.muted, fontFamily: "inherit" }}>
+                    <span>{from || "Select sending domain…"}</span>
+                    <ChevronDown size={12} color={W.muted} />
+                  </div>
+                  {fromOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: W.surface, border: `1px solid ${W.border}`, borderRadius: 8, zIndex: 300, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>
+                      {verifiedDomains.length === 0 ? (
+                        <div style={{ padding: "10px 14px", fontSize: 12, color: W.muted, fontStyle: "italic" }}>No verified domains — verify a domain first.</div>
+                      ) : verifiedDomains.map(d => {
+                        const email = d.from_email || `noreply@${d.domain}`;
+                        return (
+                          <div key={d.id} onClick={() => { setFrom(email); setFromOpen(false); }}
+                            style={{ padding: "9px 14px", fontSize: 13, color: W.text, cursor: "pointer", background: from === email ? W.accentLo : "transparent" }}
+                            onMouseEnter={e => { if (from !== email) e.currentTarget.style.background = W.panel; }}
+                            onMouseLeave={e => { if (from !== email) e.currentTarget.style.background = "transparent"; }}>
+                            {email}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", padding: "8px 14px", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: W.muted, minWidth: 54, textTransform: "uppercase", letterSpacing: "0.04em" }}>Subject</span>
+                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Enter subject line…"
+                  style={{ flex: 1, border: "1px solid transparent", borderRadius: 6, padding: "4px 10px", fontSize: 13, color: W.text, background: "transparent", outline: "none", fontFamily: "inherit" }}
+                  onFocus={e => { e.currentTarget.style.borderColor = W.accent; e.currentTarget.style.background = W.accentLo; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "transparent"; e.currentTarget.style.background = "transparent"; }}
+                />
+              </div>
+            </div>
+            <iframe srcDoc={rawHtml} sandbox="allow-same-origin" style={{ flex: 1, border: "none", width: "100%", background: "#ffffff" }} title="Email preview" />
+          </div>
+        </>) : (<>
+          {palettePanel}
+          {canvasPanel}
+          {propsPanel}
+        </>)}
       </div>
 
       {/* ── Mobile tab bar ─────────────────────────────────────────────────── */}

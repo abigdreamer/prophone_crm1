@@ -4,8 +4,8 @@ export async function findMany(where) {
   return prisma.email_template.findMany({
     where,
     select: {
-      id: true, name: true, subject: true, json_structure: true,
-      status: true, prophone_id: true, created_at: true, updated_at: true,
+      id: true, name: true, subject: true, source_type: true, json_structure: true,
+      html_output: true, status: true, prophone_id: true, created_at: true, updated_at: true,
     },
     orderBy: { updated_at: 'desc' },
   });
