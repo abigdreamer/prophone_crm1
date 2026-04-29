@@ -151,6 +151,37 @@ export async function patchDomainTracking(req, res) {
   }
 }
 
+export async function configureTrackingSubdomain(req, res) {
+  try {
+    const row = await domainRepo.findById(req.params.id);
+    if (!row) return sendError(res, 'Domain not found', 404);
+    if (!canAccessTenant(req, row.prophone_id)) return sendError(res, 'Forbidden', 403);
+    if (!row.resend_domain_id) return sendError(res, 'Domain is not registered with Resend', 400);
+
+    const { subdomain, click_tracking, open_tracking } = req.body ?? {};
+
+    if (subdomain !== undefined && subdomain !== '' && !/^[a-z0-9-]+$/.test(subdomain)) {
+      return sendError(res, 'Subdomain must contain only lowercase letters, numbers, and hyphens', 400);
+    }
+
+    const result = await domainSvc.configureTrackingSubdomain(row.resend_domain_id, {
+      subdomain:    subdomain ?? row.tracking_subdomain ?? '',
+      clickTracking: click_tracking !== undefined ? Boolean(click_tracking) : row.click_tracking,
+      openTracking:  open_tracking  !== undefined ? Boolean(open_tracking)  : row.open_tracking,
+    });
+
+    const data = { tracking_subdomain: result.tracking_subdomain };
+    if (result.dns_records)  data.dns_records  = result.dns_records;
+    if (result.open_tracking  !== undefined) data.open_tracking  = result.open_tracking;
+    if (result.click_tracking !== undefined) data.click_tracking = result.click_tracking;
+
+    const updated = await domainRepo.updateDomain(req.params.id, data);
+    sendSuccess(res, updated);
+  } catch (err) {
+    sendServerError(res, err, 'configureTrackingSubdomain');
+  }
+}
+
 export async function deleteDomain(req, res) {
   try {
     const row = await domainRepo.findById(req.params.id);

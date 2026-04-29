@@ -118,6 +118,32 @@ export async function updateDomainTracking(resendDomainId, { openTracking, click
 }
 
 /**
+ * Configure a custom tracking subdomain on Resend (e.g. "links" → links.yourdomain.com).
+ * Also sets click/open tracking flags in the same call.
+ * Returns updated dns_records (including the new Tracking CNAME) and the resolved subdomain.
+ */
+export async function configureTrackingSubdomain(resendDomainId, { subdomain, clickTracking, openTracking }) {
+  const resend = getResendClient();
+
+  const { error } = await resend.domains.update({
+    id:               resendDomainId,
+    trackingSubdomain: subdomain || null,
+    clickTracking,
+    openTracking,
+  });
+  if (error) throw new Error(error.message || 'Failed to configure tracking subdomain on Resend');
+
+  // Fetch the updated domain to get the new Tracking CNAME record
+  const { data: full } = await resend.domains.get(resendDomainId).catch(() => ({ data: null }));
+  return {
+    dns_records:       full?.records     ?? null,
+    tracking_subdomain: full?.tracking_subdomain ?? subdomain,
+    open_tracking:     full?.open_tracking  ?? openTracking,
+    click_tracking:    full?.click_tracking ?? clickTracking,
+  };
+}
+
+/**
  * Remove a domain from Resend. Falls back to name-lookup if no ID is known.
  * Logs a warning on failure instead of throwing (deletion should not block the caller).
  */

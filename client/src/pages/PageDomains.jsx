@@ -6,7 +6,7 @@ import {
   Trash2, Eye, RefreshCw, Copy, Check, X,
   ShieldCheck, Info, MapPin, Calendar, Settings,
   FileText, MoreHorizontal, Pencil, Save,
-  MousePointerClick, Mail, Lock, ToggleLeft, ToggleRight,
+  MousePointerClick, Mail, Lock, Link2, ArrowRight, ChevronRight,
 } from "lucide-react";
 import * as api from "../api/domains.api";
 import ConfirmDeleteModal from "../components/ui/ConfirmDeleteModal";
@@ -128,6 +128,257 @@ function ModalHeader({ title, onClose }) {
   );
 }
 
+// ─── Tracking Subdomain Modal ─────────────────────────────────────────────────
+function TrackingSubdomainModal({ domain, onClose, onSaved }) {
+  const [step,           setStep]           = useState(1);
+  const [subdomain,      setSubdomain]      = useState(domain.tracking_subdomain || "");
+  const [clickT,         setClickT]         = useState(domain.click_tracking  ?? true);
+  const [openT,          setOpenT]          = useState(domain.open_tracking   ?? true);
+  const [saving,         setSaving]         = useState(false);
+  const [error,          setError]          = useState(null);
+  const [savedDomain,    setSavedDomain]    = useState(null);
+
+  const subValid = subdomain.trim().length > 0 && /^[a-z0-9-]+$/.test(subdomain.trim());
+  const preview  = subdomain.trim() ? `${subdomain.trim()}.${domain.domain}` : `<subdomain>.${domain.domain}`;
+
+  // Filter just the Tracking CNAME record from dns_records
+  const trackingRecord = savedDomain
+    ? (savedDomain.dns_records || []).find(r => r.record === 'Tracking' || r.type === 'CNAME' && r.name?.includes(subdomain.trim()))
+    : null;
+
+  async function handleAdd() {
+    if (!subValid || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.configureTrackingSubdomain(domain.id, {
+        subdomain:     subdomain.trim(),
+        click_tracking: clickT,
+        open_tracking:  openT,
+      });
+      setSavedDomain(updated);
+      onSaved?.(updated);
+      setStep(2);
+    } catch (err) {
+      let msg = "Failed to configure tracking subdomain.";
+      try { const p = JSON.parse(err.message); if (p?.error) msg = p.error; } catch { /* use default */ }
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} maxWidth={580}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 24 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 14, background: C.accentLo, border: `1.5px solid #c7d2fe`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Link2 size={24} color={C.accent} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>New tracking subdomain</div>
+          <div style={{ fontSize: 13, color: C.sub, marginTop: 3 }}>Track every click with automatic URL redirection</div>
+        </div>
+        <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 7px", cursor: "pointer", color: C.sub, display: "flex" }}>
+          <X size={15} />
+        </button>
+      </div>
+
+      {/* Step indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+        {[{ n: 1, label: "Details" }, { n: 2, label: "DNS Record" }].map(({ n, label }, i) => (
+          <div key={n} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700,
+                background: step >= n ? C.accent : C.bg,
+                border: `1.5px solid ${step >= n ? C.accent : C.border}`,
+                color: step >= n ? "#fff" : C.muted,
+              }}>
+                {step > n ? <Check size={12} /> : n}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: step === n ? 700 : 500, color: step === n ? C.text : C.muted }}>{label}</span>
+            </div>
+            {i === 0 && <ChevronRight size={13} color={C.muted} />}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Step 1: Details ── */}
+      {step === 1 && (
+        <>
+          <p style={{ margin: "0 0 20px", fontSize: 13, color: C.sub, lineHeight: 1.7 }}>
+            All email links will be securely redirected through this domain before reaching their destination.
+          </p>
+
+          {/* Subdomain + Domain inputs */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+                Subdomain
+              </label>
+              <input
+                autoFocus
+                value={subdomain}
+                onChange={e => { setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setError(null); }}
+                placeholder="links"
+                style={{
+                  width: "100%", boxSizing: "border-box", background: C.surface,
+                  border: `1.5px solid ${error ? C.red : C.border}`, borderRadius: 9,
+                  padding: "9px 12px", fontSize: 13, color: C.text, outline: "none", fontFamily: "monospace",
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = C.accent; }}
+                onBlur={e => { e.currentTarget.style.borderColor = error ? C.red : C.border; }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+                Domain
+              </label>
+              <div style={{
+                background: C.bg, border: `1.5px solid ${C.border}`, borderRadius: 9,
+                padding: "9px 12px", fontSize: 13, color: C.sub, fontFamily: "monospace",
+                display: "flex", alignItems: "center", gap: 7,
+              }}>
+                <Globe size={13} color={C.muted} />
+                {domain.domain}
+              </div>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 13px", marginBottom: 20, display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Preview:</span>
+            <span style={{ fontSize: 12, fontFamily: "monospace", color: subValid ? C.accent : C.muted }}>{preview}</span>
+          </div>
+
+          {/* Tracking options */}
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.sub, marginBottom: 12 }}>Tracking options</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={clickT}
+                  onChange={e => setClickT(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: C.accent, flexShrink: 0, cursor: "pointer" }}
+                />
+                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>Enable click tracking</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={openT}
+                  onChange={e => setOpenT(e.target.checked)}
+                  style={{ width: 15, height: 15, accentColor: C.accent, flexShrink: 0, cursor: "pointer", marginTop: 2 }}
+                />
+                <div>
+                  <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>Enable open tracking</span>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
+                    Open tracking can produce inaccurate results — many email clients block tracking pixels automatically.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ background: C.redBg, border: `1px solid ${C.redBdr}`, borderRadius: 9, padding: "9px 13px", marginBottom: 16, fontSize: 12, color: C.red, display: "flex", alignItems: "center", gap: 7 }}>
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "10px 0", fontSize: 13, fontWeight: 600, color: C.sub, cursor: "pointer", fontFamily: "inherit" }}>
+              Cancel
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={!subValid || saving}
+              style={{ flex: 1, background: subValid && !saving ? C.accent : "#c7d2fe", border: "none", borderRadius: 9, padding: "10px 0", fontSize: 13, fontWeight: 700, color: "#fff", cursor: subValid && !saving ? "pointer" : "not-allowed", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            >
+              {saving ? <><LoaderCircle size={13} style={{ animation: "_dspin 0.8s linear infinite" }} /> Adding…</> : <><Plus size={14} /> Add domain</>}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── Step 2: DNS Record ── */}
+      {step === 2 && (
+        <>
+          <div style={{ background: C.greenBg, border: `1px solid ${C.greenBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+            <CheckCircle2 size={14} color={C.green} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.green }}>Tracking subdomain configured — add the DNS record below to activate it.</span>
+          </div>
+
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: C.sub, lineHeight: 1.7 }}>
+            Add this <strong style={{ color: C.text }}>CNAME</strong> record to your DNS provider for <code style={{ background: C.bg, padding: "1px 6px", borderRadius: 4, fontFamily: "monospace", fontSize: 12 }}>{preview}</code>.
+            Propagation can take up to <strong>48 hours</strong>.
+          </p>
+
+          {trackingRecord ? (
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>
+                  {trackingRecord.type || 'CNAME'}
+                </span>
+                <span style={{ fontSize: 11, color: C.muted }}>TTL: {trackingRecord.ttl || 'Auto'}</span>
+              </div>
+              {[
+                { label: "Name",  value: trackingRecord.name  || `${subdomain}.${domain.domain}` },
+                { label: "Value", value: trackingRecord.value || "—" },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div style={{ height: 1, background: C.border, margin: "8px 0" }} />
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{label}</div>
+                      <div style={{ fontSize: 12, fontFamily: "monospace", color: C.text, wordBreak: "break-all", lineHeight: 1.5 }}>{value}</div>
+                    </div>
+                    {value && value !== "—" && <CopyBtn text={value} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px", marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>CNAME</span>
+              </div>
+              {[
+                { label: "Name",  value: `${subdomain.trim()}.${domain.domain}` },
+                { label: "Value", value: "Check your Resend domain DNS records for the full CNAME value." },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div style={{ height: 1, background: C.border, margin: "8px 0" }} />
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{label}</div>
+                      <div style={{ fontSize: 12, fontFamily: "monospace", color: C.text, wordBreak: "break-all", lineHeight: 1.5 }}>{value}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ background: C.blueBg, border: `1px solid ${C.blueBdr}`, borderRadius: 9, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: C.blue, lineHeight: 1.6 }}>
+            <strong>Tip:</strong> You can verify the DNS record status in the <strong>Records</strong> tab after propagation completes.
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{ width: "100%", background: C.accent, border: "none", borderRadius: 9, padding: "11px 0", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Done
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Add Domain Modal ──────────────────────────────────────────────────────────
 function AddDomainModal({ onConfirm, onClose, saving }) {
   const [value, setValue] = useState("");
@@ -202,12 +453,13 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
   const [emailSaved,   setEmailSaved]   = useState(false);
 
   // Tracking & TLS state (seeded from domain record)
-  const [openTracking,   setOpenTracking]   = useState(domain.open_tracking  ?? true);
-  const [clickTracking,  setClickTracking]  = useState(domain.click_tracking ?? true);
-  const [tlsMode,        setTlsMode]        = useState(domain.tls || "opportunistic");
-  const [trackingSaving, setTrackingSaving] = useState(false);
-  const [trackingError,  setTrackingError]  = useState(null);
-  const [trackingSaved,  setTrackingSaved]  = useState(false);
+  const [openTracking,       setOpenTracking]       = useState(domain.open_tracking  ?? true);
+  const [clickTracking,      setClickTracking]      = useState(domain.click_tracking ?? true);
+  const [tlsMode,            setTlsMode]            = useState(domain.tls || "opportunistic");
+  const [trackingSaving,     setTrackingSaving]     = useState(false);
+  const [trackingError,      setTrackingError]      = useState(null);
+  const [trackingSaved,      setTrackingSaved]      = useState(false);
+  const [showSubdomainModal, setShowSubdomainModal] = useState(false);
 
   const records = domain.dns_records || [];
 
@@ -315,6 +567,19 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
               <div style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em", wordBreak: "break-all" }}>{domain.domain}</div>
             </div>
 
+            {/* Refresh */}
+            <button
+              onClick={onVerify}
+              disabled={verifying}
+              title="Refresh domain status"
+              style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "7px 12px", cursor: verifying ? "not-allowed" : "pointer", color: C.sub, display: "flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 12, fontWeight: 600, fontFamily: "inherit", opacity: verifying ? 0.65 : 1 }}
+              onMouseEnter={e => { if (!verifying) { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.sub; }}
+            >
+              <RefreshCw size={13} style={verifying ? { animation: "_dspin 0.8s linear infinite" } : {}} />
+              {verifying ? "Refreshing…" : "Refresh"}
+            </button>
+
             {/* Close */}
             <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: "7px 8px", cursor: "pointer", color: C.sub, display: "flex", flexShrink: 0 }}>
               <X size={15} />
@@ -419,7 +684,7 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
               </div>
             ) : (
               <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
                   <p style={{ margin: 0, fontSize: 13, color: C.sub, lineHeight: 1.6 }}>
                     Add these records to your DNS provider. Propagation can take up to <strong>48 hours</strong>.
                   </p>
@@ -431,46 +696,90 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
                   </button>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {records.map((rec, i) => {
+                {/* Grouped sections */}
+                {(() => {
+                  const groups = [
+                    { key: "verification", label: "Domain Verification", match: r => r.record === 'DKIM' || (!r.record && r.type === 'TXT' && r.name?.includes('domainkey')) },
+                    { key: "sending",      label: "Enable Sending",      match: r => r.record === 'SPF'  || r.record === 'MX' || (!r.record && (r.type === 'MX' || (r.type === 'TXT' && r.value?.includes('v=spf')))) },
+                    { key: "receiving",    label: "Enable Receiving",     match: r => r.record === 'Receiving' },
+                    { key: "tracking",     label: "Enable Tracking",      match: r => r.record === 'Tracking' || r.record === 'TrackingCAA' },
+                  ];
+
+                  const assigned = new Set();
+                  const grouped = groups.map(g => {
+                    const recs = records.filter((r, i) => { if (assigned.has(i)) return false; if (g.match(r)) { assigned.add(i); return true; } return false; });
+                    return { ...g, recs };
+                  });
+                  // Remaining uncategorised
+                  const rest = records.filter((_, i) => !assigned.has(i));
+
+                  const RecordCard = ({ rec }) => {
                     const type  = rec.type  || rec.record || "—";
                     const name  = rec.name  || "—";
                     const value = rec.value || rec.data  || "";
                     const st    = statusCfg(rec.status);
                     return (
-                      <div key={i} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 800, color: C.text, fontFamily: "monospace", letterSpacing: "0.04em" }}>{type}</span>
-                            {rec.priority != null && <span style={{ fontSize: 11, color: C.muted }}>Priority {rec.priority}</span>}
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20, color: st.color, background: st.bg, border: `1px solid ${st.bdr}` }}>{st.label}</span>
+                      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <span style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: C.text, fontFamily: "monospace" }}>{type}</span>
+                          {rec.priority != null && <span style={{ fontSize: 11, color: C.muted }}>Priority {rec.priority}</span>}
+                          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20, color: st.color, background: st.bg, border: `1px solid ${st.bdr}` }}>{st.label}</span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                           <div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Name</div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1 }}>Name</div>
                             <div style={{ fontSize: 12, fontFamily: "monospace", color: C.text, wordBreak: "break-all" }}>{name}</div>
                           </div>
                           {name !== "—" && <CopyBtn text={name} />}
                         </div>
-                        <div style={{ height: 1, background: C.border, margin: "8px 0" }} />
+                        <div style={{ height: 1, background: C.border, margin: "6px 0" }} />
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Value</div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1 }}>Content</div>
                             <div style={{ fontSize: 12, fontFamily: "monospace", color: C.text, wordBreak: "break-all", lineHeight: 1.5 }}>{value || "—"}</div>
                           </div>
                           {value && <CopyBtn text={value} />}
                         </div>
                       </div>
                     );
-                  })}
-                </div>
+                  };
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                      {grouped.filter(g => g.recs.length > 0).map(g => (
+                        <div key={g.key}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>{g.label}</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {g.recs.map((rec, i) => <RecordCard key={i} rec={rec} />)}
+                          </div>
+                        </div>
+                      ))}
+                      {rest.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>Other</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {rest.map((rec, i) => <RecordCard key={i} rec={rec} />)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )
           )}
 
           {tab === "config" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* ── Tracking subdomain modal ── */}
+              {showSubdomainModal && (
+                <TrackingSubdomainModal
+                  domain={domain}
+                  onClose={() => setShowSubdomainModal(false)}
+                  onSaved={updated => { onUpdate?.(updated); setShowSubdomainModal(false); }}
+                />
+              )}
 
               {/* ── Domain info rows ── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -495,6 +804,29 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
 
               {/* ── Tracking & TLS rows ── */}
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+
+                {/* Custom tracking subdomain */}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 14px", background: C.bg, borderRadius: 10, gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 3 }}>Custom tracking subdomain</div>
+                    {domain.tracking_subdomain ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: C.accentLo, border: `1px solid #c7d2fe`, borderRadius: 6, padding: "2px 9px" }}>
+                        <Link2 size={10} color={C.accent} />
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: C.accent, fontWeight: 600 }}>{domain.tracking_subdomain}.{domain.domain}</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: C.amber }}>Not configured — using shared tracking domain.</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowSubdomainModal(true)}
+                    style={{ flexShrink: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 600, color: C.accent, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = C.accentLo; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = C.surface; }}
+                  >
+                    {domain.tracking_subdomain ? "Change" : "Configure"}
+                  </button>
+                </div>
 
                 {/* Click tracking */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.bg, borderRadius: 10, gap: 16 }}>
