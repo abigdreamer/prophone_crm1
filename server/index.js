@@ -10,6 +10,7 @@ import domainRoutes        from './routes/domains.routes.js';
 import groupRoutes         from './routes/groups.routes.js';
 import webhookRoutes       from './routes/webhooks.routes.js';
 import trackingRoutes      from './routes/tracking.routes.js';
+import emailTrackingRoutes from './routes/emailTracking.routes.js';
 import sseRoutes           from './routes/sse.routes.js';
 import { startEmailWorker } from './workers/emailWorker.js';
 
@@ -27,7 +28,8 @@ app.use(cors());
 // Webhook route must receive raw body — mount BEFORE express.json()
 app.use('/api/webhooks', webhookRoutes);
 // Tracking routes — no auth required (email clients call these)
-app.use('/api/track', trackingRoutes);
+app.use('/api/track',    trackingRoutes);
+app.use('/email/track',  emailTrackingRoutes);
 // SSE — long-lived connections, no body needed
 app.use('/api/sse', sseRoutes);
 app.use(express.json({ limit: '15mb' }));

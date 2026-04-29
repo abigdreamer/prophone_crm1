@@ -6,6 +6,7 @@ import { Upload, FileText, CheckCircle, AlertCircle, ChevronDown } from "lucide-
 import Btn from "../ui/Btn";
 import T from "../../theme";
 import { importContacts } from "../../api/contacts.api";
+import { createGroup } from "../../api/groups.api";
 import { Spinner } from "../ui/Loader";
 
 // ─── Column name normalizer ───────────────────────────────────────────────────
@@ -109,6 +110,9 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
   const [invalidEmails, setInvalidEmails] = useState([]); // contacts with bad/missing email
   const [stats,         setStats]         = useState(null); // { total, valid, invalidEmail, noName }
   const [groupId,       setGroupId]       = useState("");
+  const [localGroups,   setLocalGroups]   = useState(groups);
+  const [newGroupName,  setNewGroupName]  = useState("");
+  const [groupSaving,   setGroupSaving]   = useState(false);
   const [result,        setResult]        = useState(null);
   const [error,         setError]         = useState(null);
   const [fileName,      setFileName]      = useState("");
@@ -166,6 +170,19 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
     } catch (err) {
       setError(err.message || "Failed to parse file.");
       setPhase("error");
+    }
+  }
+
+  async function handleCreateGroup() {
+    if (!newGroupName.trim() || groupSaving) return;
+    setGroupSaving(true);
+    try {
+      const g = await createGroup(newGroupName.trim());
+      setLocalGroups(prev => [...prev, g]);
+      setGroupId(g.id);
+      setNewGroupName("");
+    } finally {
+      setGroupSaving(false);
     }
   }
 
@@ -354,14 +371,35 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
                 Assign to group <span style={{ color: "#dc2626" }}>*</span>
               </div>
 
-              {groups.length === 0 ? (
-                <div style={{
-                  padding: "14px 16px", borderRadius: 8,
-                  background: "#fef2f2", border: "1px solid #fecaca",
-                  fontSize: 13, color: "#dc2626", display: "flex", alignItems: "center", gap: 8,
-                }}>
-                  <AlertCircle size={16} />
-                  No groups exist yet. Go to Contact Groups and create a group first.
+              {localGroups.length === 0 ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    value={newGroupName}
+                    onChange={e => setNewGroupName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleCreateGroup()}
+                    placeholder="Create your first group…"
+                    style={{
+                      flex: 1, background: T.surface,
+                      border: "1px solid " + T.border,
+                      borderRadius: 8, padding: "10px 12px",
+                      color: T.text, fontSize: 13, outline: "none", fontFamily: "inherit",
+                    }}
+                    onFocus={e => (e.target.style.borderColor = T.accent)}
+                    onBlur={e  => (e.target.style.borderColor = T.border)}
+                  />
+                  <button
+                    onClick={handleCreateGroup}
+                    disabled={!newGroupName.trim() || groupSaving}
+                    style={{
+                      background: newGroupName.trim() ? T.accent : T.border,
+                      color: "#fff", border: "none", borderRadius: 8,
+                      padding: "0 16px", fontSize: 13, fontWeight: 600,
+                      cursor: newGroupName.trim() ? "pointer" : "default",
+                      fontFamily: "inherit", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {groupSaving ? "Creating…" : "Create"}
+                  </button>
                 </div>
               ) : (
                 <div style={{ position: "relative" }}>
@@ -377,16 +415,16 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
                       transition: "border-color 0.15s",
                     }}
                   >
-                    <option value="">Select a group…</option>
-                    {groups.map(g => (
-                      <option key={g.id} value={g.id}>{g.name} ({g.contactCount} contacts)</option>
+                    <option value="">Select a group</option>
+                    {localGroups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name} ({g.contactCount ?? 0} contacts)</option>
                     ))}
                   </select>
                   <ChevronDown size={14} color={T.muted} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
                 </div>
               )}
 
-              {!groupId && groups.length > 0 && (
+              {!groupId && localGroups.length > 0 && (
                 <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>
                   Group is required — all imported contacts will be assigned to this group.
                 </div>
@@ -394,7 +432,7 @@ export default function ImportModal({ onClose, onDone, groups = [] }) {
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
                 <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-                <Btn onClick={handleImport} disabled={!groupId || groups.length === 0}>
+                <Btn onClick={handleImport} disabled={!groupId || localGroups.length === 0}>
                   Import {stats.valid.toLocaleString()} Contacts
                 </Btn>
               </div>

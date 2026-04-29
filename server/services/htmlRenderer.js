@@ -233,28 +233,36 @@ function substituteVariables(html, vars = {}) {
 }
 
 /**
- * Inject open-tracking pixel and rewrite links for click tracking.
- * @param {string} html        - Rendered email HTML
- * @param {string} recipientId - campaign_recipient.id
- * @param {string} baseUrl     - e.g. https://app.example.com (falsy → return unchanged)
- * @returns {string} HTML with tracking injected
+ * Apply open-tracking pixel and click-tracking link rewrites.
+ * Returns a new string — never mutates the original HTML.
+ *
+ * @param {string} html             - Rendered email HTML
+ * @param {string} campaignId       - campaign.id
+ * @param {string} recipientId      - campaign_recipient.id
+ * @param {string} trackingBaseUrl  - e.g. https://app.example.com (falsy → return unchanged)
+ * @returns {string} HTML with tracking applied
  */
-export function injectTracking(html, recipientId, baseUrl) {
-  if (!baseUrl) return html;
+export function applyTracking(html, campaignId, recipientId, trackingBaseUrl) {
+  if (!trackingBaseUrl) return html;
 
-  // 1. Rewrite href links (http/https) that don't already start with baseUrl
+  const SKIP_RE = /^(mailto:|tel:|#|$)/i;
+
+  // 1. Rewrite every href except mailto:, tel:, #, empty, and already-wrapped URLs
   const rewritten = html.replace(
-    /href="(https?:\/\/[^"]+)"/gi,
+    /href="([^"]*)"/gi,
     (match, url) => {
-      if (url.startsWith(baseUrl)) return match; // already wrapped — skip
-      return `href="${baseUrl}/api/track/c/${recipientId}?u=${encodeURIComponent(url)}"`;
+      const trimmed = url.trim();
+      if (SKIP_RE.test(trimmed))                    return match; // non-navigable
+      if (!trimmed.startsWith('http'))               return match; // relative — skip
+      if (trimmed.startsWith(trackingBaseUrl))       return match; // already wrapped
+      const clickUrl = `${trackingBaseUrl}/email/track/click?campaignId=${campaignId}&recipientId=${recipientId}&url=${encodeURIComponent(trimmed)}`;
+      return `href="${clickUrl}"`;
     },
   );
 
-  // 2. Build the tracking pixel
-  const pixel = `<img src="${baseUrl}/api/track/o/${recipientId}" width="1" height="1" style="display:none;border:0;" alt="" />`;
+  // 2. Inject open-tracking pixel before </body> or at end
+  const pixel = `<img src="${trackingBaseUrl}/email/track/open?campaignId=${campaignId}&recipientId=${recipientId}" width="1" height="1" style="display:none;" alt="" />`;
 
-  // 3. Inject before </body> or append at end
   if (rewritten.includes('</body>')) {
     return rewritten.replace('</body>', `${pixel}</body>`);
   }
