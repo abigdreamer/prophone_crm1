@@ -306,6 +306,68 @@ export async function resumeCampaign(req, res) {
   }
 }
 
+export async function resendCampaign(req, res) {
+  const { statuses } = req.body ?? {};
+
+  try {
+    const campaign = await campaignRepo.findTenantById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    if (!canAccessTenant(req, campaign.prophone_id)) return sendError(res, 'Forbidden', 403);
+    if (campaign.status === 'running') return sendError(res, 'Campaign is already running.', 409);
+
+    const RESENDABLE = ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed'];
+    const toReset = (!statuses || statuses.length === 0 || statuses.includes('all'))
+      ? RESENDABLE
+      : statuses.filter(s => RESENDABLE.includes(s));
+
+    if (toReset.length === 0) return sendError(res, 'No valid statuses selected.', 400);
+
+    // Reset matching recipients — clear all delivery state so the worker picks them up fresh
+    const { count } = await prisma.campaign_recipient.updateMany({
+      where: { campaign_id: req.params.id, status: { in: toReset } },
+      data:  {
+        status:        'pending',
+        attempts:      0,
+        message_id:    '',
+        error_message: '',
+        sent_at:       null,
+        delivered_at:  null,
+        opened_at:     null,
+        clicked_at:    null,
+        bounced_at:    null,
+      },
+    });
+
+    if (count === 0) return sendError(res, 'No recipients found with the selected statuses.', 400);
+
+    // Recalculate campaign aggregates from remaining non-pending/queued rows
+    const groups = await prisma.campaign_recipient.groupBy({
+      by:    ['status'],
+      where: { campaign_id: req.params.id },
+      _count: { status: true },
+    });
+    const c = Object.fromEntries(groups.map(g => [g.status, g._count.status]));
+    const sentStatuses = ['sent', 'delivered', 'opened', 'clicked', 'bounced'];
+
+    await campaignRepo.updateCampaign(req.params.id, {
+      status:        'running',
+      sent_count:    sentStatuses.reduce((acc, s) => acc + (c[s] || 0), 0),
+      opened_count:  (c.opened || 0) + (c.clicked || 0),
+      clicked_count: c.clicked  || 0,
+      bounced_count: c.bounced  || 0,
+      failed_count:  c.failed   || 0,
+    });
+
+    sendSuccess(res, {
+      ok:      true,
+      queued:  count,
+      message: `${count} recipient${count === 1 ? '' : 's'} re-queued for delivery.`,
+    });
+  } catch (err) {
+    sendServerError(res, err, 'resendCampaign');
+  }
+}
+
 // Status priority — higher value wins; bounced is always terminal
 const STATUS_PRIORITY = { pending: 1, queued: 2, sent: 3, delivered: 4, opened: 5, clicked: 6, bounced: 7, failed: 0 };
 

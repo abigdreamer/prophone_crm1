@@ -12,7 +12,7 @@ import { useToast } from "../hooks/useToast";
 import {
   getCampaigns, getCampaign, createCampaign, updateCampaign, deleteCampaign,
   getRecipients, addRecipients, addGroupRecipients,
-  sendCampaign, pauseCampaign, resumeCampaign,
+  sendCampaign, pauseCampaign, resumeCampaign, resendCampaign,
   getRecipientEvents,
 } from "../api/campaigns.api";
 import { getEmailTemplates } from "../api/emailTemplates.api";
@@ -845,6 +845,149 @@ function DeleteCampaignModal({ campaign, onConfirm, onClose, loading }) {
   );
 }
 
+// ─── Resend Campaign Modal ─────────────────────────────────────────────────────
+const RESEND_OPTIONS = [
+  { value: "bounced",   label: "Bounced",              desc: "Hard / soft bounces",           color: "#dc2626" },
+  { value: "failed",    label: "Failed",               desc: "Delivery failures",              color: "#dc2626" },
+  { value: "delivered", label: "Delivered (not opened)", desc: "Received but never opened",   color: "#0d9488" },
+  { value: "sent",      label: "Sent (not delivered)", desc: "Accepted, delivery unconfirmed", color: "#6366f1" },
+  { value: "opened",    label: "Opened (not clicked)", desc: "Opened but didn't click",        color: "#16a34a" },
+  { value: "clicked",   label: "Clicked",              desc: "Already engaged",                color: "#059669" },
+];
+
+function ResendCampaignModal({ campaign, onClose, onConfirm, loading }) {
+  const rs = campaign.recipient_stats || {};
+  const [selected, setSelected] = useState(["bounced", "failed"]);
+
+  function toggle(value) {
+    setSelected(prev =>
+      prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
+    );
+  }
+
+  function selectAll() { setSelected(RESEND_OPTIONS.map(o => o.value)); }
+  function clearAll()   { setSelected([]); }
+
+  const totalQueued = selected.reduce((acc, s) => acc + (rs[s] || 0), 0);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100,
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: T.surface, borderRadius: 14, width: 500,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.22)", overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: T.accent + "20", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Send size={15} color={T.accent} />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Resend Campaign</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Select which recipients to resend to</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.sub }}>Recipients</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={selectAll} style={{ fontSize: 11, color: T.accent, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Select all</button>
+              <span style={{ color: T.border }}>|</span>
+              <button onClick={clearAll}  style={{ fontSize: 11, color: T.muted,  background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 500 }}>Clear</button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {RESEND_OPTIONS.map(opt => {
+              const count    = rs[opt.value] || 0;
+              const checked  = selected.includes(opt.value);
+              const disabled = count === 0;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => !disabled && toggle(opt.value)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 14px", borderRadius: 8, border: "1.5px solid",
+                    borderColor: checked ? opt.color + "60" : T.border,
+                    background: checked ? opt.color + "08" : T.panel,
+                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.45 : 1,
+                    textAlign: "left", fontFamily: "inherit", transition: "all 0.12s",
+                  }}
+                >
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                    border: "2px solid " + (checked ? opt.color : T.border),
+                    background: checked ? opt.color : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {checked && <Check size={11} color="#fff" strokeWidth={3} />}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: checked ? opt.color : T.text }}>{opt.label}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{opt.desc}</div>
+                  </div>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: count > 0 ? opt.color : T.muted,
+                    minWidth: 32, textAlign: "right",
+                  }}>
+                    {count.toLocaleString()}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {totalQueued > 0 && (
+            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: T.accent + "10", border: "1px solid " + T.accent + "30" }}>
+              <div style={{ fontSize: 12, color: T.accent, fontWeight: 600 }}>
+                {totalQueued.toLocaleString()} recipient{totalQueued === 1 ? "" : "s"} will be re-queued for delivery
+              </div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                Their delivery history will be cleared and new emails will be sent.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 22px", borderTop: "1px solid " + T.border, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(selected)}
+            disabled={totalQueued === 0 || loading}
+            style={{
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: totalQueued > 0 && !loading ? T.accent : T.accent + "60",
+              color: "#fff", cursor: totalQueued > 0 && !loading ? "pointer" : "not-allowed",
+              fontFamily: "inherit", fontSize: 13, fontWeight: 600,
+              display: "flex", alignItems: "center", gap: 7,
+            }}
+          >
+            {loading && <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />}
+            <Send size={13} />
+            Resend to {totalQueued.toLocaleString()} recipients
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── A/B Stats Panel ───────────────────────────────────────────────────────────
 function ABStatsPanel({ campaign }) {
   if (!campaign.ab_subject_b || !campaign.ab_stats) return null;
@@ -911,6 +1054,7 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
   const [recipLoading, setRecipLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [showAddModal,      setShowAddModal]      = useState(false);
+  const [showResendModal,   setShowResendModal]   = useState(false);
   const [expandedRecipient, setExpandedRecipient] = useState(null);
   const [recipientEvents,   setRecipientEvents]   = useState({});
   const toast = useToast();
@@ -988,6 +1132,21 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
     }
   }
 
+  async function handleResend(statuses) {
+    setActionLoading(true);
+    try {
+      const result = await resendCampaign(campaignId, statuses);
+      toast.success(result.message || "Campaign re-queued.");
+      setShowResendModal(false);
+      await loadCampaign();
+      onUpdated?.();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   if (loading || !campaign) {
     return <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}><Loader2 size={22} color={T.accent} style={{ animation: "spin 1s linear infinite" }} /></div>;
   }
@@ -1036,6 +1195,11 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
           {campaign.status === "paused" && (
             <button onClick={() => handleAction("resume")} disabled={actionLoading} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 7, border: "none", background: T.accent, color: "#fff", cursor: actionLoading ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, opacity: actionLoading ? 0.7 : 1 }}>
               {actionLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} Resume
+            </button>
+          )}
+          {["completed", "paused", "failed"].includes(campaign.status) && (
+            <button onClick={() => setShowResendModal(true)} disabled={actionLoading} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 7, border: "none", background: "#6366f1", color: "#fff", cursor: actionLoading ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, opacity: actionLoading ? 0.7 : 1 }}>
+              <Send size={13} /> Resend Campaign
             </button>
           )}
           <button onClick={loadCampaign} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>
@@ -1159,6 +1323,14 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
           groups={groups}
           onClose={() => setShowAddModal(false)}
           onAdded={() => { loadCampaign(); loadRecipients(); }}
+        />
+      )}
+      {showResendModal && (
+        <ResendCampaignModal
+          campaign={campaign}
+          loading={actionLoading}
+          onClose={() => setShowResendModal(false)}
+          onConfirm={handleResend}
         />
       )}
     </div>

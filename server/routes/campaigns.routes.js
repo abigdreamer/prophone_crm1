@@ -13,6 +13,7 @@ import {
   sendCampaign,
   pauseCampaign,
   resumeCampaign,
+  resendCampaign,
   syncCampaign,
   getRecipientEvents,
 } from '../controllers/campaigns.controller.js';
@@ -39,6 +40,7 @@ router.delete('/:id/recipients',       removeAllRecipients);
 router.post('/:id/send',   sendCampaign);
 router.post('/:id/pause',  pauseCampaign);
 router.post('/:id/resume', resumeCampaign);
+router.post('/:id/resend', resendCampaign);
 router.post('/:id/sync',   syncCampaign);
 
 export default router;

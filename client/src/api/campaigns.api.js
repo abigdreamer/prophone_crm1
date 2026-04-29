@@ -20,4 +20,5 @@ export const getRecipientEvents = (campaignId, recipientId) => apiFetch(`/campai
 export const sendCampaign   = (id) => apiFetch(`/campaigns/${id}/send`,   { method: 'POST' });
 export const pauseCampaign  = (id) => apiFetch(`/campaigns/${id}/pause`,  { method: 'POST' });
 export const resumeCampaign = (id) => apiFetch(`/campaigns/${id}/resume`, { method: 'POST' });
+export const resendCampaign = (id, statuses) => apiFetch(`/campaigns/${id}/resend`, { method: 'POST', body: JSON.stringify({ statuses }) });
 export const syncCampaign   = (id) => apiFetch(`/campaigns/${id}/sync`,   { method: 'POST' });
