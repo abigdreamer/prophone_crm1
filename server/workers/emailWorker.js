@@ -13,7 +13,7 @@
 
 import prisma from '../prisma.js';
 import { sendBatchEmails } from '../services/resendService.js';
-import { substituteIntoHtml, injectTracking } from '../services/htmlRenderer.js';
+import { substituteIntoHtml, applyTracking } from '../services/htmlRenderer.js';
 
 const BATCH_SIZE   = 50;   // Resend batch limit is 100; use 50 for safety
 const MAX_ATTEMPTS = 3;
@@ -89,7 +89,7 @@ async function processBatch() {
       const personalisedHtml    = substituteIntoHtml(rawHtml, vars);
       const personalisedSubject = substituteIntoHtml(subject, vars);
       const appUrl = process.env.APP_URL || '';
-      const finalHtml = appUrl ? injectTracking(personalisedHtml, r.id, appUrl) : personalisedHtml;
+      const finalHtml = appUrl ? applyTracking(personalisedHtml, r.campaign_id, r.id, appUrl) : personalisedHtml;
       sendable.push({
         recipientId: r.id,
         campaignId:  r.campaign_id,

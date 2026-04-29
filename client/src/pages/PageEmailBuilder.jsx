@@ -934,6 +934,9 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   const [mode,          setMode]          = useState(null);       // null=picker, "builder", "html"
   const [rawHtml,       setRawHtml]       = useState("");
   const [showHtmlMerge, setShowHtmlMerge] = useState(false);
+  const [showBtnInsert, setShowBtnInsert] = useState(false);
+  const [btnLabel,      setBtnLabel]      = useState("Click Here");
+  const [btnUrl,        setBtnUrl]        = useState("https://");
   const toastTimer    = useRef(null);
   const fromRef       = useRef(null);
   const subjectRef    = useRef(null);
@@ -941,6 +944,7 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   const htmlFileRef   = useRef(null);
   const htmlTextaRef  = useRef(null);
   const htmlMergeRef  = useRef(null);
+  const htmlBtnRef    = useRef(null);
   const rawHtmlRef    = useRef("");
   const modeRef       = useRef(null);
 
@@ -987,10 +991,11 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
   useEffect(() => { rawHtmlRef.current = rawHtml; }, [rawHtml]);
   useEffect(() => { modeRef.current    = mode;    }, [mode]);
 
-  // Close HTML merge-tags dropdown on outside click
+  // Close HTML merge-tags and button-insert dropdowns on outside click
   useEffect(() => {
     function handle(e) {
       if (htmlMergeRef.current && !htmlMergeRef.current.contains(e.target)) setShowHtmlMerge(false);
+      if (htmlBtnRef.current   && !htmlBtnRef.current.contains(e.target))   setShowBtnInsert(false);
     }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -1191,6 +1196,15 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
     const tag = `{{${key}}}`;
     setRawHtml(prev => prev.slice(0, start) + tag + prev.slice(end));
     requestAnimationFrame(() => { el.focus(); el.setSelectionRange(start + tag.length, start + tag.length); });
+  }
+
+  function insertHtmlButton(label, url) {
+    const el = htmlTextaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const snippet = `\n<div style="text-align:center;padding:20px 0;">\n  <a href="${url}" target="_blank" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-family:sans-serif;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;">${label}</a>\n</div>\n`;
+    setRawHtml(prev => prev.slice(0, start) + snippet + prev.slice(start));
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(start + snippet.length, start + snippet.length); });
   }
 
   function exportHtml() {
@@ -1628,6 +1642,55 @@ export default function PageEmailBuilder({ templateId: initId, onBack }) {
                         <span style={{ fontSize: 10, color: "#8b949e" }}>{tag.label}</span>
                       </button>
                     ))}
+                  </div>
+                )}
+              </div>
+              <div ref={htmlBtnRef} style={{ position: "relative" }}>
+                <button onClick={() => setShowBtnInsert(p => !p)}
+                  style={{ background: showBtnInsert ? "#6366f1" : "transparent", border: "1px solid #30363d", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 600, color: showBtnInsert ? "#fff" : "#8b949e", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit" }}>
+                  <MousePointerClick size={10} /> Button
+                </button>
+                {showBtnInsert && (
+                  <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 10, zIndex: 300, width: 260, padding: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#8b949e", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Insert tracked button</div>
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 4 }}>Label</div>
+                      <input
+                        value={btnLabel}
+                        onChange={e => setBtnLabel(e.target.value)}
+                        placeholder="Click Here"
+                        style={{ width: "100%", boxSizing: "border-box", background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#e6edf3", outline: "none", fontFamily: "inherit" }}
+                        onFocus={e => (e.target.style.borderColor = "#6366f1")}
+                        onBlur={e  => (e.target.style.borderColor = "#30363d")}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 4 }}>URL <span style={{ color: "#f87171" }}>*</span></div>
+                      <input
+                        value={btnUrl}
+                        onChange={e => setBtnUrl(e.target.value)}
+                        placeholder="https://yoursite.com/page"
+                        style={{ width: "100%", boxSizing: "border-box", background: "#0d1117", border: "1px solid #30363d", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#e6edf3", outline: "none", fontFamily: "inherit" }}
+                        onFocus={e => (e.target.style.borderColor = "#6366f1")}
+                        onBlur={e  => (e.target.style.borderColor = "#30363d")}
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!btnLabel.trim() || !btnUrl.startsWith("http")) return;
+                        insertHtmlButton(btnLabel.trim(), btnUrl.trim());
+                        setShowBtnInsert(false);
+                        setBtnLabel("Click Here");
+                        setBtnUrl("https://");
+                      }}
+                      disabled={!btnLabel.trim() || !btnUrl.startsWith("http")}
+                      style={{ width: "100%", background: btnLabel.trim() && btnUrl.startsWith("http") ? "#6366f1" : "#30363d", color: "#fff", border: "none", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: btnLabel.trim() && btnUrl.startsWith("http") ? "pointer" : "default", fontFamily: "inherit" }}
+                    >
+                      Insert at cursor
+                    </button>
+                    <div style={{ fontSize: 10, color: "#8b949e", marginTop: 8, lineHeight: 1.5 }}>
+                      URL must start with https:// to be click-tracked
+                    </div>
                   </div>
                 )}
               </div>

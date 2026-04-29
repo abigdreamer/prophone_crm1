@@ -7,12 +7,16 @@ import T from "../../theme";
 import { getUsers } from "../../api/auth.api";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
+import { createGroup } from "../../api/groups.api";
 
-export default function ContactModal({ contact, onSave, onClose, currentUser, groups = [] }) {
+export default function ContactModal({ contact, onSave, onClose, currentUser, groups = [], onGroupCreated }) {
   const isEdit = !!contact;
-  const [saving, setSaving] = useState(false);
-  const [users,  setUsers]  = useState([]);
-  const [errors, setErrors] = useState({});
+  const [saving,        setSaving]        = useState(false);
+  const [users,         setUsers]         = useState([]);
+  const [errors,        setErrors]        = useState({});
+  const [localGroups,   setLocalGroups]   = useState(groups);
+  const [newGroupName,  setNewGroupName]  = useState("");
+  const [groupSaving,   setGroupSaving]   = useState(false);
 
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
@@ -26,6 +30,20 @@ export default function ContactModal({ contact, onSave, onClose, currentUser, gr
   useEffect(() => {
     getUsers().then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => setUsers([]));
   }, []);
+
+  async function handleCreateGroup() {
+    if (!newGroupName.trim() || groupSaving) return;
+    setGroupSaving(true);
+    try {
+      const g = await createGroup(newGroupName.trim());
+      setLocalGroups(prev => [...prev, g]);
+      set("groupId", g.id);
+      setNewGroupName("");
+      onGroupCreated?.(g);
+    } finally {
+      setGroupSaving(false);
+    }
+  }
 
   const set = (k, v) => {
     setForm(p => ({ ...p, [k]: v }));
@@ -95,18 +113,52 @@ export default function ContactModal({ contact, onSave, onClose, currentUser, gr
             : currentUser ? [{ value: currentUser.name, label: `${currentUser.name} (${currentUser.role})` }] : []
           }
         />
-        <Sel
-          label="Group"
-          required
-          value={form.groupId || ""}
-          onChange={v => set("groupId", v || null)}
-          error={errors.groupId}
-          options={
-            groups.length === 0
-              ? [{ value: "", label: "— No groups yet, create one first —" }]
-              : [{ value: "", label: "Select a group…" }, ...groups.map(g => ({ value: g.id, label: g.name }))]
-          }
-        />
+        {localGroups.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Group<span style={{ color: "#dc2626", marginLeft: 2 }}>*</span>
+            </label>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={newGroupName}
+                onChange={e => setNewGroupName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleCreateGroup()}
+                placeholder="Create your first group…"
+                style={{
+                  flex: 1, background: T.surface,
+                  border: "1px solid " + (errors.groupId ? "#dc2626" : T.border),
+                  borderRadius: 6, padding: "8px 11px",
+                  color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit",
+                }}
+                onFocus={e => (e.target.style.borderColor = T.accent)}
+                onBlur={e  => (e.target.style.borderColor = errors.groupId ? "#dc2626" : T.border)}
+              />
+              <button
+                onClick={handleCreateGroup}
+                disabled={!newGroupName.trim() || groupSaving}
+                style={{
+                  background: newGroupName.trim() ? T.accent : T.border,
+                  color: "#fff", border: "none", borderRadius: 6,
+                  padding: "0 14px", fontSize: 12, fontWeight: 600,
+                  cursor: newGroupName.trim() ? "pointer" : "default",
+                  fontFamily: "inherit", whiteSpace: "nowrap",
+                }}
+              >
+                {groupSaving ? "Creating…" : "Create"}
+              </button>
+            </div>
+            {errors.groupId && <span style={{ fontSize: 11, color: "#dc2626" }}>{errors.groupId}</span>}
+          </div>
+        ) : (
+          <Sel
+            label="Group"
+            required
+            value={form.groupId || ""}
+            onChange={v => set("groupId", v || null)}
+            error={errors.groupId}
+            options={[{ value: "", label: "Select a group" }, ...localGroups.map(g => ({ value: g.id, label: g.name }))]}
+          />
+        )}
       </div>
 
       <div style={{ marginTop: 14 }}>
