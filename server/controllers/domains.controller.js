@@ -114,6 +114,43 @@ export async function verifyDomain(req, res) {
   }
 }
 
+export async function patchDomainTracking(req, res) {
+  try {
+    const row = await domainRepo.findById(req.params.id);
+    if (!row) return sendError(res, 'Domain not found', 404);
+    if (!canAccessTenant(req, row.prophone_id)) return sendError(res, 'Forbidden', 403);
+
+    const { open_tracking, click_tracking, tls } = req.body ?? {};
+    const data = {};
+
+    if (open_tracking  !== undefined) data.open_tracking  = Boolean(open_tracking);
+    if (click_tracking !== undefined) data.click_tracking = Boolean(click_tracking);
+    if (tls !== undefined) {
+      if (!['opportunistic', 'enforced'].includes(tls)) return sendError(res, 'Invalid TLS value — must be opportunistic or enforced', 400);
+      data.tls = tls;
+    }
+
+    if (Object.keys(data).length === 0) return sendError(res, 'No fields to update', 400);
+
+    if (row.resend_domain_id) {
+      try {
+        await domainSvc.updateDomainTracking(row.resend_domain_id, {
+          openTracking:  data.open_tracking,
+          clickTracking: data.click_tracking,
+          tls:           data.tls,
+        });
+      } catch (err) {
+        console.warn('[domains] Resend tracking update failed (continuing local save):', err.message);
+      }
+    }
+
+    const updated = await domainRepo.updateDomain(req.params.id, data);
+    sendSuccess(res, updated);
+  } catch (err) {
+    sendServerError(res, err, 'patchDomainTracking');
+  }
+}
+
 export async function deleteDomain(req, res) {
   try {
     const row = await domainRepo.findById(req.params.id);

@@ -103,6 +103,21 @@ export async function checkDomainVerification(resendDomainId, fallbackDomainName
 }
 
 /**
+ * Update open/click tracking and TLS settings for a domain on Resend.
+ * Throws if the Resend call fails.
+ */
+export async function updateDomainTracking(resendDomainId, { openTracking, clickTracking, tls } = {}) {
+  const resend = getResendClient();
+  const payload = { id: resendDomainId };
+  if (openTracking  !== undefined) payload.openTracking  = openTracking;
+  if (clickTracking !== undefined) payload.clickTracking = clickTracking;
+  if (tls           !== undefined) payload.tls           = tls;
+
+  const { error } = await resend.domains.update(payload);
+  if (error) throw new Error(error.message || 'Failed to update domain tracking on Resend');
+}
+
+/**
  * Remove a domain from Resend. Falls back to name-lookup if no ID is known.
  * Logs a warning on failure instead of throwing (deletion should not block the caller).
  */

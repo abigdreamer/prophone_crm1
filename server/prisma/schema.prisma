@@ -146,6 +146,9 @@ model domain {
   dns_records      Json?
   region           String    @default("us-east-1")
   from_email       String    @default("")
+  open_tracking    Boolean   @default(true)
+  click_tracking   Boolean   @default(true)
+  tls              String    @default("opportunistic")
   verified_at      DateTime?
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt

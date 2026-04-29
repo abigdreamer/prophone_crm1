@@ -6,6 +6,7 @@ import {
   Trash2, Eye, RefreshCw, Copy, Check, X,
   ShieldCheck, Info, MapPin, Calendar, Settings,
   FileText, MoreHorizontal, Pencil, Save,
+  MousePointerClick, Mail, Lock, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import * as api from "../api/domains.api";
 import ConfirmDeleteModal from "../components/ui/ConfirmDeleteModal";
@@ -172,6 +173,26 @@ function AddDomainModal({ onConfirm, onClose, saving }) {
 }
 
 // ─── Domain Detail Modal ───────────────────────────────────────────────────────
+function ToggleSwitch({ checked, onChange, disabled }) {
+  return (
+    <button
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      style={{
+        width: 44, height: 24, borderRadius: 12, border: "none", cursor: disabled ? "not-allowed" : "pointer",
+        background: checked ? C.accent : "#cbd5e1", position: "relative", transition: "background 0.2s",
+        flexShrink: 0, padding: 0,
+      }}
+    >
+      <span style={{
+        position: "absolute", top: 3, left: checked ? 23 : 3,
+        width: 18, height: 18, borderRadius: "50%", background: "#fff",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s",
+      }} />
+    </button>
+  );
+}
+
 function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, verifying }) {
   const [tab,          setTab]          = useState("records");
   const [copiedAll,    setCopiedAll]    = useState(false);
@@ -179,6 +200,15 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
   const [savingEmail,  setSavingEmail]  = useState(false);
   const [emailError,   setEmailError]   = useState(null);
   const [emailSaved,   setEmailSaved]   = useState(false);
+
+  // Tracking & TLS state (seeded from domain record)
+  const [openTracking,   setOpenTracking]   = useState(domain.open_tracking  ?? true);
+  const [clickTracking,  setClickTracking]  = useState(domain.click_tracking ?? true);
+  const [tlsMode,        setTlsMode]        = useState(domain.tls || "opportunistic");
+  const [trackingSaving, setTrackingSaving] = useState(false);
+  const [trackingError,  setTrackingError]  = useState(null);
+  const [trackingSaved,  setTrackingSaved]  = useState(false);
+
   const records = domain.dns_records || [];
 
   const fromEmailChanged = fromEmail !== (domain.from_email || "");
@@ -202,6 +232,33 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
       setEmailError(msg);
     } finally {
       setSavingEmail(false);
+    }
+  }
+
+  async function handleTrackingChange(patch) {
+    setTrackingSaving(true);
+    setTrackingError(null);
+    setTrackingSaved(false);
+    const next = {
+      open_tracking:  openTracking,
+      click_tracking: clickTracking,
+      tls:            tlsMode,
+      ...patch,
+    };
+    try {
+      const updated = await api.configureDomainTracking(domain.id, next);
+      setOpenTracking(updated.open_tracking ?? next.open_tracking);
+      setClickTracking(updated.click_tracking ?? next.click_tracking);
+      setTlsMode(updated.tls ?? next.tls);
+      setTrackingSaved(true);
+      setTimeout(() => setTrackingSaved(false), 2500);
+      onUpdate?.(updated);
+    } catch (err) {
+      let msg = "Failed to save tracking settings.";
+      try { const p = JSON.parse(err.message); if (p?.error) msg = p.error; } catch { /* use default */ }
+      setTrackingError(msg);
+    } finally {
+      setTrackingSaving(false);
     }
   }
 
@@ -413,29 +470,104 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
           )}
 
           {tab === "config" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {[
-                { label: "Domain",    value: domain.domain },
-                { label: "Resend ID", value: domain.resend_domain_id || "Not registered" },
-                { label: "Region",    value: domain.region || "us-east-1" },
-                { label: "Added",     value: fmtDateTime(domain.created_at) },
-                { label: "Verified",  value: domain.verified_at ? fmtDateTime(domain.verified_at) : "Not yet verified" },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", background: C.bg, borderRadius: 10, marginBottom: 2 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{label}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 12, fontFamily: "monospace", color: C.text, maxWidth: 340, textAlign: "right", wordBreak: "break-all" }}>{value}</span>
-                    {value && value !== "Not registered" && value !== "Not yet verified" && (
-                      <CopyBtn text={value} />
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-              {/* Editable "Sending from" */}
-              <div style={{ background: C.bg, borderRadius: 10, padding: "14px", marginBottom: 2 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>Sending from</span>
+              {/* ── Domain info rows ── */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {[
+                  { label: "Domain",    value: domain.domain },
+                  { label: "Resend ID", value: domain.resend_domain_id || "Not registered" },
+                  { label: "Region",    value: domain.region || "us-east-1" },
+                  { label: "Added",     value: fmtDateTime(domain.created_at) },
+                  { label: "Verified",  value: domain.verified_at ? fmtDateTime(domain.verified_at) : "Not yet verified" },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", background: C.bg, borderRadius: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{label}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, fontFamily: "monospace", color: C.text, maxWidth: 340, textAlign: "right", wordBreak: "break-all" }}>{value}</span>
+                      {value && value !== "Not registered" && value !== "Not yet verified" && (
+                        <CopyBtn text={value} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Tracking & TLS rows ── */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+
+                {/* Click tracking */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.bg, borderRadius: 10, gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 3 }}>Click tracking</div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>Links in your emails are rewritten so that clicks are tracked before redirecting to the destination URL.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={clickTracking}
+                    disabled={trackingSaving}
+                    onChange={val => { setClickTracking(val); handleTrackingChange({ click_tracking: val }); }}
+                  />
+                </div>
+
+                {/* Open tracking */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.bg, borderRadius: 10, gap: 16 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>Open tracking</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: "#fef3c7", border: `1px solid #fde68a`, color: C.amber, borderRadius: 20, padding: "1px 8px" }}>Not Recommended</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>A 1×1 pixel transparent image is inserted in each email and includes a unique reference. Note: many email clients block tracking pixels.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={openTracking}
+                    disabled={trackingSaving}
+                    onChange={val => { setOpenTracking(val); handleTrackingChange({ open_tracking: val }); }}
+                  />
+                </div>
+
+                {/* TLS */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.bg, borderRadius: 10, gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 3 }}>TLS (Transport Layer Security)</div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
+                      {tlsMode === "enforced"
+                        ? "Always require TLS. Emails will fail if the recipient server doesn't support encryption."
+                        : "Encrypt when available — falls back to unencrypted delivery if TLS is not supported by the recipient server."}
+                    </div>
+                  </div>
+                  <select
+                    value={tlsMode}
+                    disabled={trackingSaving}
+                    onChange={e => { setTlsMode(e.target.value); handleTrackingChange({ tls: e.target.value }); }}
+                    style={{
+                      flexShrink: 0, background: C.surface, border: `1.5px solid ${C.border}`, borderRadius: 8,
+                      padding: "6px 10px", fontSize: 12, fontWeight: 600, color: C.text,
+                      cursor: trackingSaving ? "not-allowed" : "pointer", fontFamily: "inherit", outline: "none",
+                    }}
+                  >
+                    <option value="opportunistic">Opportunistic</option>
+                    <option value="enforced">Enforced</option>
+                  </select>
+                </div>
+
+                {/* Saving feedback */}
+                {(trackingSaving || trackingSaved || trackingError) && (
+                  <div style={{ padding: "7px 14px", borderRadius: 10, fontSize: 12, display: "flex", alignItems: "center", gap: 7,
+                    background: trackingError ? C.redBg : trackingSaved ? C.greenBg : C.bg,
+                    color: trackingError ? C.red : trackingSaved ? C.green : C.muted,
+                  }}>
+                    {trackingSaving && <LoaderCircle size={12} style={{ animation: "_dspin 0.8s linear infinite" }} />}
+                    {trackingSaved  && <CheckCircle2 size={12} />}
+                    {trackingError  && <AlertCircle  size={12} />}
+                    {trackingSaving ? "Saving…" : trackingSaved ? "Saved" : trackingError}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Sending from (existing) ── */}
+              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Sending from</span>
                   <span style={{ fontSize: 11, color: C.muted }}>The From address used in emails</span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -448,8 +580,7 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
                     style={{
                       flex: 1, background: C.surface, border: `1.5px solid ${emailError ? C.red : emailSaved ? C.greenBdr : C.border}`,
                       borderRadius: 8, padding: "8px 11px", fontSize: 12, color: C.text,
-                      outline: "none", fontFamily: "monospace",
-                      transition: "border-color 0.15s",
+                      outline: "none", fontFamily: "monospace", transition: "border-color 0.15s",
                     }}
                     onFocus={e => { e.currentTarget.style.borderColor = emailError ? C.red : C.accent; }}
                     onBlur={e => { e.currentTarget.style.borderColor = emailError ? C.red : emailSaved ? C.greenBdr : C.border; }}
@@ -481,6 +612,7 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
                   </div>
                 )}
               </div>
+
             </div>
           )}
         </div>
