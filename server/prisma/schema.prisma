@@ -223,6 +223,22 @@ model campaign_recipient {
   @@map("campaign_recipients")
 }
 
+// ── Email Tracking Events (click / open from custom tracking endpoints) ────────
+model email_event {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id  String   @db.Uuid
+  recipient_id String   @db.Uuid
+  event_type   String   // "click" | "open"
+  url          String?
+  user_agent   String   @default("")
+  ip_address   String   @default("")
+  created_at   DateTime @default(now())
+
+  @@index([campaign_id])
+  @@index([recipient_id])
+  @@map("email_events")
+}
+
 // ── Campaign Recipient Events (full event history) ─────────────────────────────
 model campaign_recipient_event {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

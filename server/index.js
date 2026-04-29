@@ -28,8 +28,8 @@ app.use(cors());
 // Webhook route must receive raw body — mount BEFORE express.json()
 app.use('/api/webhooks', webhookRoutes);
 // Tracking routes — no auth required (email clients call these)
-app.use('/api/track',    trackingRoutes);
-app.use('/email/track',  emailTrackingRoutes);
+app.use('/api/track',         trackingRoutes);
+app.use('/api/email/track',   emailTrackingRoutes);
 // SSE — long-lived connections, no body needed
 app.use('/api/sse', sseRoutes);
 app.use(express.json({ limit: '15mb' }));
