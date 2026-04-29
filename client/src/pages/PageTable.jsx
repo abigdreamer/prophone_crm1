@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { Search, MoreHorizontal, Eye, Pencil, MessageSquare, ArrowRightCircle, Trash2, UserPlus, Upload } from "lucide-react";
+import { Search, MoreHorizontal, Eye, Pencil, MessageSquare, ArrowRightCircle, Trash2, UserPlus, Upload, RefreshCw } from "lucide-react";
 import Card from "../components/ui/Card";
 import { StagePill } from "../components/ui/Pill";
 import Hi from "../components/ui/Hi";
@@ -445,6 +445,14 @@ export default function PageTable({ viewMode, setViewMode, onSelect, contacts, s
             <option value="name">Name A-Z</option>
           </select>
 
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.sub, cursor: refreshing ? "not-allowed" : "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600, opacity: refreshing ? 0.65 : 1 }}
+          >
+            <RefreshCw size={13} style={refreshing ? { animation: "spin 1s linear infinite" } : {}} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
           <Btn onClick={() => setAddChoice(true)}>+ Add Contact</Btn>
         </div>
       </div>

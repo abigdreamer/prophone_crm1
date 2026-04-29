@@ -1038,8 +1038,8 @@ function CampaignDetail({ campaignId, onBack, onUpdated }) {
               {actionLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} Resume
             </button>
           )}
-          <button onClick={loadCampaign} title="Refresh" style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.muted, cursor: "pointer" }}>
-            <RefreshCw size={13} />
+          <button onClick={loadCampaign} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>
+            <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
@@ -1256,8 +1256,8 @@ function CampaignsList({ onSelect, onCreated, scopedCompany }) {
           <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{total} campaign{total !== 1 ? "s" : ""} · {running} running · {completed} completed</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={load} title="Refresh" style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.muted, cursor: "pointer" }}>
-            <RefreshCw size={13} />
+          <button onClick={load} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.sub, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600 }}>
+            <RefreshCw size={13} /> Refresh
           </button>
           <button onClick={() => setShowCreate(true)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 16px", borderRadius: 7, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600 }}>
             <Plus size={14} /> New Campaign

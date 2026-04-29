@@ -968,11 +968,13 @@ function DomainDetailModal({ domain, onClose, onVerify, onDelete, onUpdate, veri
               <button
                 onClick={onVerify}
                 disabled={verifying}
-                style={{ background: C.accent, border: "none", borderRadius: 9, padding: "9px 20px", fontSize: 13, fontWeight: 700, color: "#fff", cursor: verifying ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, opacity: verifying ? 0.75 : 1 }}
+                style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 20px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: verifying ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, opacity: verifying ? 0.75 : 1 }}
+                onMouseEnter={e => { if (!verifying) { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; } }}
+                onMouseLeave={e => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.sub; }}
               >
                 {verifying
-                  ? <><LoaderCircle size={13} style={{ animation: "_dspin 0.8s linear infinite" }} /> Checking…</>
-                  : <><ShieldCheck size={13} /> Check Verification</>}
+                  ? <><RefreshCw size={13} style={{ animation: "_dspin 0.8s linear infinite" }} /> Refreshing…</>
+                  : <><RefreshCw size={13} /> Refresh</>}
               </button>
             )}
           </div>
