@@ -1,70 +1,13 @@
 import prisma from '../prisma.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IMPORTANT: Resend's domain-level click_tracking and open_tracking MUST be
-// turned OFF in your Resend dashboard (Domains → Configuration tab) for this
-// custom tracking to work correctly. Leaving Resend tracking ON causes double-
-// wrapping: Resend would re-wrap the already-rewritten tracking URLs, breaking
-// all redirects.
-// ─────────────────────────────────────────────────────────────────────────────
+// NOTE: Resend domain-level click_tracking and open_tracking MUST be OFF in
+// your Resend dashboard (Domains → Configuration) — otherwise Resend re-wraps
+// already-rewritten tracking URLs and all redirects break.
 
-// 1×1 transparent GIF
-const GIF_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-
-// 1×1 transparent PNG
 const PNG_PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
   'base64',
 );
-
-// ── Legacy endpoints (path-param style, /api/track) ───────────────────────────
-
-export async function trackOpen(req, res) {
-  res.writeHead(200, {
-    'Content-Type':   'image/gif',
-    'Content-Length': GIF_PIXEL.length,
-    'Cache-Control':  'no-store, no-cache, must-revalidate',
-    'Pragma':         'no-cache',
-    'Expires':        '0',
-  });
-  res.end(GIF_PIXEL);
-
-  const { id } = req.params;
-  try {
-    const r = await prisma.campaign_recipient.findUnique({
-      where: { id }, select: { id: true, campaign_id: true, status: true, opened_at: true },
-    });
-    if (!r || r.opened_at) return;
-    await prisma.campaign_recipient.update({
-      where: { id },
-      data:  { opened_at: new Date(), status: ['sent', 'delivered'].includes(r.status) ? 'opened' : r.status },
-    });
-    await prisma.campaign.update({ where: { id: r.campaign_id }, data: { opened_count: { increment: 1 } } }).catch(() => {});
-  } catch (err) {
-    console.error('[Track] open error:', err.message);
-  }
-}
-
-export async function trackClick(req, res) {
-  const { id } = req.params;
-  const target  = req.query.u;
-  if (!target) return res.status(400).send('Missing url');
-
-  res.redirect(302, target);
-
-  try {
-    const r = await prisma.campaign_recipient.findUnique({
-      where: { id }, select: { id: true, campaign_id: true, status: true, clicked_at: true },
-    });
-    if (!r || r.clicked_at) return;
-    await prisma.campaign_recipient.update({ where: { id }, data: { clicked_at: new Date(), status: 'clicked' } });
-    await prisma.campaign.update({ where: { id: r.campaign_id }, data: { clicked_count: { increment: 1 } } }).catch(() => {});
-  } catch (err) {
-    console.error('[Track] click error:', err.message);
-  }
-}
-
-// ── New endpoints (query-param style, /api/email/track) ───────────────────────
 
 function getClientIp(req) {
   return (
@@ -74,8 +17,9 @@ function getClientIp(req) {
   );
 }
 
+// ── /api/email/track/open ─────────────────────────────────────────────────────
+
 export async function trackEmailOpen(req, res) {
-  // Respond immediately — never block the email client
   res.writeHead(200, {
     'Content-Type':   'image/png',
     'Content-Length': PNG_PIXEL.length,
@@ -88,7 +32,7 @@ export async function trackEmailOpen(req, res) {
   const { campaignId, recipientId } = req.query;
   if (!campaignId || !recipientId) return;
 
-  (async () => {
+  setImmediate(async () => {
     try {
       const r = await prisma.campaign_recipient.findUnique({
         where:  { id: recipientId },
@@ -96,52 +40,47 @@ export async function trackEmailOpen(req, res) {
       });
       if (!r) return;
 
-      const ua        = req.headers['user-agent'] ?? '';
-      const ip        = getClientIp(req);
-      const isFirst   = !r.opened_at;
+      const ua      = req.headers['user-agent'] ?? '';
+      const ip      = getClientIp(req);
+      const isFirst = !r.opened_at;
+      const now     = new Date();
 
-      // Log every open to email_events
-      await prisma.email_event.create({
-        data: {
-          campaign_id:  campaignId,
-          recipient_id: recipientId,
-          event_type:   'open',
-          user_agent:   ua,
-          ip_address:   ip,
-        },
-      });
-
-      // Also log to campaign_recipient_event for full history
-      await prisma.campaign_recipient_event.create({
-        data: {
-          recipient_id: recipientId,
-          campaign_id:  campaignId,
-          event:        'opened',
-          metadata:     { ip, userAgent: ua },
-        },
-      });
+      const writes = [
+        prisma.email_event.create({
+          data: { campaign_id: campaignId, recipient_id: recipientId, event_type: 'open', user_agent: ua, ip_address: ip },
+        }),
+        prisma.campaign_recipient_event.create({
+          data: { recipient_id: recipientId, campaign_id: campaignId, event: 'opened', metadata: { ip, userAgent: ua } },
+        }),
+      ];
 
       if (isFirst) {
-        await prisma.campaign_recipient.update({
-          where: { id: recipientId },
-          data:  { opened_at: new Date(), status: ['sent', 'delivered'].includes(r.status) ? 'opened' : r.status },
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data:  { opened_count: { increment: 1 } },
-        });
+        writes.push(
+          prisma.campaign_recipient.update({
+            where: { id: recipientId },
+            data:  { opened_at: now, status: ['sent', 'delivered'].includes(r.status) ? 'opened' : r.status },
+          }),
+          prisma.campaign.update({
+            where: { id: campaignId },
+            data:  { opened_count: { increment: 1 } },
+          }),
+        );
       }
+
+      await Promise.all(writes);
     } catch (err) {
-      console.error('[EmailTrack] open error:', err.message);
+      console.error('[Track] open error:', err.message);
     }
-  })();
+  });
 }
+
+// ── /api/email/track/click ────────────────────────────────────────────────────
 
 export async function trackEmailClick(req, res) {
   const { campaignId, recipientId, url } = req.query;
 
   if (!campaignId || !recipientId || !url) {
-    return res.status(400).send('Missing required params');
+    return res.status(400).send('Missing params');
   }
 
   const decodedUrl = decodeURIComponent(url);
@@ -149,66 +88,137 @@ export async function trackEmailClick(req, res) {
     return res.status(400).send('Invalid url');
   }
 
-  // Always redirect first — DB write must never delay the user
   res.redirect(302, decodedUrl);
 
-  (async () => {
+  setImmediate(async () => {
     try {
       const r = await prisma.campaign_recipient.findUnique({
         where:  { id: recipientId },
-        select: { id: true, campaign_id: true, status: true, clicked_at: true },
+        select: { id: true, campaign_id: true, status: true, clicked_at: true, opened_at: true },
       });
       if (!r) return;
 
       const ua      = req.headers['user-agent'] ?? '';
       const ip      = getClientIp(req);
       const isFirst = !r.clicked_at;
+      const now     = new Date();
 
-      // Log every click to email_events (url stored per click)
-      await prisma.email_event.create({
-        data: {
-          campaign_id:  campaignId,
-          recipient_id: recipientId,
-          event_type:   'click',
-          url:          decodedUrl,
-          user_agent:   ua,
-          ip_address:   ip,
-        },
-      });
-
-      // Also log to campaign_recipient_event for full history
-      await prisma.campaign_recipient_event.create({
-        data: {
-          recipient_id: recipientId,
-          campaign_id:  campaignId,
-          event:        'clicked',
-          metadata:     { ip, userAgent: ua, url: decodedUrl },
-        },
-      });
+      const writes = [
+        prisma.email_event.create({
+          data: { campaign_id: campaignId, recipient_id: recipientId, event_type: 'click', url: decodedUrl, user_agent: ua, ip_address: ip },
+        }),
+      ];
 
       if (isFirst) {
-        await prisma.campaign_recipient.update({
-          where: { id: recipientId },
-          data:  { clicked_at: new Date(), status: 'clicked' },
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data:  { clicked_count: { increment: 1 } },
-        });
+        const recipientData = { clicked_at: now, status: 'clicked' };
+        const campaignData  = { clicked_count: { increment: 1 } };
+
+        // A click always implies an open — record it if not already opened
+        if (!r.opened_at) {
+          recipientData.opened_at = now;
+          campaignData.opened_count = { increment: 1 };
+          writes.push(
+            prisma.email_event.create({
+              data: { campaign_id: campaignId, recipient_id: recipientId, event_type: 'open', user_agent: ua, ip_address: ip },
+            }),
+            prisma.campaign_recipient_event.create({
+              data: { recipient_id: recipientId, campaign_id: campaignId, event: 'opened', metadata: { ip, userAgent: ua, implicit: true } },
+            }),
+          );
+        }
+
+        writes.push(
+          prisma.campaign_recipient.update({
+            where: { id: recipientId },
+            data:  recipientData,
+          }),
+          prisma.campaign.update({
+            where: { id: campaignId },
+            data:  campaignData,
+          }),
+          prisma.campaign_recipient_event.create({
+            data: { recipient_id: recipientId, campaign_id: campaignId, event: 'clicked', metadata: { url: decodedUrl, ip, userAgent: ua } },
+          }),
+        );
       }
+
+      await Promise.all(writes);
     } catch (err) {
-      console.error('[EmailTrack] click error:', err.message);
+      console.error('[Track] click error:', err.message);
     }
-  })();
+  });
 }
 
-// ── Stats helper ─────────────────────────────────────────────────────────────
+// ── Legacy endpoints (/api/track/o/:id  /api/track/c/:id) ────────────────────
+// These handle tracking pixels/links embedded in emails sent before the new
+// /api/email/track system was deployed.
 
-/**
- * Returns open/click stats for a campaign from the email_events table.
- * @param {string} campaignId
- * @returns {{ opens: number, uniqueOpens: number, clicks: number, uniqueClicks: number, ctr: string }}
- */
+const GIF_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+export async function trackOpen(req, res) {
+  res.writeHead(200, {
+    'Content-Type':   'image/gif',
+    'Content-Length': GIF_PIXEL.length,
+    'Cache-Control':  'no-store, no-cache, must-revalidate',
+    'Pragma':         'no-cache',
+    'Expires':        '0',
+  });
+  res.end(GIF_PIXEL);
+
+  const { id } = req.params;
+  setImmediate(async () => {
+    try {
+      const r = await prisma.campaign_recipient.findUnique({
+        where: { id }, select: { id: true, campaign_id: true, status: true, opened_at: true },
+      });
+      if (!r || r.opened_at) return;
+      await Promise.all([
+        prisma.campaign_recipient.update({
+          where: { id },
+          data:  { opened_at: new Date(), status: ['sent', 'delivered'].includes(r.status) ? 'opened' : r.status },
+        }),
+        prisma.campaign.update({ where: { id: r.campaign_id }, data: { opened_count: { increment: 1 } } }),
+      ]);
+    } catch (err) {
+      console.error('[Track] legacy open error:', err.message);
+    }
+  });
+}
+
+export async function trackClick(req, res) {
+  const { id } = req.params;
+  const target  = req.query.u;
+  if (!target) return res.status(400).send('Missing url');
+
+  res.redirect(302, target);
+
+  setImmediate(async () => {
+    try {
+      const r = await prisma.campaign_recipient.findUnique({
+        where: { id }, select: { id: true, campaign_id: true, status: true, clicked_at: true, opened_at: true },
+      });
+      if (!r || r.clicked_at) return;
+
+      const recipientData = { clicked_at: new Date(), status: 'clicked' };
+      const campaignData  = { clicked_count: { increment: 1 } };
+
+      if (!r.opened_at) {
+        recipientData.opened_at = new Date();
+        campaignData.opened_count = { increment: 1 };
+      }
+
+      await Promise.all([
+        prisma.campaign_recipient.update({ where: { id }, data: recipientData }),
+        prisma.campaign.update({ where: { id: r.campaign_id }, data: campaignData }),
+      ]);
+    } catch (err) {
+      console.error('[Track] legacy click error:', err.message);
+    }
+  });
+}
+
+// ── Stats helper ──────────────────────────────────────────────────────────────
+
 export async function getCampaignTrackingStats(campaignId) {
   const [opens, clicks] = await Promise.all([
     prisma.email_event.findMany({
@@ -223,15 +233,7 @@ export async function getCampaignTrackingStats(campaignId) {
 
   const uniqueOpens  = new Set(opens.map(e => e.recipient_id)).size;
   const uniqueClicks = new Set(clicks.map(e => e.recipient_id)).size;
-  const ctr          = uniqueOpens > 0
-    ? ((uniqueClicks / uniqueOpens) * 100).toFixed(1) + '%'
-    : '0%';
+  const ctr = uniqueOpens > 0 ? ((uniqueClicks / uniqueOpens) * 100).toFixed(1) + '%' : '0%';
 
-  return {
-    opens:        opens.length,
-    uniqueOpens,
-    clicks:       clicks.length,
-    uniqueClicks,
-    ctr,
-  };
+  return { opens: opens.length, uniqueOpens, clicks: clicks.length, uniqueClicks, ctr };
 }
