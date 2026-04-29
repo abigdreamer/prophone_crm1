@@ -7,6 +7,7 @@ import {
   updateDomain,
   verifyDomain,
   deleteDomain,
+  patchDomainTracking,
 } from '../controllers/domains.controller.js';
 
 const router = Router();
@@ -17,7 +18,8 @@ router.get('/',             listDomains);
 router.get('/:id',          getDomain);
 router.post('/',            createDomain);
 router.put('/:id',          updateDomain);
-router.post('/:id/verify',  verifyDomain);
-router.delete('/:id',       deleteDomain);
+router.post('/:id/verify',    verifyDomain);
+router.patch('/:id/tracking', patchDomainTracking);
+router.delete('/:id',         deleteDomain);
 
 export default router;

@@ -1,0 +1,4 @@
+ALTER TABLE "domains"
+  ADD COLUMN IF NOT EXISTS "open_tracking"  BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "click_tracking" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "tls"            TEXT    NOT NULL DEFAULT 'opportunistic';
