@@ -5,264 +5,146 @@ import T from "../theme";
 import USERS_DB from "../data/users";
 import * as db from "../lib/db";
 import { Spinner } from "./ui/Loader";
+import { Check, Eye, ArrowRight } from "lucide-react";
 
-// ─── Login / Auth screen ──────────────────────────────────────────────────────
 export default function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   async function handleLogin() {
     setError("");
     setLoading(true);
     try {
       const user = await db.loginUser(email, password);
-      if (user) {
-        onLogin(user);
-      } else {
-        setError("Invalid credentials. Password is 'demo' for all users.");
-      }
+      if (user) onLogin(user);
+      else setError("Invalid credentials. Try password 'demo'.");
     } catch (err) {
-      setError(
-        "Connection error. Make sure the API server is running on port 8080.",
-      );
+      setError("Connection error. Check your Supabase setup.");
     } finally {
       setLoading(false);
     }
   }
 
-  function handleKeyDown(e) {
-    if (e.key === "Enter") handleLogin();
-  }
-
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-        background: T.bg,
-        fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          background: T.card,
-          border: "1px solid " + T.border,
-          borderRadius: 16,
-          padding: "40px 36px",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
-        }}
-      >
-        {/* Logo */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 32,
-          }}
-        >
-          <div
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 10,
-              background: T.accent,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#fff",
-            }}
-          >
-            G
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                color: T.text,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              GeniusAI
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: T.muted,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
-              PROPHONE CRM
-            </div>
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "center",
+      minHeight: "100vh", background: "#05060a", 
+      fontFamily: "'Inter', sans-serif",
+      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)" // Subtle top glow
+    }}>
+      <div style={{
+        width: 440, background: "rgba(19, 22, 31, 0.8)",
+        backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 28, padding: "48px 40px",
+        boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
+      }}>
+        
+        {/* Header with Logo */}
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 14,
+            background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, fontWeight: 900, color: "#fff",
+            margin: "0 auto 16px",
+            boxShadow: "0 0 30px rgba(99, 102, 241, 0.3)",
+          }}>G</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>GeniusAI</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", letterSpacing: "2px", marginTop: 4 }}>PROPHONE CRM</div>
+        </div>
+
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 16 }}>Quick Select</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {USERS_DB.slice(0, 4).map(u => {
+              const active = email === u.email;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => setEmail(u.email)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px",
+                    background: active ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.02)",
+                    border: `1px solid ${active ? "#6366f1" : "rgba(255,255,255,0.05)"}`,
+                    borderRadius: 16, cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    textAlign: "left", position: "relative"
+                  }}
+                >
+                  <Avatar user={u} size={34} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? "#fff" : "rgba(255,255,255,0.7)" }}>{u.name.split(" ")[0]}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{u.role || "Staff"}</div>
+                  </div>
+                  {active && <Check size={14} color="#6366f1" style={{ position: "absolute", right: 12, top: 12 }} />}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            color: T.text,
-            marginBottom: 6,
-          }}
-        >
-          Sign in
-        </div>
-        <div style={{ fontSize: 13, color: T.muted, marginBottom: 28 }}>
-          All accounts use password:{" "}
-          <span style={{ color: T.accent, fontWeight: 600 }}>demo</span>
-        </div>
-
-        {/* 2x2 Quick User Select Grid */}
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: T.muted,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              marginBottom: 12,
-            }}
-          >
-            Quick select
+        {/* Inputs Section */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>EMAIL ADDRESS</label>
+            <Input value={email} onChange={setEmail} placeholder="name@company.com" />
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 10,
-            }}
-          >
-            {USERS_DB.slice(0, 4).map((u) => (
-              <button
-                key={u.id}
-                onClick={() => setEmail(u.email)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  background: email === u.email ? u.color + "15" : T.bg,
-                  border:
-                    "1px solid " + (email === u.email ? u.color : T.border),
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  transition: "all 0.2s ease",
-                  textAlign: "left",
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>PASSWORD</label>
+            <div style={{ position: "relative" }}>
+              <Input 
+                value={password} 
+                onChange={setPassword} 
+                type={showPass ? "text" : "password"} 
+                placeholder="••••••••"
+              />
+              <button 
+                onClick={() => setShowPass(!showPass)}
+                style={{ 
+                  position: "absolute", right: 12, bottom: 12, 
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "rgba(255,255,255,0.3)"
                 }}
               >
-                <Avatar user={u} size={24} />
-                <div style={{ overflow: "hidden" }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: email === u.email ? T.text : T.dim,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {u.name.split(" ")[0]}
-                  </div>
-                  {/* Changed this line to use the user's actual role or email */}
-                  <div style={{ fontSize: 9, color: T.muted }}>
-                    {u.role || "Team Member"}
-                  </div>
-                </div>
+                <Eye size={18} />
               </button>
-            ))}
+            </div>
           </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <Input
-            label="Email"
-            value={email}
-            onChange={setEmail}
-            placeholder="mike@geniusai.biz"
-            type="email"
-          />
-          <Input
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            placeholder="demo"
-            type="password"
-          />
         </div>
 
         {error && (
-          <div
-            style={{
-              padding: "10px 14px",
-              background: T.red + "15",
-              border: "1px solid " + T.red + "40",
-              borderRadius: 8,
-              fontSize: 12,
-              color: T.red,
-              marginTop: 16,
-              lineHeight: "1.4",
-            }}
-          >
-            {error}
-          </div>
+          <div style={{ 
+            marginTop: 20, padding: "12px", borderRadius: 12, 
+            background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)",
+            color: "#f87171", fontSize: 12, textAlign: "center" 
+          }}>{error}</div>
         )}
 
         <button
           onClick={handleLogin}
-          onKeyDown={handleKeyDown}
           disabled={loading}
           style={{
-            width: "100%",
-            padding: 14,
-            marginTop: 24,
-            background: loading ? T.muted : T.accent,
-            border: "none",
-            borderRadius: 10,
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 15,
-            cursor: loading ? "not-allowed" : "pointer",
-            fontFamily: "inherit",
-            boxShadow: `0 4px 12px ${T.accent}40`,
+            width: "100%", padding: "16px", marginTop: 32,
+            background: loading ? "rgba(99, 102, 241, 0.5)" : "linear-gradient(90deg, #6366f1 0%, #4f46e5 100%)",
+            border: "none", borderRadius: 14, color: "#fff",
+            fontWeight: 700, fontSize: 16, cursor: loading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+            boxShadow: "0 10px 25px rgba(99, 102, 241, 0.3)",
+            transition: "transform 0.2s"
           }}
         >
-          {loading ? (
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Spinner size={16} color="#fff" /> Signing in…
-            </span>
-          ) : (
-            "Sign In →"
-          )}
+          {loading ? <Spinner size={18} color="#fff" /> : <>Sign in <ArrowRight size={18} /></>}
         </button>
 
-        <div
-          style={{
-            marginTop: 24,
-            fontSize: 11,
-            color: T.muted,
-            textAlign: "center",
-            borderTop: `1px solid ${T.border}`,
-            paddingTop: 16,
-          }}
-        >
-          Part of the GeniusAI · Prophone suite
+        <div style={{ 
+          marginTop: 40, fontSize: 10, color: "rgba(255,255,255,0.2)", 
+          textAlign: "center", letterSpacing: "1px", fontWeight: 500 
+        }}>
+          SECURED BY GENIUSAI ECOSYSTEM
         </div>
       </div>
     </div>
