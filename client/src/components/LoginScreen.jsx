@@ -3,7 +3,7 @@ import Input from "./ui/Input";
 import Avatar from "./ui/Avatar";
 import T from "../theme";
 import USERS_DB from "../data/users";
-import * as db from "../lib/db";
+// import * as db from "../lib/db"; // Removed Supabase lib
 import { Spinner } from "./ui/Loader";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
@@ -17,15 +17,24 @@ export default function LoginScreen({ onLogin }) {
   async function handleLogin() {
     setError("");
     setLoading(true);
-    try {
-      const user = await db.loginUser(email, password);
-      if (user) onLogin(user);
-      else setError("Invalid credentials. Try password 'demo'.");
-    } catch (err) {
-      setError("Connection error. Check your Supabase setup.");
-    } finally {
-      setLoading(false);
-    }
+
+    // Simulated network delay for realism
+    setTimeout(() => {
+      try {
+        // Local authentication logic instead of Supabase
+        const user = USERS_DB.find(u => u.email === email && password === "demo");
+
+        if (user) {
+          onLogin(user);
+        } else {
+          setError("Invalid credentials. Please use the 'Quick Select' options.");
+        }
+      } catch (err) {
+        setError("An unexpected error occurred during sign-in.");
+      } finally {
+        setLoading(false);
+      }
+    }, 800);
   }
 
   return (
@@ -33,7 +42,7 @@ export default function LoginScreen({ onLogin }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       minHeight: "100vh", background: "#05060a", 
       fontFamily: "'Inter', sans-serif",
-      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)" // Subtle top glow
+      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)" 
     }}>
       <div style={{
         width: 440, background: "rgba(19, 22, 31, 0.8)",
@@ -103,6 +112,7 @@ export default function LoginScreen({ onLogin }) {
                 placeholder="••••••••"
               />
               <button 
+                type="button"
                 onClick={() => setShowPass(!showPass)}
                 style={{ 
                   position: "absolute", right: 12, bottom: 12, 

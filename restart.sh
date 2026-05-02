@@ -29,6 +29,9 @@ npm run build
 # PM2 reload (zero downtime)
 echo "Restarting services..."
 cd "$APP_DIR"
+
+# Delete stale process if it exists with a wrong config, then reload clean
+pm2 delete prophone 2>/dev/null || true
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
