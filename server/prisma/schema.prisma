@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id
+  name      String
+  email     String   @unique
+  role      String   @default("Rep")
+  avatar    String   @default("")
+  color     String   @default("#6366f1")
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model Client {
+  id        String    @id
+  name      String
+  domain    String    @default("")
+  color     String    @default("#6366f1")
+  industry  String    @default("")
+  plan      String    @default("Starter")
+  mrr       Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at")
+  contacts  Contact[]
+
+  @@map("clients")
+}
+
+model Contact {
+  id             String     @id @default(uuid())
+  pool           String     @default("prospect")
+  clientId       String?    @map("client_id")
+  firstName      String     @map("first_name")
+  lastName       String     @default("") @map("last_name")
+  email          String     @default("")
+  phone          String     @default("")
+  company        String     @default("")
+  title          String     @default("")
+  website        String     @default("")
+  city           String     @default("")
+  trucks         Int        @default(0)
+  lifecycleStage String     @default("new") @map("lifecycle_stage")
+  leadScore      Int        @default(0) @map("lead_score")
+  status         String     @default("active")
+  source         String     @default("")
+  campaign       String     @default("")
+  emailsSent     Int        @default(0) @map("emails_sent")
+  emailsOpened   Int        @default(0) @map("emails_opened")
+  emailsClicked  Int        @default(0) @map("emails_clicked")
+  callsMade      Int        @default(0) @map("calls_made")
+  callsAnswered  Int        @default(0) @map("calls_answered")
+  lastActivityAt DateTime   @default(now()) @map("last_activity_at")
+  contractValue  Int        @default(0) @map("contract_value")
+  accountSize    String     @default("1-5") @map("account_size")
+  tags           String[]   @default([])
+  notes          String     @default("")
+  ownedBy        String     @default("") @map("owned_by")
+  addedBy        String     @default("") @map("added_by")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  client         Client?    @relation(fields: [clientId], references: [id])
+  activities     Activity[]
+
+  @@map("contacts")
+}
+
+model Activity {
+  id        String   @id @default(uuid())
+  contactId String   @map("contact_id")
+  type      String
+  note      String   @default("")
+  by        String   @default("")
+  ts        DateTime @default(now())
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
