@@ -39,9 +39,15 @@ export default function App() {
 
   // ── Restore session from localStorage token on mount ───────────────────────
   useEffect(() => {
+    const token = localStorage.getItem('prophone_token');
+    if (!token) { setAuthLoading(false); return; }
     db.getMe()
       .then(user => setCurrentUser(user))
-      .catch(() => localStorage.removeItem('prophone_token'))
+      .catch(err => {
+        if (err.message === 'Invalid or expired token' || err.message === 'Authorization required') {
+          localStorage.removeItem('prophone_token');
+        }
+      })
       .finally(() => setAuthLoading(false));
   }, []);
 

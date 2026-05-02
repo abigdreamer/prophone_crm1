@@ -3,7 +3,7 @@ import Input from "./ui/Input";
 import Avatar from "./ui/Avatar";
 import T from "../theme";
 import USERS_DB from "../data/users";
-// import * as db from "../lib/db"; // Removed Supabase lib
+import { loginUser } from "../lib/db";
 import { Spinner } from "./ui/Loader";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
@@ -17,24 +17,18 @@ export default function LoginScreen({ onLogin }) {
   async function handleLogin() {
     setError("");
     setLoading(true);
-
-    // Simulated network delay for realism
-    setTimeout(() => {
-      try {
-        // Local authentication logic instead of Supabase
-        const user = USERS_DB.find(u => u.email === email && password === "demo");
-
-        if (user) {
-          onLogin(user);
-        } else {
-          setError("Invalid credentials. Please use the 'Quick Select' options.");
-        }
-      } catch (err) {
-        setError("An unexpected error occurred during sign-in.");
-      } finally {
-        setLoading(false);
+    try {
+      const user = await loginUser(email, password);
+      if (user) {
+        onLogin(user);
+      } else {
+        setError("Invalid credentials. Check your email and password.");
       }
-    }, 800);
+    } catch (err) {
+      setError("Connection error. Make sure the API server is running on port 8080.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
