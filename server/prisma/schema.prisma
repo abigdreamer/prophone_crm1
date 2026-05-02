@@ -82,3 +82,16 @@ model Activity {
 
   @@map("activities")
 }
+
+model Domain {
+  id             String   @id @default(uuid())
+  domainName     String   @unique @map("domain_name")
+  resendDomainId String   @map("resend_domain_id")
+  status         String   @default("pending")
+  spfRecord      String   @default("") @map("spf_record")
+  dkimRecord     String   @default("") @map("dkim_record")
+  dmarcRecord    String   @default("") @map("dmarc_record")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("domains")
+}

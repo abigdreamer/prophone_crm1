@@ -65,3 +65,17 @@ export async function updateContact(id, contact) {
 export async function addActivity(contactId, activity) {
   await request('POST', `/api/contacts/${contactId}/activities`, activity);
 }
+
+// ── Domains ────────────────────────────────────────────────────────────────────
+
+export async function getDomains() {
+  return request('GET', '/api/domains');
+}
+
+export async function addDomain(name) {
+  return request('POST', '/api/domains', { name });
+}
+
+export async function deleteDomain(id) {
+  return request('DELETE', `/api/domains/${id}`);
+}

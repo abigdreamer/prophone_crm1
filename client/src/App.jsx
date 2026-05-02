@@ -9,6 +9,7 @@ import Avatar        from "./components/ui/Avatar";
 
 import PageDashboard from "./pages/PageDashboard";
 import PageTable     from "./pages/PageTable";
+import PageDomains   from "./pages/PageDomains";
 
 import T             from "./theme";
 import * as db       from "./lib/db";
@@ -132,6 +133,8 @@ export default function App() {
         />
       );
     }
+
+    if (page === "domains") return <PageDomains />;
 
     if (["table","all-contacts","leads","customers","lost"].includes(page)) {
       const vm =
