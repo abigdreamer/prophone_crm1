@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Force IPv4 DNS — prevents timeouts on systems where IPv6 is unavailable
+require('dns').setDefaultResultOrder('ipv4first');
 const express = require('express');
 const cors = require('cors');
 

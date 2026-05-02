@@ -6,71 +6,53 @@
  * In Resend dashboard → Webhooks → Add endpoint:
  *   URL:    https://api.prophone.biz/webhooks/resend
  *   Events: domain.verified, domain.failed
- *
- * Requires Node.js 18+ for built-in fetch.
  */
 
-const crypto = require('crypto');
-const axios   = require('axios');
-const prisma  = require('../lib/prisma');
+const crypto   = require('crypto');
+const { Resend } = require('resend');
+const prisma   = require('../lib/prisma');
 
-const RESEND_API = 'https://api.resend.com';
+// ── Resend SDK helpers ────────────────────────────────────────────────────────
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function resendHeaders() {
-  return {
-    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-    'Content-Type':  'application/json',
-  };
+function getResendClient() {
+  if (!process.env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured on the server');
+  return new Resend(process.env.RESEND_API_KEY);
 }
 
-// Axios instance for Resend — uses Node https module (avoids undici IPv6 issues)
-const resend = axios.create({ baseURL: RESEND_API, timeout: 15000 });
+function mapStatus(resendStatus) {
+  switch (resendStatus) {
+    case 'verified':          return 'verified';
+    case 'failed':
+    case 'temporary_failure': return 'failed';
+    default:                  return 'pending';
+  }
+}
+
+// Find a domain by name in the Resend account (used when domain already exists)
+async function findInResendByName(resend, name) {
+  try {
+    const { data } = await resend.domains.list();
+    return (data?.data ?? data ?? []).find(d => d.name === name) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Map Resend records array → spf / dkim / dmarc JSON strings
 function extractRecords(records = []) {
-  const spf  = records.find(r => r.record === 'SPF')          || records[0] || null;
-  const dkim = records.find(r => r.record === 'DKIM')         || records[1] || null;
-  const ret  = records.find(r => r.record === 'Return-Path')  || records[2] || null;
-
-  // DMARC is not provided by Resend — suggest a standard record
+  const spf  = records.find(r => r.record === 'SPF')           || records[0] || null;
+  const dkim = records.find(r => r.record === 'DKIM')          || records[1] || null;
+  const ret  = records.find(r => r.record === 'Return-Path')   || records[2] || null;
   const dmarc = {
-    record: 'DMARC',
-    type:   'TXT',
-    name:   '_dmarc',
-    value:  'v=DMARC1; p=none;',
-    ttl:    'Auto',
-    note:   'Recommended — add manually to your DNS provider',
+    record: 'DMARC', type: 'TXT', name: '_dmarc',
+    value: 'v=DMARC1; p=none;', ttl: 'Auto',
+    note: 'Recommended — add manually to your DNS provider',
   };
-
   return {
     spfRecord:   JSON.stringify(spf  || {}),
     dkimRecord:  JSON.stringify(dkim || {}),
     dmarcRecord: JSON.stringify(ret  ? { ...ret, record: 'Return-Path' } : dmarc),
   };
-}
-
-// Verify Resend/Svix webhook signature using built-in crypto
-function verifySignature(rawBody, headers) {
-  const secret = process.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) return true; // skip verification if secret not configured
-
-  const msgId        = headers['svix-id'];
-  const msgTimestamp = headers['svix-timestamp'];
-  const msgSignature = headers['svix-signature'];
-  if (!msgId || !msgTimestamp || !msgSignature) return false;
-
-  // Reject timestamps older than 5 minutes
-  if (Math.abs(Date.now() / 1000 - parseInt(msgTimestamp, 10)) > 300) return false;
-
-  const toSign    = `${msgId}.${msgTimestamp}.${rawBody.toString()}`;
-  const keyBytes  = Buffer.from(secret.replace('whsec_', ''), 'base64');
-  const computed  = crypto.createHmac('sha256', keyBytes).update(toSign).digest('base64');
-
-  // svix-signature may contain multiple space-separated sigs like "v1,<base64>"
-  const sigs = msgSignature.split(' ').map(s => s.replace(/^v\d+,/, ''));
-  return sigs.some(s => s === computed);
 }
 
 // ── Controllers ───────────────────────────────────────────────────────────────
@@ -84,45 +66,43 @@ async function addDomain(req, res) {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Domain name is required' });
 
-  const cleanName = name.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const cleanName = name.trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
 
-  if (!process.env.RESEND_API_KEY) {
-    return res.status(503).json({ error: 'RESEND_API_KEY is not configured on the server' });
-  }
+  const resend = getResendClient();
+  let resendId, resendStatus, records;
 
-  // Add domain in Resend — if already registered there, fetch the existing record
-  let resendData;
-  try {
-    const { data } = await resend.post('/domains', { name: cleanName }, { headers: resendHeaders() });
-    resendData = data;
-  } catch (err) {
-    const isAlreadyRegistered =
-      err.response?.status === 422 &&
-      (err.response?.data?.message || '').toLowerCase().includes('registered already');
+  // Try to create the domain in Resend
+  const { data: created, error } = await resend.domains.create({ name: cleanName });
 
-    if (isAlreadyRegistered) {
-      // Domain exists in Resend — find it and pull its records into our DB
-      const { data: list } = await resend.get('/domains', { headers: resendHeaders() });
-      const match = (list.data || list).find(d => d.name === cleanName);
-      if (!match) {
-        return res.status(422).json({ error: `${cleanName} is already registered in Resend but could not be retrieved. Remove it from Resend first.` });
-      }
-      const { data: full } = await resend.get(`/domains/${match.id}`, { headers: resendHeaders() });
-      resendData = full;
-    } else {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to add domain in Resend';
-      return res.status(err.response?.status || 502).json({ error: msg });
+  if (created && !error) {
+    // Newly created — fetch full details to get DNS records
+    const { data: full } = await resend.domains.get(created.id).catch(() => ({ data: null }));
+    resendId     = created.id;
+    resendStatus = mapStatus(full?.status ?? created.status);
+    records      = full?.records ?? created.records ?? [];
+  } else if (error) {
+    // Domain already registered in Resend — find it and pull records
+    const existing = await findInResendByName(resend, cleanName);
+    if (!existing) {
+      return res.status(error.statusCode || 422).json({ error: error.message || 'Failed to register domain with Resend' });
     }
+
+    const { data: full } = await resend.domains.get(existing.id).catch(() => ({ data: null }));
+    resendId     = existing.id;
+    resendStatus = mapStatus(full?.status ?? existing.status);
+    records      = full?.records ?? [];
+  } else {
+    return res.status(502).json({ error: 'Unexpected response from Resend' });
   }
 
-  const { spfRecord, dkimRecord, dmarcRecord } = extractRecords(resendData.records);
-
-  const resendStatus = resendData.status === 'verified' ? 'verified' : resendData.status === 'failed' ? 'failed' : 'pending';
+  const { spfRecord, dkimRecord, dmarcRecord } = extractRecords(records);
 
   const domain = await prisma.domain.upsert({
     where:  { domainName: cleanName },
-    update: { resendDomainId: resendData.id, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
-    create: { domainName: cleanName, resendDomainId: resendData.id, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
+    update: { resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
+    create: { domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
   });
 
   res.status(201).json(domain);
@@ -133,21 +113,42 @@ async function deleteDomain(req, res) {
   const domain = await prisma.domain.findUnique({ where: { id } });
   if (!domain) return res.status(404).json({ error: 'Domain not found' });
 
-  // Best-effort: remove from Resend (don't fail if Resend errors)
+  // Best-effort remove from Resend
   if (domain.resendDomainId && process.env.RESEND_API_KEY) {
-    await resend.delete(`/domains/${domain.resendDomainId}`, { headers: resendHeaders() }).catch(() => {});
+    const resend = getResendClient();
+    const existing = domain.resendDomainId || await findInResendByName(resend, domain.domainName).then(d => d?.id);
+    if (existing) await resend.domains.remove(existing).catch(() => {});
   }
 
   await prisma.domain.delete({ where: { id } });
   res.json({ success: true });
 }
 
-// POST /webhooks/resend — receives raw Buffer body (express.raw middleware)
+// POST /webhooks/resend — raw Buffer body (express.raw middleware)
 async function handleWebhook(req, res) {
-  const rawBody = req.body; // Buffer
+  const rawBody = req.body;
+  const secret  = process.env.RESEND_WEBHOOK_SECRET;
 
-  if (!verifySignature(rawBody, req.headers)) {
-    return res.status(401).json({ error: 'Invalid webhook signature' });
+  if (secret) {
+    const msgId        = req.headers['svix-id'];
+    const msgTimestamp = req.headers['svix-timestamp'];
+    const msgSignature = req.headers['svix-signature'];
+
+    if (!msgId || !msgTimestamp || !msgSignature) {
+      return res.status(400).json({ error: 'Missing webhook signature headers' });
+    }
+    if (Math.abs(Date.now() / 1000 - parseInt(msgTimestamp, 10)) > 300) {
+      return res.status(400).json({ error: 'Webhook timestamp too old' });
+    }
+
+    const toSign   = `${msgId}.${msgTimestamp}.${rawBody.toString()}`;
+    const keyBytes = Buffer.from(secret.replace('whsec_', ''), 'base64');
+    const computed = crypto.createHmac('sha256', keyBytes).update(toSign).digest('base64');
+    const sigs     = msgSignature.split(' ').map(s => s.replace(/^v\d+,/, ''));
+
+    if (!sigs.includes(computed)) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
   }
 
   let event;
@@ -157,15 +158,9 @@ async function handleWebhook(req, res) {
   const resendDomainId = event?.data?.id;
 
   if (event.type === 'domain.verified' && resendDomainId) {
-    await prisma.domain.updateMany({
-      where: { resendDomainId },
-      data:  { status: 'verified' },
-    }).catch(() => {});
+    await prisma.domain.updateMany({ where: { resendDomainId }, data: { status: 'verified' } }).catch(() => {});
   } else if (event.type === 'domain.failed' && resendDomainId) {
-    await prisma.domain.updateMany({
-      where: { resendDomainId },
-      data:  { status: 'failed' },
-    }).catch(() => {});
+    await prisma.domain.updateMany({ where: { resendDomainId }, data: { status: 'failed' } }).catch(() => {});
   }
 
   res.json({ received: true });
