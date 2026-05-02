@@ -32,6 +32,10 @@ export async function loginUser(email, password) {
   }
 }
 
+export async function getMe() {
+  return request('GET', '/api/auth/me');
+}
+
 export async function getUsers() {
   return request('GET', '/api/users');
 }

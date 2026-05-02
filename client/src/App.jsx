@@ -16,7 +16,8 @@ import { PageLoader, ContentLoader } from "./components/ui/Loader";
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser,  setCurrentUser]  = useState(null);
+  const [authLoading,  setAuthLoading]  = useState(true);
 
   // Navigation state
   const [pool,      setPool]      = useState("prospect");
@@ -35,6 +36,14 @@ export default function App() {
   const [contacts,     setContacts]     = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [firstLoad,    setFirstLoad]    = useState(true);
+
+  // ── Restore session from localStorage token on mount ───────────────────────
+  useEffect(() => {
+    db.getMe()
+      .then(user => setCurrentUser(user))
+      .catch(() => localStorage.removeItem('prophone_token'))
+      .finally(() => setAuthLoading(false));
+  }, []);
 
   // ── Load contacts when pool / client changes ────────────────────────────────
   useEffect(() => {
@@ -101,7 +110,8 @@ export default function App() {
   const col = pool === "prospect" ? T.accent : "#fb923c";
 
   // ── Auth gate ───────────────────────────────────────────────────────────────
-  if (!currentUser) return <LoginScreen onLogin={setCurrentUser} />;
+  if (authLoading)   return <PageLoader text="Loading…" />;
+  if (!currentUser)  return <LoginScreen onLogin={setCurrentUser} />;
 
   // ── Page renderer ───────────────────────────────────────────────────────────
   function renderPage() {
@@ -227,7 +237,7 @@ export default function App() {
           </div>
 
           <button
-            onClick={() => setCurrentUser(null)}
+            onClick={() => { localStorage.removeItem('prophone_token'); setCurrentUser(null); }}
             style={{
               background: "none", border: "1px solid " + T.border,
               borderRadius: 5, color: T.muted,

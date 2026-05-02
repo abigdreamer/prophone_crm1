@@ -31,6 +31,15 @@ async function login(req, res) {
   res.json({ token, user: safeUser });
 }
 
+async function me(req, res) {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    select: { id: true, name: true, email: true, role: true, avatar: true, color: true, createdAt: true },
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+}
+
 async function publicUsers(req, res) {
   const users = await prisma.user.findMany({
     select: { id: true, name: true, email: true, role: true, avatar: true, color: true },
@@ -39,4 +48,4 @@ async function publicUsers(req, res) {
   res.json(users);
 }
 
-module.exports = { login, publicUsers };
+module.exports = { login, me, publicUsers };
