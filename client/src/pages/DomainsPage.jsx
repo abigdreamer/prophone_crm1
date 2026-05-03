@@ -282,7 +282,9 @@ function ClientFilterDropdown({ value, onChange, domains }) {
   const allCount     = domains.length;
   const clientCounts = CLIENTS.map(c => ({ ...c, count: domains.filter(d => d.clientId === c.id).length }));
 
-  const label = value === "all" ? "All clients" : (clientOf(value)?.name ?? "All clients");
+  const activeClient = value !== "all" ? clientOf(value) : null;
+  const accentColor  = activeClient?.color ?? T.border;
+  const label        = value === "all" ? "All clients" : (activeClient?.name ?? "All clients");
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -292,12 +294,16 @@ function ClientFilterDropdown({ value, onChange, domains }) {
         style={{
           display: "flex", alignItems: "center", gap: 7,
           padding: "7px 12px",
-          background: T.card, border: `1px solid ${T.border}`, borderRadius: 7,
+          background: T.card,
+          border: `1px solid ${accentColor}`,
+          borderRadius: 7,
           cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
         }}
       >
-        <ExternalLink size={12} color={T.muted} />
-        <span style={{ fontSize: 12, color: T.dim }}>Client: <strong style={{ color: T.text }}>{label}</strong></span>
+        {activeClient
+          ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: activeClient.color, flexShrink: 0 }} />
+          : <ExternalLink size={12} color={T.muted} />}
+        <span style={{ fontSize: 12, color: T.dim }}>Client: <strong style={{ color: activeClient?.color ?? T.text }}>{label}</strong></span>
         <ChevronDown size={12} color={T.muted} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
       </button>
 
@@ -590,11 +596,11 @@ function AddDomainModal({ onClose, onAdded, clientId }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-export default function DomainsPage({ clientId }) {
+export default function DomainsPage({ pool, clientId }) {
   const [domains,      setDomains]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
-  const [clientFilter, setClientFilter] = useState(clientId || "all");
+  const [clientFilter, setClientFilter] = useState(pool === "client" ? (clientId || "all") : "all");
   const [selected,     setSelected]     = useState(null);
   const [showModal,    setShowModal]    = useState(false);
   const [lastCheck,    setLastCheck]    = useState(Date.now());
@@ -614,6 +620,11 @@ export default function DomainsPage({ clientId }) {
   useEffect(() => { fetchDomains(); }, [fetchDomains]);
   useEffect(() => { const id = setInterval(fetchDomains, 30_000); return () => clearInterval(id); }, [fetchDomains]);
   useEffect(() => { const id = setInterval(() => setSecondsAgo(Math.floor((Date.now() - lastCheck) / 1000)), 1000); return () => clearInterval(id); }, [lastCheck]);
+
+  // Sync filter when pool/client changes from the top switcher
+  useEffect(() => {
+    setClientFilter(pool === "client" ? (clientId || "all") : "all");
+  }, [pool, clientId]);
 
   function handleAdded(domain) {
     setDomains(prev => prev.some(d => d.id === domain.id) ? prev : [domain, ...prev]);

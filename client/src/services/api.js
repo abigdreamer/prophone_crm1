@@ -47,8 +47,12 @@ export async function getContactCounts() {
 }
 
 export async function getContacts(pool, clientId) {
-  const params = new URLSearchParams({ pool });
-  if (pool === 'client' && clientId) params.set('clientId', clientId);
+  const params = new URLSearchParams();
+  if (pool === 'client' && clientId) {
+    params.set('pool', 'client');
+    params.set('clientId', clientId);
+  }
+  // prospect pool → no filter, returns all contacts
   return request('GET', `/api/contacts?${params}`);
 }
 

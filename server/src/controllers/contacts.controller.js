@@ -45,10 +45,10 @@ function formatContact(c) {
 
 async function listContacts(req, res) {
   const { pool, clientId } = req.query;
-  if (!pool) return res.status(400).json({ error: 'pool query param is required' });
-  if (!VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
+  if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
 
-  const where = { pool };
+  const where = {};
+  if (pool) where.pool = pool;
   if (pool === 'client' && clientId) where.clientId = clientId;
 
   const contacts = await prisma.contact.findMany({

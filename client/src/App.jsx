@@ -80,14 +80,16 @@ function AppLayout({ currentUser, onSignOut }) {
   // ── Pool / client switching ─────────────────────────────────────────────────
   const handlePoolSwitch = useCallback((p) => {
     setPool(p);
-    navigate("/dashboard");
-  }, [navigate]);
+    setSelected(null);
+    setCharted(null);
+  }, []);
 
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool("client");
-    navigate("/dashboard");
-  }, [navigate]);
+    setSelected(null);
+    setCharted(null);
+  }, []);
 
   // ── Global keyboard search ──────────────────────────────────────────────────
   useEffect(() => {
@@ -248,7 +250,7 @@ function AppLayout({ currentUser, onSignOut }) {
                   currentUser={currentUser}
                 />
               } />
-              <Route path="/domains"  element={<DomainsPage clientId={clientId} />} />
+              <Route path="/domains"  element={<DomainsPage pool={pool} clientId={clientId} />} />
               <Route path="/reports"  element={<ComingSoon page="reports" />} />
               <Route path="/settings" element={<ComingSoon page="settings" />} />
               <Route path="/clients"  element={<ComingSoon page="clients" />} />
