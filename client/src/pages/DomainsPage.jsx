@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, Plus, Copy, Check, RefreshCw, Trash2,
-  X, AlertTriangle,
+  X, AlertTriangle, ExternalLink,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import T from "../theme";
