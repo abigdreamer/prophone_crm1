@@ -142,7 +142,9 @@ export default function LoginPage({ onLogin }) {
             transition: "transform 0.2s",
           }}
         >
-          {loading ? <Spinner size={18} color="#fff" /> : <>Sign in <ArrowRight size={18} /></>}
+          {loading
+            ? <><Spinner size={16} color="#fff" /> Logging in…</>
+            : <>Sign in <ArrowRight size={18} /></>}
         </button>
 
         <div style={{

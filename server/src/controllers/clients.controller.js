@@ -13,10 +13,19 @@ async function getClient(req, res) {
   res.json(client);
 }
 
+async function clientExists(id) {
+  const existing = await prisma.client.findUnique({ where: { id }, select: { id: true } });
+  return !!existing;
+}
+
 async function createClient(req, res) {
   const { id, name, domain, color, industry, plan, mrr } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name are required' });
   if (plan && !VALID_PLANS.includes(plan)) return res.status(400).json({ error: 'Invalid plan' });
+
+  if (await clientExists(id)) {
+    return res.status(409).json({ error: `A client with the ID "${id}" already exists. Please use a different company name.` });
+  }
 
   const client = await prisma.client.create({
     data: {
