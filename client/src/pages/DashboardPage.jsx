@@ -7,7 +7,7 @@ import { STAGE_DEF, LEAD_STAGES, LOST_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 
 // ─── Dashboard overview page ──────────────────────────────────────────────────
-export default function PageDashboard({ pool, clientId, viewMode, setViewMode, setPage, contacts }) {
+export default function DashboardPage({ pool, clientId, viewMode, setViewMode, setPage, contacts }) {
   const client    = CLIENTS.find(c => c.id === clientId);
   const col       = pool === "prospect" ? T.accent : (client?.color || T.accent);
 

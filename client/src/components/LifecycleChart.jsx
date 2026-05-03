@@ -11,7 +11,7 @@ import USERS_DB from "../data/users";
 import { STAGE_DEF, LOST_STAGES } from "../data/stages";
 import { ACT_DEF, ACT_CATS } from "../data/activities";
 import fmt from "../utils/format";
-import * as db from "../lib/db";
+import * as db from "../services/api";
 
 // ─── Right-panel: lead lifecycle + activity timeline ─────────────────────────
 export default function LifecycleChart({ contact, onUpdate, currentUser }) {

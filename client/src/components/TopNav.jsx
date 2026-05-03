@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect } from "react";
+import {
+  LayoutDashboard, Users, Megaphone, FolderOpen,
+  BarChart2, Settings, ChevronDown,
+} from "lucide-react";
 import T from "../theme";
 
 const NAV = [
-  { label: "Dashboard", id: "dashboard" },
-  { label: "Contacts",  id: "contacts"  },
+  { label: "Dashboard", id: "dashboard", Icon: LayoutDashboard },
+  { label: "Contacts",  id: "contacts",  Icon: Users            },
   {
-    label: "Marketing", id: "marketing",
+    label: "Marketing", id: "marketing", Icon: Megaphone,
     items: [
       { id: "domains",   label: "Domain"    },
       { id: "templates", label: "Templates" },
@@ -13,7 +17,9 @@ const NAV = [
       { id: "sequences", label: "Sequences" },
     ],
   },
-  { label: "Clients", id: "clients", items: [{ id: "all-clients", label: "All Clients" }] },
+  { label: "Clients",  id: "clients",  Icon: FolderOpen },
+  { label: "Reports",  id: "reports",  Icon: BarChart2  },
+  { label: "Settings", id: "settings", Icon: Settings   },
 ];
 
 export default function TopNav({ page, viewMode, setPage, setViewMode }) {
@@ -27,42 +33,61 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
   }, []);
 
   return (
-    <div ref={ref} style={{ display: "flex", alignItems: "center", gap: 1 }}>
+    <div ref={ref} style={{ display: "flex", alignItems: "stretch", height: "100%", gap: 0 }}>
       {NAV.map(g => {
         const hasDropdown = !!g.items?.length;
         const allIds = g.items?.map(i => i.id) ?? [];
+        const Icon = g.Icon;
 
         let active = false;
         if (g.id === "dashboard") active = page === "dashboard";
-        else if (g.id === "contacts") active = page === "table";
+        else if (g.id === "contacts") active = page === "contacts";
         else if (hasDropdown) active = allIds.includes(page);
+        else active = page === g.id;
 
         return (
-          <div key={g.id} style={{ position: "relative" }}>
+          <div key={g.id} style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
             <button
               onClick={() => {
-                if (g.id === "contacts") { setPage("table"); setOpen(null); }
+                if (g.id === "contacts") { setPage("contacts"); setOpen(null); }
                 else if (hasDropdown)    setOpen(open === g.id ? null : g.id);
                 else                    { setPage(g.id); setOpen(null); }
               }}
               style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "6px 10px",
-                background: active ? T.accentLow : "transparent",
-                border: "1px solid " + (active ? T.accent + "60" : "transparent"),
-                borderRadius: 6, cursor: "pointer",
-                color: active ? T.accent : T.muted,
-                fontWeight: active ? 700 : 400,
-                fontSize: 11, fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "0 12px",
+                background: "transparent",
+                border: "none",
+                borderBottom: active ? `2px solid ${T.accent}` : "2px solid transparent",
+                borderTop: "2px solid transparent",
+                cursor: "pointer",
+                color: active ? T.text : T.muted,
+                fontWeight: active ? 600 : 400,
+                fontSize: 12, fontFamily: "inherit",
+                transition: "color 0.15s",
+                whiteSpace: "nowrap",
               }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.dim; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = T.muted; }}
             >
+              <Icon size={14} strokeWidth={active ? 2.2 : 1.8} />
               {g.label}
-              {hasDropdown && <span style={{ fontSize: 8, opacity: 0.5 }}>{open === g.id ? "▲" : "▼"}</span>}
+              {hasDropdown && (
+                <ChevronDown
+                  size={12}
+                  strokeWidth={2}
+                  style={{
+                    opacity: 0.5,
+                    transform: open === g.id ? "rotate(180deg)" : "none",
+                    transition: "transform 0.15s",
+                  }}
+                />
+              )}
             </button>
 
             {hasDropdown && open === g.id && (
               <div style={{
-                position: "absolute", top: "calc(100% + 6px)", left: 0,
+                position: "absolute", top: "calc(100% + 2px)", left: 0,
                 background: T.card, border: "1px solid " + T.border,
                 borderRadius: 8, minWidth: 160, zIndex: 400,
                 overflow: "hidden", boxShadow: "0 10px 36px rgba(0,0,0,0.7)",

@@ -1,13 +1,13 @@
 import { useState } from "react";
-import Input from "./ui/Input";
-import Avatar from "./ui/Avatar";
+import Input from "../components/ui/Input";
+import Avatar from "../components/ui/Avatar";
 import T from "../theme";
 import USERS_DB from "../data/users";
-import { loginUser } from "../lib/db";
-import { Spinner } from "./ui/Loader";
+import { loginUser } from "../services/api";
+import { Spinner } from "../components/ui/Loader";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginPage({ onLogin }) {
   const [email, setEmail] = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
@@ -24,7 +24,7 @@ export default function LoginScreen({ onLogin }) {
       } else {
         setError("Invalid credentials. Check your email and password.");
       }
-    } catch (err) {
+    } catch {
       setError("Connection error. Make sure the API server is running on port 8080.");
     } finally {
       setLoading(false);
@@ -34,9 +34,9 @@ export default function LoginScreen({ onLogin }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center",
-      minHeight: "100vh", background: "#05060a", 
+      minHeight: "100vh", background: "#05060a",
       fontFamily: "'Inter', sans-serif",
-      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)" 
+      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)",
     }}>
       <div style={{
         width: 440, background: "rgba(19, 22, 31, 0.8)",
@@ -45,8 +45,8 @@ export default function LoginScreen({ onLogin }) {
         borderRadius: 28, padding: "48px 40px",
         boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
       }}>
-        
-        {/* Header with Logo */}
+
+        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{
             width: 52, height: 52, borderRadius: 14,
@@ -60,6 +60,7 @@ export default function LoginScreen({ onLogin }) {
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", letterSpacing: "2px", marginTop: 4 }}>PROPHONE CRM</div>
         </div>
 
+        {/* Quick Select */}
         <div style={{ marginBottom: 32 }}>
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 16 }}>Quick Select</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -74,7 +75,7 @@ export default function LoginScreen({ onLogin }) {
                     background: active ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.02)",
                     border: `1px solid ${active ? "#6366f1" : "rgba(255,255,255,0.05)"}`,
                     borderRadius: 16, cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                    textAlign: "left", position: "relative"
+                    textAlign: "left", position: "relative",
                   }}
                 >
                   <Avatar user={u} size={34} />
@@ -89,29 +90,29 @@ export default function LoginScreen({ onLogin }) {
           </div>
         </div>
 
-        {/* Inputs Section */}
+        {/* Inputs */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>EMAIL ADDRESS</label>
             <Input value={email} onChange={setEmail} placeholder="name@company.com" />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>PASSWORD</label>
             <div style={{ position: "relative" }}>
-              <Input 
-                value={password} 
-                onChange={setPassword} 
-                type={showPass ? "text" : "password"} 
+              <Input
+                value={password}
+                onChange={setPassword}
+                type={showPass ? "text" : "password"}
                 placeholder="••••••••"
               />
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowPass(!showPass)}
-                style={{ 
-                  position: "absolute", right: 12, bottom: 12, 
+                style={{
+                  position: "absolute", right: 12, bottom: 12,
                   background: "none", border: "none", cursor: "pointer",
-                  color: "rgba(255,255,255,0.3)"
+                  color: "rgba(255,255,255,0.3)",
                 }}
               >
                 <Eye size={18} />
@@ -121,10 +122,10 @@ export default function LoginScreen({ onLogin }) {
         </div>
 
         {error && (
-          <div style={{ 
-            marginTop: 20, padding: "12px", borderRadius: 12, 
+          <div style={{
+            marginTop: 20, padding: "12px", borderRadius: 12,
             background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)",
-            color: "#f87171", fontSize: 12, textAlign: "center" 
+            color: "#f87171", fontSize: 12, textAlign: "center",
           }}>{error}</div>
         )}
 
@@ -138,15 +139,15 @@ export default function LoginScreen({ onLogin }) {
             fontWeight: 700, fontSize: 16, cursor: loading ? "not-allowed" : "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
             boxShadow: "0 10px 25px rgba(99, 102, 241, 0.3)",
-            transition: "transform 0.2s"
+            transition: "transform 0.2s",
           }}
         >
           {loading ? <Spinner size={18} color="#fff" /> : <>Sign in <ArrowRight size={18} /></>}
         </button>
 
-        <div style={{ 
-          marginTop: 40, fontSize: 10, color: "rgba(255,255,255,0.2)", 
-          textAlign: "center", letterSpacing: "1px", fontWeight: 500 
+        <div style={{
+          marginTop: 40, fontSize: 10, color: "rgba(255,255,255,0.2)",
+          textAlign: "center", letterSpacing: "1px", fontWeight: 500,
         }}>
           SECURED BY GENIUSAI ECOSYSTEM
         </div>

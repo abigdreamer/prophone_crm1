@@ -6,7 +6,7 @@ import T from "../theme";
 import CLIENTS from "../data/clients";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
-import * as db from "../lib/db";
+import * as db from "../services/api";
 
 // ─── Left sidebar — contact list ──────────────────────────────────────────────
 export default function Sidebar({

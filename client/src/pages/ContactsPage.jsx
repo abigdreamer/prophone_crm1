@@ -12,10 +12,10 @@ import CLIENTS from "../data/clients";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import { ACT_DEF } from "../data/activities";
 import fmt from "../utils/format";
-import * as db from "../lib/db";
+import * as db from "../services/api";
 
 // ─── Full contacts table page ──────────────────────────────────────────────────
-export default function PageTable({ pool, clientId, viewMode, onSelect, search, contacts, setContacts, currentUser }) {
+export default function ContactsPage({ pool, clientId, viewMode, onSelect, search, contacts, setContacts, currentUser }) {
   const [stageF,    setStageF]    = useState("all");
   const [sortBy,    setSortBy]    = useState("lastActivityAt");
   const [addModal,  setAddModal]  = useState(false);

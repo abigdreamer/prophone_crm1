@@ -72,9 +72,8 @@ export async function addActivity(contactId, activity) {
 
 // ── Domains ────────────────────────────────────────────────────────────────────
 
-export async function getDomains(clientId) {
-  const params = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
-  return request('GET', `/api/domains${params}`);
+export async function getDomains() {
+  return request('GET', '/api/domains');
 }
 
 export async function addDomain(name, clientId) {
@@ -83,4 +82,8 @@ export async function addDomain(name, clientId) {
 
 export async function deleteDomain(id) {
   return request('DELETE', `/api/domains/${id}`);
+}
+
+export async function verifyDomain(id) {
+  return request('POST', `/api/domains/${id}/verify`);
 }

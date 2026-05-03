@@ -170,4 +170,25 @@ async function handleWebhook(req, res) {
   res.json({ received: true });
 }
 
-module.exports = { listDomains, addDomain, deleteDomain, handleWebhook };
+async function verifyDomain(req, res) {
+  const { id } = req.params;
+  const domain = await prisma.domain.findUnique({ where: { id } });
+  if (!domain) return res.status(404).json({ error: 'Domain not found' });
+  if (!domain.resendDomainId) return res.status(400).json({ error: 'No Resend domain ID' });
+
+  const resend = getResendClient();
+  const { data: full } = await resend.domains.get(domain.resendDomainId).catch(() => ({ data: null }));
+  if (!full) return res.status(502).json({ error: 'Could not reach Resend' });
+
+  const status = mapStatus(full.status);
+  const { spfRecord, dkimRecord, dmarcRecord } = extractRecords(full.records ?? []);
+
+  const updated = await prisma.domain.update({
+    where: { id },
+    data: { status, spfRecord, dkimRecord, dmarcRecord },
+  });
+
+  res.json(updated);
+}
+
+module.exports = { listDomains, addDomain, deleteDomain, handleWebhook, verifyDomain };

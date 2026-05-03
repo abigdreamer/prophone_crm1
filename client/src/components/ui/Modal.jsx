@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import T from "../../theme";
 
 // ─── Overlay modal ────────────────────────────────────────────────────────────
-export default function Modal({ title, onClose, children, width = 520 }) {
+export default function Modal({ title, onClose, children, width = 520, noHeader = false }) {
   useEffect(() => {
     const h = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -33,21 +33,23 @@ export default function Modal({ title, onClose, children, width = 520 }) {
         }}
       >
         {/* Header */}
-        <div
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid " + T.border,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{title}</div>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer", padding: 0 }}
+        {!noHeader && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "16px 20px",
+              borderBottom: "1px solid " + T.border,
+            }}
           >
-            ✕
-          </button>
-        </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{title}</div>
+            <button
+              onClick={onClose}
+              style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer", padding: 0 }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Body */}
         <div style={{ padding: 20 }}>{children}</div>

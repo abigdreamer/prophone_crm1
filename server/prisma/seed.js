@@ -10,11 +10,6 @@ const ago = (days = 0, hours = 0) =>
 async function main() {
   const hashed = await bcrypt.hash('demo', 10);
 
-  // ── Wipe existing data (children first to avoid FK errors) ────────────────
-  await prisma.activity.deleteMany({});
-  await prisma.contact.deleteMany({});
-  await prisma.client.deleteMany({});
-
   // ── Users ─────────────────────────────────────────────────────────────────
   await prisma.user.createMany({
     skipDuplicates: true,
