@@ -12,9 +12,6 @@ npm ci
 npx prisma generate
 npx prisma migrate deploy
 
-echo "Seeding database..."
-node prisma/seed.js || true
-
 echo "Frontend build..."
 cd "$APP_DIR/client"
 npm ci

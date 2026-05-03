@@ -9,7 +9,6 @@ module.exports = {
       cwd: path.join(root, 'server'),
       instances: 1,
       autorestart: true,
-      max_memory_restart: '500M',
       env: {
         NODE_ENV: 'production',
         PORT: 8080,
@@ -18,7 +17,7 @@ module.exports = {
     {
       name: 'prophone-frontend',
       script: 'npx',
-      args: 'serve -s build -l 3000',
+      args: 'serve -s dist -l 3000',
       cwd: path.join(root, 'client'),
       autorestart: true,
       env: {
