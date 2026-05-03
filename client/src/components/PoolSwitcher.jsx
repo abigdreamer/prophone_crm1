@@ -9,7 +9,7 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
   const [open, setOpen] = useState(false);
   const ref    = useRef(null);
   const client = CLIENTS.find(c => c.id === clientId) || CLIENTS[0];
-  const col    = pool === "prospect" ? T.accent : client.color;
+  const col    = client.color;
 
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -34,12 +34,10 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: col }} />
         <div style={{ flex: 1, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.text, lineHeight: 1 }}>
-            {pool === "prospect" ? "Prospect Pool" : client.name}
+            {client.name}
           </div>
           <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>
-            {pool === "prospect"
-              ? fmt.num(contactCounts.prospect) + " prospects"
-              : (contactCounts.clients[clientId] || 0) + " leads · " + client.plan}
+            {(contactCounts.clients[clientId] || 0) + " leads · " + client.plan}
           </div>
         </div>
         <span style={{ fontSize: 9, color: T.muted }}>{open ? "▲" : "▼"}</span>
@@ -55,22 +53,19 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
             overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
           }}
         >
-          {/* Prospect Pool */}
+          {/* Prospect Pool — display only, not selectable */}
           <div style={{ padding: "8px 12px 6px", borderBottom: "1px solid " + T.border }}>
             <div style={{ fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, marginBottom: 7 }}>
               GeniusAI Lead Pools
             </div>
-            <button
-              onClick={() => { onSwitchPool("prospect"); setOpen(false); }}
+            <div
               style={{
                 display: "flex", alignItems: "center", gap: 10,
                 width: "100%", padding: "9px 10px", borderRadius: 7,
-                background: pool === "prospect" ? T.accent + "14" : "transparent",
-                border: pool === "prospect" ? "1px solid " + T.accent + "40" : "1px solid transparent",
-                cursor: "pointer", fontFamily: "inherit", marginBottom: 4,
+                background: T.accent + "0a",
+                border: "1px solid " + T.accent + "25",
+                marginBottom: 4,
               }}
-              onMouseEnter={e => { if (pool !== "prospect") e.currentTarget.style.background = T.surface; }}
-              onMouseLeave={e => { if (pool !== "prospect") e.currentTarget.style.background = "transparent"; }}
             >
               <div
                 style={{
@@ -83,13 +78,13 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
                 P
               </div>
               <div style={{ flex: 1, textAlign: "left" }}>
-                <div style={{ fontSize: 12, fontWeight: pool === "prospect" ? 700 : 500, color: pool === "prospect" ? T.accent : T.text }}>
-                  Prospect Pool
+                <div style={{ fontSize: 12, fontWeight: 600, color: T.accent }}>Prospect Pool</div>
+                <div style={{ fontSize: 9, color: T.muted }}>
+                  {fmt.num(contactCounts.prospect)} leads · {CLIENTS.length} clients
                 </div>
-                <div style={{ fontSize: 9, color: T.muted }}>GeniusAI pipeline · {fmt.num(contactCounts.prospect)} leads</div>
               </div>
-              {pool === "prospect" && <Pill color={T.accent} small>Active</Pill>}
-            </button>
+              <Pill color={T.accent} small>GeniusAI</Pill>
+            </div>
           </div>
 
           {/* Client accounts */}

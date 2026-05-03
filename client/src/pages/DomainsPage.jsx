@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Globe, Plus, Copy, Check, RefreshCw, Trash2,
-  ChevronDown, ExternalLink, X, AlertTriangle,
+  X, AlertTriangle,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import T from "../theme";
 import * as db from "../services/api";
 import CLIENTS from "../data/clients";
+import { usePool } from "../context/PoolContext";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const clientOf  = id => CLIENTS.find(c => c.id === id) || null;
@@ -258,100 +259,6 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
   );
 }
 
-// ── Client filter dropdown ────────────────────────────────────────────────────
-function ClientFilterDropdown({ value, onChange, domains }) {
-  const [open, setOpen]   = useState(false);
-  const ref               = useRef(null);
-  const triggerRef        = useRef(null);
-  const [rect, setRect]   = useState(null);
-
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  function toggle() {
-    if (triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect();
-      setRect({ top: r.bottom + 4, right: window.innerWidth - r.right });
-    }
-    setOpen(o => !o);
-  }
-
-  const allCount     = domains.length;
-  const clientCounts = CLIENTS.map(c => ({ ...c, count: domains.filter(d => d.clientId === c.id).length }));
-
-  const activeClient = value !== "all" ? clientOf(value) : null;
-  const accentColor  = activeClient?.color ?? T.border;
-  const label        = value === "all" ? "All clients" : (activeClient?.name ?? "All clients");
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        ref={triggerRef}
-        onClick={toggle}
-        style={{
-          display: "flex", alignItems: "center", gap: 7,
-          padding: "7px 12px",
-          background: T.card,
-          border: `1px solid ${accentColor}`,
-          borderRadius: 7,
-          cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-        }}
-      >
-        {activeClient
-          ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: activeClient.color, flexShrink: 0 }} />
-          : <ExternalLink size={12} color={T.muted} />}
-        <span style={{ fontSize: 12, color: T.dim }}>Client: <strong style={{ color: activeClient?.color ?? T.text }}>{label}</strong></span>
-        <ChevronDown size={12} color={T.muted} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
-      </button>
-
-      {open && rect && (
-        <div style={{
-          position: "fixed", top: rect.top, right: rect.right,
-          background: T.card, border: `1px solid ${T.border}`,
-          borderRadius: 9, minWidth: 200, zIndex: 800,
-          overflow: "hidden", boxShadow: "0 10px 36px rgba(0,0,0,0.7)",
-        }}>
-          {[
-            { id: "all", label: "All clients", color: null, count: allCount },
-            ...clientCounts.map(c => ({ id: c.id, label: c.name, color: c.color, count: c.count })),
-          ].map(item => {
-            const sel = value === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => { onChange(item.id); setOpen(false); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  width: "100%", padding: "9px 14px",
-                  background: sel ? T.accentLow : "transparent",
-                  border: "none", borderLeft: sel ? `2px solid ${T.accent}` : "2px solid transparent",
-                  cursor: "pointer", fontFamily: "inherit",
-                }}
-                onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface; }}
-                onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "transparent"; }}
-              >
-                {item.color
-                  ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
-                  : <Globe size={13} color={T.muted} style={{ flexShrink: 0 }} />}
-                <span style={{ flex: 1, fontSize: 12, color: sel ? T.accent : T.text, fontWeight: sel ? 600 : 400, textAlign: "left" }}>
-                  {item.label}
-                </span>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: T.muted,
-                  background: T.surface, borderRadius: 4, padding: "1px 6px",
-                }}>{item.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Domain row ────────────────────────────────────────────────────────────────
 function DomainRow({ domain, selected, onClick }) {
   const isSelected = selected?.id === domain.id;
@@ -409,30 +316,19 @@ function DomainRow({ domain, selected, onClick }) {
 }
 
 // ── Add domain modal ──────────────────────────────────────────────────────────
-function AddDomainModal({ onClose, onAdded, clientId }) {
-  const [name,             setName]             = useState("");
-  const [selectedClientId, setSelectedClientId] = useState(clientId || "foxtow");
-  const [clientOpen,       setClientOpen]       = useState(false);
-  const [loading,          setLoading]          = useState(false);
-  const [error,            setError]            = useState("");
-  const [newDomain,        setNewDomain]        = useState(null);
-  const dropdownRef = useRef(null);
+function AddDomainModal({ onClose, onAdded }) {
+  const [name,      setName]      = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [newDomain, setNewDomain] = useState(null);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const h = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setClientOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  const selectedClient = CLIENTS.find(c => c.id === selectedClientId) || null;
-
+  // clientId is injected automatically from the active pool singleton in api.js
   async function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) return;
     setLoading(true); setError("");
     try {
-      const domain = await db.addDomain(trimmed, selectedClientId);
+      const domain = await db.addDomain(trimmed);
       setNewDomain(domain);
       onAdded(domain);
     } catch (err) {
@@ -528,61 +424,6 @@ function AddDomainModal({ onClose, onAdded, clientId }) {
         </div>
       </div>
 
-      {/* Client (optional) */}
-      <div style={{ marginBottom: 18 }}>
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.dim, marginBottom: 7, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-          MAP TO CLIENT
-        </label>
-        <div ref={dropdownRef} style={{ position: "relative" }}>
-          <button
-            onClick={() => setClientOpen(o => !o)}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: T.surface, border: `1px solid ${clientOpen ? T.accent : T.border}`,
-              borderRadius: 7, padding: "10px 12px", cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <span style={{ fontSize: 13, color: T.text }}>
-              {selectedClient ? `${selectedClient.name} · ${selectedClient.industry}` : "Select a client"}
-            </span>
-            <ChevronDown size={14} color={T.muted} style={{ transform: clientOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
-          </button>
-
-          {clientOpen && (
-            <div style={{
-              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
-              background: T.card, border: `1px solid ${T.border}`,
-              borderRadius: 8, zIndex: 50,
-              boxShadow: "0 8px 28px rgba(0,0,0,0.6)",
-              maxHeight: 260, overflowY: "auto",
-            }}>
-              {CLIENTS.map(c => {
-                const sel = selectedClientId === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => { setSelectedClientId(c.id); setClientOpen(false); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      width: "100%", padding: "11px 16px", border: "none",
-                      background: "transparent", cursor: "pointer", fontFamily: "inherit",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
-                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <span style={{ fontSize: 12, color: T.accent, width: 16 }}>{sel ? "✓" : ""}</span>
-                    <span style={{ fontSize: 13, color: T.text }}>{c.name} · {c.industry}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>
-          Associate this domain with a client account.
-        </div>
-      </div>
-
       {error && <div style={{ padding: "9px 12px", borderRadius: 6, marginBottom: 16, background: T.red + "18", border: `1px solid ${T.red}40`, color: T.red, fontSize: 12 }}>{error}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -596,15 +437,15 @@ function AddDomainModal({ onClose, onAdded, clientId }) {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-export default function DomainsPage({ pool, clientId }) {
-  const [domains,      setDomains]      = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState("");
-  const [clientFilter, setClientFilter] = useState(pool === "client" ? (clientId || "all") : "all");
-  const [selected,     setSelected]     = useState(null);
-  const [showModal,    setShowModal]    = useState(false);
-  const [lastCheck,    setLastCheck]    = useState(Date.now());
-  const [secondsAgo,   setSecondsAgo]   = useState(0);
+export default function DomainsPage() {
+  const { pool, clientId } = usePool();
+  const [domains,    setDomains]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState("");
+  const [selected,   setSelected]   = useState(null);
+  const [showModal,  setShowModal]  = useState(false);
+  const [lastCheck,  setLastCheck]  = useState(Date.now());
+  const [secondsAgo, setSecondsAgo] = useState(0);
 
   const fetchDomains = useCallback(async () => {
     try {
@@ -617,14 +458,13 @@ export default function DomainsPage({ pool, clientId }) {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchDomains(); }, [fetchDomains]);
+  // Re-fetch whenever the active pool/client changes; clear stale selection
+  useEffect(() => {
+    setSelected(null);
+    fetchDomains();
+  }, [fetchDomains, pool, clientId]);
   useEffect(() => { const id = setInterval(fetchDomains, 30_000); return () => clearInterval(id); }, [fetchDomains]);
   useEffect(() => { const id = setInterval(() => setSecondsAgo(Math.floor((Date.now() - lastCheck) / 1000)), 1000); return () => clearInterval(id); }, [lastCheck]);
-
-  // Sync filter when pool/client changes from the top switcher
-  useEffect(() => {
-    setClientFilter(pool === "client" ? (clientId || "all") : "all");
-  }, [pool, clientId]);
 
   function handleAdded(domain) {
     setDomains(prev => prev.some(d => d.id === domain.id) ? prev : [domain, ...prev]);
@@ -638,12 +478,10 @@ export default function DomainsPage({ pool, clientId }) {
     setSelected(updated);
   }
 
-  // Filter
-  const filtered = domains.filter(d => {
-    const matchSearch = !search.trim() || d.domainName.toLowerCase().includes(search.toLowerCase());
-    const matchClient = clientFilter === "all" ? true : d.clientId === clientFilter;
-    return matchSearch && matchClient;
-  });
+  // Filter — server already pre-filters by active client; just apply local search
+  const filtered = domains.filter(d =>
+    !search.trim() || d.domainName.toLowerCase().includes(search.toLowerCase())
+  );
 
   const stats = [
     { label: "TOTAL",    value: domains.length,                              color: T.text  },
@@ -703,7 +541,6 @@ export default function DomainsPage({ pool, clientId }) {
               onBlur={e  => (e.target.style.borderColor = T.border)}
             />
           </div>
-          <ClientFilterDropdown value={clientFilter} onChange={setClientFilter} domains={domains} />
         </div>
 
         {/* Domain list */}
@@ -752,7 +589,7 @@ export default function DomainsPage({ pool, clientId }) {
       )}
 
       {showModal && (
-        <AddDomainModal onClose={() => setShowModal(false)} onAdded={handleAdded} clientId={clientId} />
+        <AddDomainModal onClose={() => setShowModal(false)} onAdded={handleAdded} />
       )}
     </div>
   );

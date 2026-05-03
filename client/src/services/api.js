@@ -1,5 +1,21 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
+// ── Active pool singleton ─────────────────────────────────────────────────────
+// Synced from PoolContext whenever the user switches pool/client.
+// API functions read from here instead of requiring manual params.
+let _pool     = "client";
+let _clientId = "foxtow";
+
+export function setActivePool(pool, clientId) {
+  _pool     = pool;
+  _clientId = clientId || null;
+}
+
+export function getActivePool() {
+  return { pool: _pool, clientId: _clientId };
+}
+
+// ── Core fetch wrapper ────────────────────────────────────────────────────────
 async function request(method, path, body) {
   const headers = { 'Content-Type': 'application/json' };
   const token = localStorage.getItem('prophone_token');
@@ -19,7 +35,7 @@ async function request(method, path, body) {
   return res.json();
 }
 
-// ── Auth ───────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function loginUser(email, password) {
   try {
@@ -40,19 +56,20 @@ export async function getUsers() {
   return request('GET', '/api/users');
 }
 
-// ── Contacts ───────────────────────────────────────────────────────────────────
+// ── Contacts ──────────────────────────────────────────────────────────────────
 
 export async function getContactCounts() {
   return request('GET', '/api/contacts/counts');
 }
 
-export async function getContacts(pool, clientId) {
+// Reads active pool from singleton — no manual params needed
+export async function getContacts() {
+  const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
     params.set('pool', 'client');
     params.set('clientId', clientId);
   }
-  // prospect pool → no filter, returns all contacts
   return request('GET', `/api/contacts?${params}`);
 }
 
@@ -61,26 +78,36 @@ export async function getContact(id) {
 }
 
 export async function createContact(contact) {
-  return request('POST', '/api/contacts', contact);
+  const { pool, clientId } = getActivePool();
+  return request('POST', '/api/contacts', {
+    ...contact,
+    pool:     pool     ?? contact.pool,
+    clientId: clientId ?? contact.clientId ?? null,
+  });
 }
 
 export async function updateContact(id, contact) {
   return request('PATCH', `/api/contacts/${id}`, contact);
 }
 
-// ── Activities ─────────────────────────────────────────────────────────────────
+// ── Activities ────────────────────────────────────────────────────────────────
 
 export async function addActivity(contactId, activity) {
   await request('POST', `/api/contacts/${contactId}/activities`, activity);
 }
 
-// ── Domains ────────────────────────────────────────────────────────────────────
+// ── Domains ───────────────────────────────────────────────────────────────────
 
 export async function getDomains() {
-  return request('GET', '/api/domains');
+  const { pool, clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (pool === 'client' && clientId) params.set('clientId', clientId);
+  return request('GET', `/api/domains?${params}`);
 }
 
-export async function addDomain(name, clientId) {
+// clientId is injected automatically from the active pool singleton
+export async function addDomain(name) {
+  const { clientId } = getActivePool();
   return request('POST', '/api/domains', { name, clientId: clientId || null });
 }
 

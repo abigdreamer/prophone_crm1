@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { getContacts, getContactCounts } from "../services/api";
+import { usePool } from "../context/PoolContext";
 
-export function useContacts(currentUser, pool, clientId) {
-  const [contacts, setContacts] = useState([]);
+export function useContacts(currentUser) {
+  const { pool, clientId } = usePool();
+  const [contacts,      setContacts]      = useState([]);
   const [contactCounts, setContactCounts] = useState({ prospect: 0, clients: {} });
-  const [loading, setLoading] = useState(false);
-  const [firstLoad, setFirstLoad] = useState(true);
+  const [loading,       setLoading]       = useState(false);
+  const [firstLoad,     setFirstLoad]     = useState(true);
 
   // Load aggregate counts once on login
   useEffect(() => {
@@ -22,12 +24,12 @@ export function useContacts(currentUser, pool, clientId) {
     });
   }, [contacts, pool, clientId, currentUser, loading]);
 
-  // Re-fetch when pool or client changes
+  // Re-fetch whenever pool or client changes
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
     setLoading(true);
-    getContacts(pool, clientId)
+    getContacts()
       .then(data => { if (!cancelled) setContacts(data); })
       .catch(err => console.error("Failed to load contacts:", err))
       .finally(() => {

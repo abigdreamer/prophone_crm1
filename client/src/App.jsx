@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { usePool } from "./context/PoolContext";
 
 import TopNav from "./components/TopNav";
 import PoolSwitcher from "./components/PoolSwitcher";
@@ -43,8 +44,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [pool,     setPool]     = useState("prospect");
-  const [clientId, setClientId] = useState("foxtow");
+  const { pool, setPool, clientId, setClientId } = usePool();
   const [viewMode, setViewMode] = useState("all");
   const [selected, setSelected] = useState(null);
   const [charted,  setCharted]  = useState(null);
@@ -52,7 +52,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const searchRef = useRef(null);
 
   const { contacts, setContacts, contactCounts, loading, firstLoad } =
-    useContacts(currentUser, pool, clientId);
+    useContacts(currentUser);
 
   const page      = location.pathname.replace("/", "") || "dashboard";
   const isContacts = page === "contacts";
@@ -82,14 +82,14 @@ function AppLayout({ currentUser, onSignOut }) {
     setPool(p);
     setSelected(null);
     setCharted(null);
-  }, []);
+  }, [setPool]);
 
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool("client");
     setSelected(null);
     setCharted(null);
-  }, []);
+  }, [setClientId, setPool]);
 
   // ── Global keyboard search ──────────────────────────────────────────────────
   useEffect(() => {
@@ -250,7 +250,7 @@ function AppLayout({ currentUser, onSignOut }) {
                   currentUser={currentUser}
                 />
               } />
-              <Route path="/domains"  element={<DomainsPage pool={pool} clientId={clientId} />} />
+              <Route path="/domains"  element={<DomainsPage />} />
               <Route path="/reports"  element={<ComingSoon page="reports" />} />
               <Route path="/settings" element={<ComingSoon page="settings" />} />
               <Route path="/clients"  element={<ComingSoon page="clients" />} />
