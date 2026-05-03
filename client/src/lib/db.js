@@ -42,6 +42,10 @@ export async function getUsers() {
 
 // ── Contacts ───────────────────────────────────────────────────────────────────
 
+export async function getContactCounts() {
+  return request('GET', '/api/contacts/counts');
+}
+
 export async function getContacts(pool, clientId) {
   const params = new URLSearchParams({ pool });
   if (pool === 'client' && clientId) params.set('clientId', clientId);

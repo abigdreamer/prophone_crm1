@@ -2,11 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { Pill } from "./ui/Pill";
 import T from "../theme";
 import CLIENTS from "../data/clients";
-import { PROSPECTS, CLIENT_DATA } from "../data/contacts";
 import fmt from "../utils/format";
 
 // ─── Pool / client switcher dropdown ─────────────────────────────────────────
-export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchClient }) {
+export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchClient, contactCounts = { prospect: 0, clients: {} } }) {
   const [open, setOpen] = useState(false);
   const ref    = useRef(null);
   const client = CLIENTS.find(c => c.id === clientId) || CLIENTS[0];
@@ -39,8 +38,8 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
           </div>
           <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>
             {pool === "prospect"
-              ? fmt.num(PROSPECTS.length) + " prospects"
-              : (CLIENT_DATA[clientId]?.length || 0) + " leads · " + client.plan}
+              ? fmt.num(contactCounts.prospect) + " prospects"
+              : (contactCounts.clients[clientId] || 0) + " leads · " + client.plan}
           </div>
         </div>
         <span style={{ fontSize: 9, color: T.muted }}>{open ? "▲" : "▼"}</span>
@@ -87,7 +86,7 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
                 <div style={{ fontSize: 12, fontWeight: pool === "prospect" ? 700 : 500, color: pool === "prospect" ? T.accent : T.text }}>
                   Prospect Pool
                 </div>
-                <div style={{ fontSize: 9, color: T.muted }}>GeniusAI pipeline · {fmt.num(PROSPECTS.length)} leads</div>
+                <div style={{ fontSize: 9, color: T.muted }}>GeniusAI pipeline · {fmt.num(contactCounts.prospect)} leads</div>
               </div>
               {pool === "prospect" && <Pill color={T.accent} small>Active</Pill>}
             </button>
@@ -100,7 +99,7 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
             </div>
             {CLIENTS.map(c => {
               const active = pool === "client" && c.id === clientId;
-              const leads  = CLIENT_DATA[c.id]?.length || 0;
+              const leads  = contactCounts.clients[c.id] || 0;
               return (
                 <button
                   key={c.id}

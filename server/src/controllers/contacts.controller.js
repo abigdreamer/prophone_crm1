@@ -173,4 +173,23 @@ async function deleteContact(req, res) {
   res.json({ success: true });
 }
 
-module.exports = { listContacts, getContact, createContact, updateContact, deleteContact };
+async function getContactCounts(req, res) {
+  const rows = await prisma.contact.groupBy({
+    by: ['pool', 'clientId'],
+    _count: { _all: true },
+  });
+
+  let prospect = 0;
+  const clients = {};
+  for (const row of rows) {
+    if (row.pool === 'prospect') {
+      prospect += row._count._all;
+    } else if (row.pool === 'client' && row.clientId) {
+      clients[row.clientId] = (clients[row.clientId] || 0) + row._count._all;
+    }
+  }
+
+  res.json({ prospect, clients });
+}
+
+module.exports = { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts };

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { Globe, Plus, Copy, Check, RefreshCw, Trash2, AlertCircle, ExternalLink } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Globe, Plus, Copy, Check, RefreshCw, Trash2, AlertCircle, ExternalLink, ChevronDown } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import T from "../theme";
 import * as db from "../lib/db";
+import CLIENTS from "../data/clients";
 
 const statusColor = s => s === "verified" ? T.green : s === "failed" ? T.red : T.amber;
 const statusLabel = s => s === "verified" ? "Verified" : s === "failed" ? "Failed" : "Pending";
@@ -219,17 +220,31 @@ function DomainCard({ domain, onDelete }) {
 
 // ── Add domain modal ──────────────────────────────────────────────────────────
 function AddDomainModal({ onClose, onAdded, clientId }) {
-  const [name,      setName]      = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [newDomain, setNewDomain] = useState(null);
+  const [name,             setName]             = useState("");
+  const [selectedClientId, setSelectedClientId] = useState(clientId || null);
+  const [clientOpen,       setClientOpen]       = useState(false);
+  const [dropdownRect,     setDropdownRect]     = useState(null);
+  const [loading,          setLoading]          = useState(false);
+  const [error,            setError]            = useState("");
+  const [newDomain,        setNewDomain]        = useState(null);
+  const triggerRef = useRef(null);
+
+  const selectedClient = CLIENTS.find(c => c.id === selectedClientId) || null;
+
+  function openClientDropdown() {
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setDropdownRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setClientOpen(o => !o);
+  }
 
   async function handleSubmit() {
     const trimmed = name.trim();
     if (!trimmed) return;
     setLoading(true); setError("");
     try {
-      const domain = await db.addDomain(trimmed, clientId);
+      const domain = await db.addDomain(trimmed, selectedClientId);
       setNewDomain(domain);
       onAdded(domain);
     } catch (err) {
@@ -262,45 +277,130 @@ function AddDomainModal({ onClose, onAdded, clientId }) {
           Add these records to your DNS provider (Cloudflare, GoDaddy, etc.) then wait 5–30 minutes.
         </div>
         <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            style={{
-              background: T.accent, border: "none", borderRadius: 6,
-              color: "#fff", fontWeight: 700, padding: "9px 22px",
-              fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            Done
-          </button>
+          <button onClick={onClose} style={{
+            background: T.accent, border: "none", borderRadius: 6,
+            color: "#fff", fontWeight: 700, padding: "9px 22px",
+            fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+          }}>Done</button>
         </div>
       </Modal>
     );
   }
 
   return (
-    <Modal title="Add Sending Domain" onClose={onClose} width={460}>
-      <p style={{ fontSize: 13, color: T.muted, margin: "0 0 16px" }}>
-        Enter the domain you'll send emails from. You'll need to add DNS records to your provider.
-      </p>
-      <input
-        autoFocus
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => e.key === "Enter" && handleSubmit()}
-        placeholder="yourdomain.com"
-        style={{
-          width: "100%", boxSizing: "border-box",
-          background: T.surface, border: `1px solid ${T.border}`,
-          borderRadius: 6, padding: "9px 12px", color: T.text,
-          fontSize: 13, outline: "none", fontFamily: "inherit",
-        }}
-        onFocus={e => (e.target.style.borderColor = T.accent)}
-        onBlur={e  => (e.target.style.borderColor = T.border)}
-      />
+    <Modal title="Add Sending Domain" onClose={onClose} width={480}>
+
+      {/* Domain name */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.04em" }}>
+          DOMAIN NAME
+        </label>
+        <input
+          autoFocus
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          placeholder="yourdomain.com"
+          style={{
+            width: "100%", boxSizing: "border-box",
+            background: T.surface, border: `1px solid ${T.border}`,
+            borderRadius: 6, padding: "9px 12px", color: T.text,
+            fontSize: 13, outline: "none", fontFamily: "inherit",
+          }}
+          onFocus={e => (e.target.style.borderColor = T.accent)}
+          onBlur={e  => (e.target.style.borderColor = T.border)}
+        />
+      </div>
+
+      {/* Client selector */}
+      <div style={{ marginBottom: 4 }}>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.04em" }}>
+          MAP TO CLIENT
+        </label>
+        <div style={{ position: "relative" }}>
+          <button
+            ref={triggerRef}
+            onClick={openClientDropdown}
+            style={{
+              width: "100%", boxSizing: "border-box",
+              display: "flex", alignItems: "center", gap: 10,
+              background: T.surface, border: `1px solid ${clientOpen ? T.accent : T.border}`,
+              borderRadius: 6, padding: "8px 12px", cursor: "pointer",
+              fontFamily: "inherit", transition: "border-color 0.15s",
+            }}
+          >
+            {selectedClient ? (
+              <>
+                <span style={{
+                  width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                  background: selectedClient.color + "25",
+                  border: `1px solid ${selectedClient.color}50`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, color: selectedClient.color,
+                }}>
+                  {selectedClient.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span style={{ flex: 1, textAlign: "left", fontSize: 12, color: T.text, fontWeight: 500 }}>
+                  {selectedClient.name}
+                </span>
+                <span style={{ fontSize: 10, color: T.muted }}>{selectedClient.plan}</span>
+              </>
+            ) : (
+              <span style={{ flex: 1, textAlign: "left", fontSize: 12, color: T.muted }}>
+                No client — shared / GeniusAI only
+              </span>
+            )}
+            <ChevronDown size={13} color={T.muted} style={{ flexShrink: 0, transform: clientOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+          </button>
+
+          {clientOpen && dropdownRect && (
+            <div style={{
+              position: "fixed",
+              top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width,
+              background: T.card, border: `1px solid ${T.border}`,
+              borderRadius: 8, zIndex: 1100,
+              boxShadow: "0 8px 28px rgba(0,0,0,0.7)",
+              maxHeight: 220, overflowY: "auto",
+            }}>
+              {CLIENTS.map(c => {
+                const sel = selectedClientId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelectedClientId(c.id); setClientOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      width: "100%", padding: "9px 14px", border: "none",
+                      background: sel ? c.color + "12" : "transparent",
+                      borderLeft: sel ? `2px solid ${c.color}` : "2px solid transparent",
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                    onMouseEnter={e => { if (!sel) e.currentTarget.style.background = T.surface; }}
+                    onMouseLeave={e => { if (!sel) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{
+                      width: 20, height: 20, borderRadius: 4, flexShrink: 0,
+                      background: c.color + "25", border: `1px solid ${c.color}50`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 9, fontWeight: 700, color: c.color,
+                    }}>
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span style={{ flex: 1, textAlign: "left", fontSize: 12, color: sel ? c.color : T.text, fontWeight: sel ? 600 : 400 }}>
+                      {c.name}
+                    </span>
+                    <span style={{ fontSize: 10, color: T.muted }}>{c.plan}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div style={{
-          padding: "9px 12px", borderRadius: 6, marginTop: 12,
+          padding: "9px 12px", borderRadius: 6, marginTop: 14,
           background: T.red + "18", border: `1px solid ${T.red}40`,
           color: T.red, fontSize: 12,
         }}>

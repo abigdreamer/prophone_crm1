@@ -1,13 +1,14 @@
 const { Router } = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const requireAuth = require('../middleware/auth.middleware');
-const { listContacts, getContact, createContact, updateContact, deleteContact } = require('../controllers/contacts.controller');
+const { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts } = require('../controllers/contacts.controller');
 const { addActivity } = require('../controllers/activities.controller');
 
 const router = Router();
 
 router.use(requireAuth);
 
+router.get('/counts',        asyncHandler(getContactCounts));
 router.get('/',              asyncHandler(listContacts));
 router.get('/:id',           asyncHandler(getContact));
 router.post('/',             asyncHandler(createContact));
