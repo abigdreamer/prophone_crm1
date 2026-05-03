@@ -15,7 +15,7 @@ import fmt from "../utils/format";
 import * as db from "../services/api";
 
 // ─── Full contacts table page ──────────────────────────────────────────────────
-export default function ContactsPage({ pool, clientId, viewMode, onSelect, search, contacts, setContacts, currentUser }) {
+export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser }) {
   const [stageF,    setStageF]    = useState("all");
   const [sortBy,    setSortBy]    = useState("lastActivityAt");
   const [addModal,  setAddModal]  = useState(false);
@@ -167,14 +167,20 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, searc
                   const emails  = acts.filter(a => ACT_DEF[a.type]?.cat === "email").length;
                   const calls   = acts.filter(a => ACT_DEF[a.type]?.cat === "call").length;
                   const ownUser = USERS_DB.find(u => u.name === c.ownedBy) || USERS_DB[0];
+                  const isSel   = selected?.id === c.id;
 
                   return (
                     <tr
                       key={c.id}
                       onClick={() => onSelect(c)}
-                      style={{ borderBottom: "1px solid " + T.border, cursor: "pointer" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
-                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      style={{
+                        borderBottom: "1px solid " + T.border,
+                        cursor: "pointer",
+                        background: isSel ? col + "10" : "transparent",
+                        borderLeft: isSel ? "3px solid " + col : "3px solid transparent",
+                      }}
+                      onMouseEnter={e => { if (!isSel) { e.currentTarget.style.background = T.surface; } }}
+                      onMouseLeave={e => { if (!isSel) { e.currentTarget.style.background = "transparent"; } }}
                     >
                       <td style={{ padding: "8px 11px", verticalAlign: "middle" }}>
                         <div style={{ fontWeight: 600, color: T.text, fontSize: 12 }}>

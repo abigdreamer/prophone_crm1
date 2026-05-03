@@ -13,6 +13,7 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import ContactsPage from "./pages/ContactsPage";
 import DomainsPage from "./pages/DomainsPage";
+import ClientsPage from "./pages/ClientsPage";
 
 import T from "./theme";
 import { useAuth } from "./hooks/useAuth";
@@ -245,6 +246,7 @@ function AppLayout({ currentUser, onSignOut }) {
                   pool={pool} clientId={clientId}
                   viewMode={viewMode}
                   onSelect={handleSelect}
+                  selected={selected}
                   search={search}
                   contacts={contacts} setContacts={setContacts}
                   currentUser={currentUser}
@@ -253,7 +255,7 @@ function AppLayout({ currentUser, onSignOut }) {
               <Route path="/domains"  element={<DomainsPage />} />
               <Route path="/reports"  element={<ComingSoon page="reports" />} />
               <Route path="/settings" element={<ComingSoon page="settings" />} />
-              <Route path="/clients"  element={<ComingSoon page="clients" />} />
+              <Route path="/clients"  element={<ClientsPage />} />
               <Route path="*"         element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>

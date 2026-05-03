@@ -118,3 +118,17 @@ export async function deleteDomain(id) {
 export async function verifyDomain(id) {
   return request('POST', `/api/domains/${id}/verify`);
 }
+
+// ── Clients ───────────────────────────────────────────────────────────────────
+
+export async function getClients() {
+  return request('GET', '/api/clients');
+}
+
+export async function createClient(data) {
+  return request('POST', '/api/clients', data);
+}
+
+export async function updateClient(id, data) {
+  return request('PATCH', `/api/clients/${id}`, data);
+}

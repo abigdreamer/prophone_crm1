@@ -46,7 +46,7 @@ model Contact {
   title          String     @default("")
   website        String     @default("")
   city           String     @default("")
-  trucks         Int        @default(0)
+  trucks         Int        @default(0) // 
   lifecycleStage String     @default("new") @map("lifecycle_stage")
   leadScore      Int        @default(0) @map("lead_score")
   status         String     @default("active")

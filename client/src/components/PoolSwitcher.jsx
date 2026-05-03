@@ -1,15 +1,25 @@
 import { useState, useRef, useEffect } from "react";
 import { Pill } from "./ui/Pill";
 import T from "../theme";
-import CLIENTS from "../data/clients";
+import STATIC_CLIENTS from "../data/clients";
 import fmt from "../utils/format";
+import { getClients } from "../services/api";
 
 // ─── Pool / client switcher dropdown ─────────────────────────────────────────
 export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchClient, contactCounts = { prospect: 0, clients: {} } }) {
-  const [open, setOpen] = useState(false);
+  const [open,    setOpen]    = useState(false);
+  const [clients, setClients] = useState(STATIC_CLIENTS);
   const ref    = useRef(null);
-  const client = CLIENTS.find(c => c.id === clientId) || CLIENTS[0];
-  const col    = client.color;
+  const client = clients.find(c => c.id === clientId) || clients[0] || STATIC_CLIENTS[0];
+  const col    = client?.color || T.accent;
+
+  useEffect(() => {
+    getClients().then(setClients).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (open) getClients().then(setClients).catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -80,7 +90,7 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
               <div style={{ flex: 1, textAlign: "left" }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: T.accent }}>Prospect Pool</div>
                 <div style={{ fontSize: 9, color: T.muted }}>
-                  {fmt.num(contactCounts.prospect)} leads · {CLIENTS.length} clients
+                  {fmt.num(contactCounts.prospect)} leads · {clients.length} clients
                 </div>
               </div>
               <Pill color={T.accent} small>GeniusAI</Pill>
@@ -92,7 +102,7 @@ export default function PoolSwitcher({ pool, clientId, onSwitchPool, onSwitchCli
             <div style={{ fontSize: 9, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, marginBottom: 6 }}>
               Client Accounts
             </div>
-            {CLIENTS.map(c => {
+            {clients.map(c => {
               const active = pool === "client" && c.id === clientId;
               const leads  = contactCounts.clients[c.id] || 0;
               return (
