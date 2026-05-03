@@ -134,7 +134,7 @@ export default function App() {
       );
     }
 
-    if (page === "domains") return <PageDomains />;
+    if (page === "domains") return <PageDomains clientId={clientId} />;
 
     if (["table","all-contacts","leads","customers","lost"].includes(page)) {
       const vm =

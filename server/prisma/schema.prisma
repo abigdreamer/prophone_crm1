@@ -85,6 +85,7 @@ model Activity {
 
 model Domain {
   id             String   @id @default(uuid())
+  clientId       String?  @map("client_id")
   domainName     String   @unique @map("domain_name")
   resendDomainId String   @map("resend_domain_id")
   status         String   @default("pending")

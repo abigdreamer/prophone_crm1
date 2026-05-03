@@ -58,12 +58,16 @@ function extractRecords(records = []) {
 // ── Controllers ───────────────────────────────────────────────────────────────
 
 async function listDomains(req, res) {
-  const domains = await prisma.domain.findMany({ orderBy: { createdAt: 'desc' } });
+  const { clientId } = req.query;
+  const domains = await prisma.domain.findMany({
+    where:   clientId ? { clientId } : {},
+    orderBy: { createdAt: 'desc' },
+  });
   res.json(domains);
 }
 
 async function addDomain(req, res) {
-  const { name } = req.body;
+  const { name, clientId } = req.body;
   if (!name) return res.status(400).json({ error: 'Domain name is required' });
 
   const cleanName = name.trim().toLowerCase()
@@ -101,8 +105,8 @@ async function addDomain(req, res) {
 
   const domain = await prisma.domain.upsert({
     where:  { domainName: cleanName },
-    update: { resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
-    create: { domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
+    update: { clientId: clientId || null, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
+    create: { clientId: clientId || null, domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
   });
 
   res.status(201).json(domain);

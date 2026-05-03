@@ -68,12 +68,13 @@ export async function addActivity(contactId, activity) {
 
 // ── Domains ────────────────────────────────────────────────────────────────────
 
-export async function getDomains() {
-  return request('GET', '/api/domains');
+export async function getDomains(clientId) {
+  const params = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+  return request('GET', `/api/domains${params}`);
 }
 
-export async function addDomain(name) {
-  return request('POST', '/api/domains', { name });
+export async function addDomain(name, clientId) {
+  return request('POST', '/api/domains', { name, clientId: clientId || null });
 }
 
 export async function deleteDomain(id) {
