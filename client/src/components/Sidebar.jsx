@@ -52,18 +52,32 @@ export default function Sidebar({
     });
 
   function handleSearchKeyDown(e) {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
     e.preventDefault();
     const visible = filtered.slice(0, 150);
     if (visible.length === 0) return;
     const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
+
     let nextIdx;
     if (e.key === "ArrowDown") {
       nextIdx = currentIdx === -1 ? 0 : Math.min(currentIdx + 1, visible.length - 1);
-    } else {
+    } else if (e.key === "ArrowUp") {
       if (currentIdx <= 0) return;
       nextIdx = currentIdx - 1;
+    } else {
+      // PageDown / PageUp — compute page size from actual DOM dimensions
+      const container = listRef.current;
+      const firstRow  = container?.querySelector("[data-contact-id]");
+      const pageSize  = (container && firstRow)
+        ? Math.max(1, Math.floor(container.clientHeight / firstRow.offsetHeight))
+        : 10;
+      if (e.key === "PageDown") {
+        nextIdx = currentIdx === -1 ? pageSize - 1 : Math.min(currentIdx + pageSize, visible.length - 1);
+      } else {
+        nextIdx = currentIdx === -1 ? 0 : Math.max(currentIdx - pageSize, 0);
+      }
     }
+
     const next = visible[nextIdx];
     onSelect(next);
     requestAnimationFrame(() => {
