@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { skipDups } from '../lib/db-compat.js';
 
 const VALID_POOLS          = ['prospect', 'client'];
 const VALID_STAGES         = ['new','contacted','engaged','demo_scheduled','demo_done','proposal_sent','negotiating','customer','lost','churned'];
@@ -281,7 +282,7 @@ async function importContacts(req, res) {
   // Chunked inserts
   for (let i = 0; i < toInsert.length; i += CHUNK) {
     const chunk = toInsert.slice(i, i + CHUNK);
-    await prisma.contact.createMany({ data: chunk, skipDuplicates: true });
+    await prisma.contact.createMany({ data: chunk, ...skipDups });
     imported += chunk.length;
   }
 

@@ -1,4 +1,5 @@
 import prisma from '../prisma.js';
+import { icontains, skipDups } from '../lib/db-compat.js';
 
 export async function findMany(where) {
   return prisma.campaign.findMany({
@@ -75,9 +76,9 @@ export async function findRecipients(campaignId, { status, variant, search, skip
   if (variant) where.ab_variant = variant;
   if (search) {
     where.OR = [
-      { email:      { contains: search, mode: 'insensitive' } },
-      { first_name: { contains: search, mode: 'insensitive' } },
-      { last_name:  { contains: search, mode: 'insensitive' } },
+      { email:      icontains(search) },
+      { first_name: icontains(search) },
+      { last_name:  icontains(search) },
     ];
   }
 
@@ -110,7 +111,7 @@ export async function addRecipients(campaignId, contacts, variant = null) {
       status:      'pending',
       ...(variant ? { ab_variant: variant } : {}),
     })),
-    skipDuplicates: true,
+    ...skipDups,
   });
 }
 

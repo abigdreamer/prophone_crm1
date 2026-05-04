@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
+import { ieq } from '../lib/db-compat.js';
 
 async function login(req, res) {
   const { email, password } = req.body;
@@ -9,7 +10,7 @@ async function login(req, res) {
   }
 
   const user = await prisma.user.findFirst({
-    where: { email: { equals: email, mode: 'insensitive' } },
+    where: { email: ieq(email) },
   });
 
   if (!user) {

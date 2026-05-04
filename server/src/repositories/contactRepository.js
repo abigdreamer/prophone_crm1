@@ -1,4 +1,5 @@
 import prisma from '../prisma.js';
+import { skipDups } from '../lib/db-compat.js';
 
 const ACTIVITY_SELECT = {
   id: true,
@@ -161,6 +162,6 @@ export async function findByEmailAndAccount(email, accountId) {
 export async function bulkCreate(data) {
   return prisma.lead.createMany({
     data,
-    skipDuplicates: true,
+    ...skipDups,
   });
 }
