@@ -1,6 +1,9 @@
 -- AlterTable
 ALTER TABLE "contacts" ADD COLUMN     "contact_group_id" TEXT;
 
+-- AlterTable
+ALTER TABLE "domains" ADD COLUMN     "default_from_email" TEXT NOT NULL DEFAULT '';
+
 -- CreateTable
 CREATE TABLE "contact_groups" (
     "id" TEXT NOT NULL,
