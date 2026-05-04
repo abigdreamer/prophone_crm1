@@ -1,4 +1,5 @@
 import prisma from '../prisma.js';
+import { ieq } from '../lib/db-compat.js';
 
 const USER_SELECT = {
   id: true, email: true, name: true,
@@ -18,7 +19,7 @@ export async function findQuickUsers() {
 
 export async function findByEmail(email) {
   return prisma.user.findFirst({
-    where: { email: { equals: email, mode: 'insensitive' }, is_active: true, deleted_at: null },
+    where: { email: ieq(email), is_active: true, deleted_at: null },
   });
 }
 

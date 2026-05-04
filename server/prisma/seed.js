@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+const isSQLite = process.env.DATABASE_URL?.startsWith('file:');
+
 const prisma = new PrismaClient();
 
 const ago = (days = 0, hours = 0) =>
@@ -11,7 +13,7 @@ async function main() {
   const hashed = await bcrypt.hash('demo', 10);
 
   await prisma.user.createMany({
-    skipDuplicates: true,
+    ...(isSQLite ? {} : { skipDuplicates: true }),
     data: [
       { id: 'u1', name: 'Mike Johnson', email: 'mike@geniusai.biz', role: 'Admin', avatar: 'MJ', color: '#6366f1', password: hashed },
       { id: 'u2', name: 'Sarah Lee', email: 'sarah@geniusai.biz', role: 'Manager', avatar: 'SL', color: '#22c55e', password: hashed },
