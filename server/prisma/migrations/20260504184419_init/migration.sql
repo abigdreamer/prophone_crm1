@@ -27,6 +27,17 @@ CREATE TABLE "clients" (
 );
 
 -- CreateTable
+CREATE TABLE "contact_groups" (
+    "id" TEXT NOT NULL,
+    "client_id" TEXT,
+    "name" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "contact_groups_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "contacts" (
     "id" TEXT NOT NULL,
     "pool" TEXT NOT NULL DEFAULT 'prospect',
@@ -58,6 +69,7 @@ CREATE TABLE "contacts" (
     "owned_by" TEXT NOT NULL DEFAULT '',
     "added_by" TEXT NOT NULL DEFAULT '',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "contact_group_id" TEXT,
 
     CONSTRAINT "contacts_pkey" PRIMARY KEY ("id")
 );
@@ -74,11 +86,64 @@ CREATE TABLE "activities" (
     CONSTRAINT "activities_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "domains" (
+    "id" TEXT NOT NULL,
+    "client_id" TEXT,
+    "domain_name" TEXT NOT NULL,
+    "resend_domain_id" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "default_from_email" TEXT NOT NULL DEFAULT '',
+    "spf_record" TEXT NOT NULL DEFAULT '',
+    "dkim_record" TEXT NOT NULL DEFAULT '',
+    "dmarc_record" TEXT NOT NULL DEFAULT '',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "domains_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "email_templates" (
+    "id" TEXT NOT NULL,
+    "client_id" TEXT,
+    "name" TEXT NOT NULL,
+    "subject" TEXT NOT NULL DEFAULT '',
+    "body" JSONB NOT NULL DEFAULT '{"blocks": [], "version": 1}',
+    "html_output" TEXT NOT NULL DEFAULT '',
+    "tracked_links" JSONB NOT NULL DEFAULT '[]',
+    "status" TEXT NOT NULL DEFAULT 'draft',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "email_templates_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE INDEX "contact_groups_client_id_idx" ON "contact_groups"("client_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "contact_groups_client_id_name_key" ON "contact_groups"("client_id", "name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "domains_domain_name_key" ON "domains"("domain_name");
+
+-- CreateIndex
+CREATE INDEX "email_templates_client_id_idx" ON "email_templates"("client_id");
+
+-- AddForeignKey
+ALTER TABLE "contact_groups" ADD CONSTRAINT "contact_groups_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "contacts" ADD CONSTRAINT "contacts_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "contacts" ADD CONSTRAINT "contacts_contact_group_id_fkey" FOREIGN KEY ("contact_group_id") REFERENCES "contact_groups"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "activities" ADD CONSTRAINT "activities_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "contacts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "email_templates" ADD CONSTRAINT "email_templates_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
