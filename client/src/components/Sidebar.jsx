@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
@@ -16,6 +16,7 @@ export default function Sidebar({
   const [stageF,    setStageF]    = useState("all");
   const [sortF,     setSortF]     = useState("recent");
   const [addModal,  setAddModal]  = useState(false);
+  const listRef = useRef(null);
 
   const client = CLIENTS.find(c => c.id === clientId);
   const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -49,6 +50,27 @@ export default function Sidebar({
       if (sortF === "score") return b.leadScore - a.leadScore;
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
+
+  function handleSearchKeyDown(e) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const visible = filtered.slice(0, 150);
+    if (visible.length === 0) return;
+    const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
+    let nextIdx;
+    if (e.key === "ArrowDown") {
+      nextIdx = currentIdx === -1 ? 0 : Math.min(currentIdx + 1, visible.length - 1);
+    } else {
+      if (currentIdx <= 0) return;
+      nextIdx = currentIdx - 1;
+    }
+    const next = visible[nextIdx];
+    onSelect(next);
+    requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector(`[data-contact-id="${next.id}"]`);
+      el?.scrollIntoView({ block: "nearest" });
+    });
+  }
 
   async function handleAdd(nc) {
     try {
@@ -120,6 +142,7 @@ export default function Sidebar({
             ref={searchRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Search name, company, city…"
             style={{
               width: "100%", boxSizing: "border-box",
@@ -171,7 +194,7 @@ export default function Sidebar({
       </div>
 
       {/* Contact list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
         {filtered.length === 0 ? (
           <div style={{ padding: "20px 14px", textAlign: "center", color: T.muted, fontSize: 12 }}>
             No contacts match.
@@ -184,6 +207,7 @@ export default function Sidebar({
             return (
               <div
                 key={c.id}
+                data-contact-id={c.id}
                 onClick={() => onSelect(c)}
                 style={{
                   padding: "10px 13px",
