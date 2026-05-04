@@ -11,10 +11,12 @@ import clientsRoutes       from './routes/clients.routes.js';
 import contactsRoutes      from './routes/contacts.routes.js';
 import domainsRoutes       from './routes/domains.routes.js';
 import emailTemplateRoutes from './routes/emailTemplates.routes.js';
+import interactiveRoutes   from './routes/interactive.routes.js';
 
-import { handleWebhook } from './controllers/domains.controller.js';
-import asyncHandler       from './utils/asyncHandler.js';
-import prisma             from './lib/prisma.js';
+import { handleWebhook }                         from './controllers/domains.controller.js';
+import { servePage, handleRespond }              from './controllers/interactive.controller.js';
+import asyncHandler                              from './utils/asyncHandler.js';
+import prisma                                    from './lib/prisma.js';
 
 const app = express();
 
@@ -29,13 +31,18 @@ app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHan
 
 app.use(express.json());
 
+// Public interactive pages — no auth, served as HTML
+app.get('/i/:token',          asyncHandler(servePage));
+app.post('/i/:token/respond', asyncHandler(handleRespond));
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-app.use('/api/auth',            authRoutes);
-app.use('/api/users',           usersRoutes);
-app.use('/api/clients',         clientsRoutes);
-app.use('/api/contacts',        contactsRoutes);
-app.use('/api/domains',         domainsRoutes);
-app.use('/api/email-templates', emailTemplateRoutes);
+app.use('/api/auth',                authRoutes);
+app.use('/api/users',               usersRoutes);
+app.use('/api/clients',             clientsRoutes);
+app.use('/api/contacts',            contactsRoutes);
+app.use('/api/domains',             domainsRoutes);
+app.use('/api/email-templates',     emailTemplateRoutes);
+app.use('/api/interactive/sessions', interactiveRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;

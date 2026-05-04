@@ -171,3 +171,20 @@ export async function duplicateTemplate(id) {
   const r = await request('POST', `/api/email-templates/${id}/duplicate`);
   return r.data ?? r;
 }
+
+export async function sendTestEmail(id, email) {
+  const r = await request('POST', `/api/email-templates/${id}/send-test`, { email });
+  return r.data ?? r;
+}
+
+// ── Interactive Sessions ──────────────────────────────────────────────────────
+
+export async function createInteractiveSession(data) {
+  const r = await request('POST', '/api/interactive/sessions', data);
+  return r.data ?? r;
+}
+
+export async function getContactInteractiveSessions(contactId) {
+  const r = await request('GET', `/api/interactive/sessions/contact/${contactId}`);
+  return r.data ?? r;
+}
