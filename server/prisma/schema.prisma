@@ -138,3 +138,21 @@ model EmailTemplate {
   @@index([clientId])
   @@map("email_templates")
 }
+
+model InteractiveSession {
+  id          String    @id @default(uuid())
+  contactId   String?   @map("contact_id")
+  templateId  String?   @map("template_id")
+  blockId     String    @map("block_id")
+  type        String
+  config      Json      @default("{}")
+  token       String    @unique @default(uuid())
+  response    Json?
+  respondedAt DateTime? @map("responded_at")
+  scoreGiven  Int       @default(0) @map("score_given")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([contactId])
+  @@index([templateId])
+  @@map("interactive_sessions")
+}

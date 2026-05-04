@@ -125,21 +125,37 @@ export const sendTestEmail = async (req, res) => {
     if (!template) return sendError(res, 'Template not found', 404);
 
     if (!template.htmlOutput) {
-      return sendError(res, 'Template has no HTML content yet. Save the template first.', 400);
+      return sendError(res, 'Template has no HTML output. Open it in the builder and save it first.', 400);
     }
 
-    const verifiedDomain = await domainRepo.findFirstVerified(template.clientId ?? null);
-    if (!verifiedDomain) {
-      return sendError(res, 'No verified sending domain found', 400);
-    }
+    // Replace interactive placeholders with a visible test note
+    const html = template.htmlOutput.replace(
+      /\{\{INTERACT_URL_[^}]+\}\}/g,
+      '#test-preview'
+    );
 
-    const fromEmail = verifiedDomain.defaultFromEmail || `noreply@${verifiedDomain.domainName}`;
+    // Try client-scoped domain → any verified domain → RESEND_FROM_EMAIL env
+    let fromEmail = null;
+
+    const clientDomain = await domainRepo.findFirstVerified(template.clientId ?? null);
+    if (clientDomain) {
+      fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+    } else {
+      const anyDomain = await domainRepo.findAnyVerified();
+      if (anyDomain) {
+        fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+      } else if (process.env.RESEND_FROM_EMAIL) {
+        fromEmail = process.env.RESEND_FROM_EMAIL;
+      } else {
+        return sendError(res, 'No verified sending domain found. Verify a domain in Domains first.', 400);
+      }
+    }
 
     const result = await sendSingleEmail({
       to:      email,
       from:    fromEmail,
       subject: `[TEST] ${template.subject || template.name}`,
-      html:    template.htmlOutput,
+      html,
     });
 
     sendSuccess(res, { ok: true, messageId: result?.id });

@@ -31,6 +31,12 @@ export async function findFirstVerified(clientId) {
   });
 }
 
+export async function findAnyVerified() {
+  return prisma.domain.findFirst({
+    where: { status: 'verified' }
+  });
+}
+
 export async function createDomain(data) {
   return prisma.domain.create({
     data
