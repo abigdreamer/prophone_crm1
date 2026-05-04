@@ -1,4 +1,4 @@
-const prisma = require('../lib/prisma');
+import prisma from '../lib/prisma.js';
 
 const VALID_POOLS          = ['prospect', 'client'];
 const VALID_STAGES         = ['new','contacted','engaged','demo_scheduled','demo_done','proposal_sent','negotiating','customer','lost','churned'];
@@ -192,4 +192,120 @@ async function getContactCounts(req, res) {
   res.json({ prospect, clients });
 }
 
-module.exports = { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts };
+// ── Bulk import ───────────────────────────────────────────────────────────────
+const CHUNK = 50;
+
+async function importContacts(req, res) {
+  const { rows, clientId, pool = 'client', duplicateAction = 'ignore' } = req.body;
+  const currentUserName = req.user?.name || 'import';
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows array is required' });
+  }
+  if (!clientId) {
+    return res.status(400).json({ error: 'clientId is required' });
+  }
+
+  // Pre-fetch existing emails for this client to speed up duplicate check
+  const existingRecords = await prisma.contact.findMany({
+    where: { pool, clientId },
+    select: { id: true, email: true },
+  });
+  const existingByEmail = new Map(
+    existingRecords.filter(r => r.email).map(r => [r.email.toLowerCase().trim(), r.id])
+  );
+
+  const toInsert = [];
+  const toUpdate = [];
+  const invalid  = [];
+  const errors   = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const email = (r.email || '').trim();
+    const phone = (r.phone || '').trim();
+
+    if (!email && !phone) {
+      invalid.push(i);
+      errors.push({ row: i + 1, reason: 'Missing both email and phone' });
+      continue;
+    }
+
+    const firstName = (r.firstName || r.first_name || '').trim();
+    if (!firstName) {
+      invalid.push(i);
+      errors.push({ row: i + 1, reason: 'Missing first name' });
+      continue;
+    }
+
+    const data = {
+      pool,
+      clientId,
+      firstName,
+      lastName:       (r.lastName  || r.last_name  || '').trim(),
+      email,
+      phone,
+      company:        (r.company   || '').trim(),
+      title:          (r.title     || '').trim(),
+      website:        (r.website   || '').trim(),
+      city:           (r.city      || '').trim(),
+      trucks:         parseInt(r.trucks)        || 0,
+      contractValue:  parseInt(r.contractValue) || 0,
+      lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : 'new',
+      leadScore:      10,
+      status:         'active',
+      source:         (r.source || '').trim(),
+      notes:          (r.notes  || '').trim(),
+      ownedBy:        (r.ownedBy  || '').trim() || currentUserName,
+      addedBy:        (r.addedBy  || '').trim() || currentUserName,
+      tags:           [],
+      lastActivityAt: new Date(),
+    };
+
+    const key = email ? email.toLowerCase() : null;
+    if (key && existingByEmail.has(key)) {
+      if (duplicateAction === 'update') {
+        toUpdate.push({ id: existingByEmail.get(key), data });
+      }
+      // duplicateAction === 'ignore': skip silently
+      continue;
+    }
+
+    toInsert.push(data);
+    if (key) existingByEmail.set(key, '__pending__');
+  }
+
+  let imported = 0;
+  let updated  = 0;
+
+  // Chunked inserts
+  for (let i = 0; i < toInsert.length; i += CHUNK) {
+    const chunk = toInsert.slice(i, i + CHUNK);
+    await prisma.contact.createMany({ data: chunk, skipDuplicates: true });
+    imported += chunk.length;
+  }
+
+  // Chunked updates
+  for (let i = 0; i < toUpdate.length; i += CHUNK) {
+    const chunk = toUpdate.slice(i, i + CHUNK);
+    await Promise.all(
+      chunk.map(({ id, data }) =>
+        prisma.contact.update({ where: { id }, data })
+      )
+    );
+    updated += chunk.length;
+  }
+
+  const skipped = rows.length - imported - updated - invalid.length;
+
+  res.json({
+    total:    rows.length,
+    imported,
+    updated,
+    skipped:  skipped + invalid.length,
+    invalid:  invalid.length,
+    errors,
+  });
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts };

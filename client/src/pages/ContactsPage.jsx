@@ -6,6 +6,7 @@ import Avatar from "../components/ui/Avatar";
 import Hi from "../components/ui/Hi";
 import Btn from "../components/ui/Btn";
 import ContactModal from "../components/modals/ContactModal";
+import ImportModal from "../components/modals/ImportModal";
 import T from "../theme";
 import USERS_DB from "../data/users";
 import CLIENTS from "../data/clients";
@@ -16,10 +17,11 @@ import * as db from "../services/api";
 
 // ─── Full contacts table page ──────────────────────────────────────────────────
 export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser }) {
-  const [stageF,    setStageF]    = useState("all");
-  const [sortBy,    setSortBy]    = useState("lastActivityAt");
-  const [addModal,  setAddModal]  = useState(false);
-  const [editC,     setEditC]     = useState(null);
+  const [stageF,       setStageF]       = useState("all");
+  const [sortBy,       setSortBy]       = useState("lastActivityAt");
+  const [addModal,     setAddModal]     = useState(false);
+  const [importModal,  setImportModal]  = useState(false);
+  const [editC,        setEditC]        = useState(null);
 
   const client   = CLIENTS.find(c => c.id === clientId);
   const col      = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -93,6 +95,19 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
       {editC && (
         <ContactModal contact={editC} onSave={handleEdit} onClose={() => setEditC(null)} pool={pool} clientId={clientId} currentUser={currentUser} />
       )}
+      {importModal && (
+        <ImportModal
+          onClose={() => setImportModal(false)}
+          clientId={clientId}
+          pool={pool}
+          onImported={async () => {
+            try {
+              const fresh = await db.getContacts();
+              setContacts(fresh);
+            } catch {}
+          }}
+        />
+      )}
 
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -127,6 +142,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
             <option value="name">Name A-Z</option>
           </select>
 
+          <Btn variant="secondary" onClick={() => setImportModal(true)}>↑ Import Contact</Btn>
           <Btn onClick={() => setAddModal(true)}>+ Add Contact</Btn>
         </div>
       </div>

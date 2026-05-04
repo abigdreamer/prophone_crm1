@@ -1,4 +1,4 @@
-const prisma = require('../lib/prisma');
+import prisma from '../lib/prisma.js';
 
 const VALID_TYPES = [
   'form_submitted',
@@ -40,4 +40,4 @@ async function addActivity(req, res) {
   res.status(201).json({ id: activity.id, type: activity.type, note: activity.note, ts: activity.ts, by: activity.by });
 }
 
-module.exports = { addActivity };
+export { addActivity };

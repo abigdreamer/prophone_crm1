@@ -1,4 +1,4 @@
-const prisma = require('../lib/prisma');
+import prisma from '../lib/prisma.js';
 
 const VALID_PLANS = ['Starter', 'Pro', 'Enterprise'];
 
@@ -63,4 +63,4 @@ async function updateClient(req, res) {
   res.json(client);
 }
 
-module.exports = { listClients, getClient, createClient, updateClient };
+export { listClients, getClient, createClient, updateClient };

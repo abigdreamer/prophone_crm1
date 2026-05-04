@@ -1,4 +1,4 @@
-const prisma = require('../lib/prisma');
+import prisma from '../lib/prisma.js';
 
 async function listUsers(req, res) {
   const users = await prisma.user.findMany({
@@ -17,4 +17,4 @@ async function getUser(req, res) {
   res.json(user);
 }
 
-module.exports = { listUsers, getUser };
+export { listUsers, getUser };

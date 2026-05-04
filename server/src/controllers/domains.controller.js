@@ -8,9 +8,9 @@
  *   Events: domain.verified, domain.failed
  */
 
-const crypto   = require('crypto');
-const { Resend } = require('resend');
-const prisma   = require('../lib/prisma');
+import crypto from 'crypto';
+import { Resend } from 'resend';
+import prisma from '../lib/prisma.js';
 
 // ── Resend SDK helpers ────────────────────────────────────────────────────────
 
@@ -191,4 +191,17 @@ async function verifyDomain(req, res) {
   res.json(updated);
 }
 
-module.exports = { listDomains, addDomain, deleteDomain, handleWebhook, verifyDomain };
+async function updateDomain(req, res) {
+  const { id } = req.params;
+  const domain = await prisma.domain.findUnique({ where: { id } });
+  if (!domain) return res.status(404).json({ error: 'Domain not found' });
+
+  const { defaultFromEmail } = req.body;
+  const updated = await prisma.domain.update({
+    where: { id },
+    data: { defaultFromEmail: defaultFromEmail ?? domain.defaultFromEmail },
+  });
+  res.json(updated);
+}
+
+export { listDomains, addDomain, deleteDomain, handleWebhook, verifyDomain, updateDomain };

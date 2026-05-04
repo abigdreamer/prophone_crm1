@@ -1,13 +1,14 @@
-const { Router } = require('express');
-const asyncHandler = require('../utils/asyncHandler');
-const requireAuth  = require('../middleware/auth.middleware');
-const { listDomains, addDomain, deleteDomain, verifyDomain } = require('../controllers/domains.controller');
+import { Router } from 'express';
+import asyncHandler from '../utils/asyncHandler.js';
+import requireAuth from '../middleware/auth.middleware.js';
+import { listDomains, addDomain, deleteDomain, verifyDomain, updateDomain } from '../controllers/domains.controller.js';
 
 const router = Router();
 
-router.get('/',      requireAuth, asyncHandler(listDomains));
-router.post('/',     requireAuth, asyncHandler(addDomain));
-router.delete('/:id', requireAuth, asyncHandler(deleteDomain));
+router.get('/',            requireAuth, asyncHandler(listDomains));
+router.post('/',           requireAuth, asyncHandler(addDomain));
+router.patch('/:id',       requireAuth, asyncHandler(updateDomain));
+router.delete('/:id',      requireAuth, asyncHandler(deleteDomain));
 router.post('/:id/verify', requireAuth, asyncHandler(verifyDomain));
 
-module.exports = router;
+export default router;

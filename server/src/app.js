@@ -1,22 +1,26 @@
-require('dotenv').config();
+import 'dotenv/config';
 // Force IPv4 DNS — prevents timeouts on systems where IPv6 is unavailable
-require('dns').setDefaultResultOrder('ipv4first');
-const express = require('express');
-const cors = require('cors');
+import { setDefaultResultOrder } from 'dns';
+setDefaultResultOrder('ipv4first');
+import express from 'express';
+import cors from 'cors';
 
-const authRoutes     = require('./routes/auth.routes');
-const usersRoutes    = require('./routes/users.routes');
-const clientsRoutes  = require('./routes/clients.routes');
-const contactsRoutes = require('./routes/contacts.routes');
-const domainsRoutes  = require('./routes/domains.routes');
-const { handleWebhook } = require('./controllers/domains.controller');
-const asyncHandler   = require('./utils/asyncHandler');
+import authRoutes          from './routes/auth.routes.js';
+import usersRoutes         from './routes/users.routes.js';
+import clientsRoutes       from './routes/clients.routes.js';
+import contactsRoutes      from './routes/contacts.routes.js';
+import domainsRoutes       from './routes/domains.routes.js';
+import emailTemplateRoutes from './routes/emailTemplates.routes.js';
+
+import { handleWebhook } from './controllers/domains.controller.js';
+import asyncHandler       from './utils/asyncHandler.js';
+import prisma             from './lib/prisma.js';
 
 const app = express();
 
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
@@ -26,11 +30,12 @@ app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHan
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
-app.use('/api/auth',     authRoutes);
-app.use('/api/users',    usersRoutes);
-app.use('/api/clients',  clientsRoutes);
-app.use('/api/contacts', contactsRoutes);
-app.use('/api/domains',  domainsRoutes);
+app.use('/api/auth',            authRoutes);
+app.use('/api/users',           usersRoutes);
+app.use('/api/clients',         clientsRoutes);
+app.use('/api/contacts',        contactsRoutes);
+app.use('/api/domains',         domainsRoutes);
+app.use('/api/email-templates', emailTemplateRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
@@ -38,8 +43,6 @@ app.use((err, req, res, _next) => {
   console.error(err.stack || err.message || err);
   res.status(status).json({ error: err.message || 'Internal server error' });
 });
-
-const prisma = require('./lib/prisma');
 
 const PORT   = process.env.PORT || 8080;
 const server = app.listen(PORT, () => console.log(`ProPhone API listening on port ${PORT}`));

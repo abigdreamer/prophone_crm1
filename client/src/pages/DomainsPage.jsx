@@ -115,8 +115,10 @@ function DnsBlock({ label, recordJson, status }) {
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
-  const [verifying, setVerifying] = useState(false);
-  const [deleting,  setDeleting]  = useState(false);
+  const [verifying,  setVerifying]  = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+  const [fromEmail,  setFromEmail]  = useState(domain.defaultFromEmail || "");
+  const [savingFrom, setSavingFrom] = useState(false);
   const c = clientOf(domain.clientId);
 
   async function handleVerify() {
@@ -136,6 +138,17 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
       onDeleted(domain.id);
     } catch { setDeleting(false); }
   }
+
+  async function handleSaveFromEmail() {
+    setSavingFrom(true);
+    try {
+      const updated = await db.updateDomain(domain.id, { defaultFromEmail: fromEmail.trim() });
+      onUpdated(updated);
+    } catch {}
+    finally { setSavingFrom(false); }
+  }
+
+  const fromEmailDirty = fromEmail.trim() !== (domain.defaultFromEmail || "");
 
   return (
     <div style={{
@@ -220,6 +233,52 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
               Add the records above to your DNS provider. Changes can take up to 24 hours to propagate. We re-verify automatically every 30 seconds.
             </span>
           </div>
+        )}
+
+        {/* Default From Email — only shown for verified domains */}
+        {domain.status === "verified" && (
+          <>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", margin: "20px 0 10px" }}>
+              Sender Settings
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6 }}>
+                Default From Email — used as the sender when no custom address is set.
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="email"
+                  value={fromEmail}
+                  onChange={e => setFromEmail(e.target.value)}
+                  placeholder={`noreply@${domain.domainName}`}
+                  onKeyDown={e => { if (e.key === "Enter" && fromEmailDirty) handleSaveFromEmail(); }}
+                  style={{
+                    flex: 1, background: T.card, border: `1px solid ${T.border}`, borderRadius: 7,
+                    padding: "7px 10px", fontSize: 12, color: T.text, outline: "none", fontFamily: "inherit",
+                  }}
+                />
+                {fromEmailDirty && (
+                  <button
+                    onClick={handleSaveFromEmail}
+                    disabled={savingFrom}
+                    style={{
+                      flexShrink: 0, padding: "7px 14px", borderRadius: 7,
+                      background: T.accent, color: "#fff", border: "none",
+                      fontSize: 12, fontWeight: 600, cursor: savingFrom ? "not-allowed" : "pointer", fontFamily: "inherit",
+                      opacity: savingFrom ? 0.7 : 1,
+                    }}
+                  >
+                    {savingFrom ? "…" : "Save"}
+                  </button>
+                )}
+              </div>
+              {fromEmail && (
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>
+                  Emails will be sent as: <span style={{ color: T.dim, fontFamily: "monospace" }}>{fromEmail}</span>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 

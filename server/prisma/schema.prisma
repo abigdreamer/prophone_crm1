@@ -28,10 +28,28 @@ model Client {
   industry  String    @default("")
   plan      String    @default("Starter")
   mrr       Int       @default(0)
-  createdAt DateTime  @default(now()) @map("created_at")
-  contacts  Contact[]
+  createdAt      DateTime       @default(now()) @map("created_at")
+  contacts       Contact[]
+  contactGroups  ContactGroup[]
+  emailTemplates EmailTemplate[]
 
   @@map("clients")
+}
+
+model ContactGroup {
+  id        String   @id @default(uuid())
+  clientId  String?  @map("client_id")
+
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contacts  Contact[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+  @@map("contact_groups")
 }
 
 model Contact {
@@ -68,6 +86,9 @@ model Contact {
   client         Client?    @relation(fields: [clientId], references: [id])
   activities     Activity[]
 
+  contactGroupId String? @map("contact_group_id")
+  contactGroup   ContactGroup? @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
+
   @@map("contacts")
 }
 
@@ -84,15 +105,36 @@ model Activity {
 }
 
 model Domain {
-  id             String   @id @default(uuid())
-  clientId       String?  @map("client_id")
-  domainName     String   @unique @map("domain_name")
-  resendDomainId String   @map("resend_domain_id")
-  status         String   @default("pending")
-  spfRecord      String   @default("") @map("spf_record")
-  dkimRecord     String   @default("") @map("dkim_record")
-  dmarcRecord    String   @default("") @map("dmarc_record")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid())
+  clientId          String?  @map("client_id")
+  domainName        String   @unique @map("domain_name")
+  resendDomainId    String   @map("resend_domain_id")
+  status            String   @default("pending")
+  defaultFromEmail  String   @default("") @map("default_from_email")
+  spfRecord         String   @default("") @map("spf_record")
+  dkimRecord        String   @default("") @map("dkim_record")
+  dmarcRecord       String   @default("") @map("dmarc_record")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   @@map("domains")
+}
+
+model EmailTemplate {
+  id           String   @id @default(uuid())
+  clientId     String?  @map("client_id")
+
+  name         String
+  subject      String   @default("")
+  body         Json     @default("{\"blocks\": [], \"version\": 1}")
+  htmlOutput   String   @default("") @map("html_output")
+  trackedLinks Json     @default("[]") @map("tracked_links")
+  status       String   @default("draft")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@map("email_templates")
 }

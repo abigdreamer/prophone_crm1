@@ -14,6 +14,7 @@ import DashboardPage from "./pages/DashboardPage";
 import ContactsPage from "./pages/ContactsPage";
 import DomainsPage from "./pages/DomainsPage";
 import ClientsPage from "./pages/ClientsPage";
+import TemplatesPage from "./pages/TemplatesPage";
 
 import T from "./theme";
 import { useAuth } from "./hooks/useAuth";
@@ -115,10 +116,10 @@ function AppLayout({ currentUser, onSignOut }) {
     }}>
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div style={{
-        height: 50, flexShrink: 0,
+        height: 50, flexShrink: 0, position: "relative",
         background: T.surface, borderBottom: "1px solid " + T.border,
         display: "flex", alignItems: "center",
-        padding: "0 14px", gap: 10, zIndex: 200,
+        padding: "0 14px", gap: 10, zIndex: 2000,
       }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginRight: 4, flexShrink: 0 }}>
@@ -252,9 +253,10 @@ function AppLayout({ currentUser, onSignOut }) {
                   currentUser={currentUser}
                 />
               } />
-              <Route path="/domains"  element={<DomainsPage />} />
-              <Route path="/reports"  element={<ComingSoon page="reports" />} />
-              <Route path="/settings" element={<ComingSoon page="settings" />} />
+              <Route path="/domains"    element={<DomainsPage />} />
+              <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/reports"   element={<ComingSoon page="reports" />} />
+              <Route path="/settings"  element={<ComingSoon page="settings" />} />
               <Route path="/clients"  element={<ClientsPage />} />
               <Route path="*"         element={<Navigate to="/dashboard" replace />} />
             </Routes>

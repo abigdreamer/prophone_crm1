@@ -90,6 +90,10 @@ export async function updateContact(id, contact) {
   return request('PATCH', `/api/contacts/${id}`, contact);
 }
 
+export async function importContacts({ rows, clientId, pool = 'client', duplicateAction = 'ignore' }) {
+  return request('POST', '/api/contacts/import', { rows, clientId, pool, duplicateAction });
+}
+
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export async function addActivity(contactId, activity) {
@@ -109,6 +113,10 @@ export async function getDomains() {
 export async function addDomain(name) {
   const { clientId } = getActivePool();
   return request('POST', '/api/domains', { name, clientId: clientId || null });
+}
+
+export async function updateDomain(id, data) {
+  return request('PATCH', `/api/domains/${id}`, data);
 }
 
 export async function deleteDomain(id) {
@@ -131,4 +139,35 @@ export async function createClient(data) {
 
 export async function updateClient(id, data) {
   return request('PATCH', `/api/clients/${id}`, data);
+}
+
+// ── Email Templates ───────────────────────────────────────────────────────────
+
+export async function getTemplates() {
+  const r = await request('GET', '/api/email-templates');
+  return r.data ?? r;
+}
+
+export async function getTemplateById(id) {
+  const r = await request('GET', `/api/email-templates/${id}`);
+  return r.data ?? r;
+}
+
+export async function createTemplate(data) {
+  const r = await request('POST', '/api/email-templates', data);
+  return r.data ?? r;
+}
+
+export async function updateTemplate(id, data) {
+  const r = await request('PUT', `/api/email-templates/${id}`, data);
+  return r.data ?? r;
+}
+
+export async function deleteTemplate(id) {
+  return request('DELETE', `/api/email-templates/${id}`);
+}
+
+export async function duplicateTemplate(id) {
+  const r = await request('POST', `/api/email-templates/${id}/duplicate`);
+  return r.data ?? r;
 }
