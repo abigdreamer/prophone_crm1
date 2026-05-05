@@ -141,9 +141,12 @@ export const addRecipients = async (req, res) => {
 };
 
 export const previewRecipients = async (req, res) => {
-  const { filter, clientId } = req.query;
+  const { filter } = req.query;
   try {
-    const contacts = await repo.getContactsForFilter(clientId, filter);
+    // Always derive clientId from the campaign record — never trust the request
+    const campaign = await repo.findById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    const contacts = await repo.getContactsForFilter(campaign.clientId, filter);
     sendSuccess(res, { count: contacts.length, sample: contacts.slice(0, 5) });
   } catch (err) {
     sendServerError(res, err, 'previewRecipients');

@@ -3,18 +3,31 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Megaphone, BarChart2, X, Trash2,
+  Search, Trash2, Activity, X, Clock,
 } from "lucide-react";
 import T from "../theme";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, getCampaignAnalytics,
-  previewCampaignRecipients, getActivePool,
+  previewCampaignRecipients, getContact,
 } from "../services/api";
+import { ACT_DEF } from "../data/activities";
+import { StagePill } from "../components/ui/Pill";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtRelTime(ts) {
+  if (!ts) return "";
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 function StatusBadge({ status }) {
   const map = {
@@ -29,19 +42,19 @@ function StatusBadge({ status }) {
       fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
       textTransform: "uppercase", color,
       background: color + "18", border: "1px solid " + color + "40",
-      borderRadius: 4, padding: "2px 7px",
+      borderRadius: 4, padding: "2px 8px",
     }}>{label}</span>
   );
 }
 
 function RecipientStatusBadge({ status }) {
   const map = {
-    pending:      { color: T.muted,   label: "Pending" },
-    sent:         { color: T.blue,    label: "Sent" },
-    delivered:    { color: T.teal,    label: "Delivered" },
-    opened:       { color: T.green,   label: "Opened" },
-    clicked:      { color: T.accent,  label: "Clicked" },
-    bounced:      { color: T.red,     label: "Bounced" },
+    pending:      { color: T.muted,   label: "Pending"      },
+    sent:         { color: T.blue,    label: "Sent"         },
+    delivered:    { color: T.teal,    label: "Delivered"    },
+    opened:       { color: T.green,   label: "Opened"       },
+    clicked:      { color: T.accent,  label: "Clicked"      },
+    bounced:      { color: T.red,     label: "Bounced"      },
     unsubscribed: { color: T.orange,  label: "Unsubscribed" },
   };
   const { color, label } = map[status] ?? { color: T.muted, label: status };
@@ -49,58 +62,347 @@ function RecipientStatusBadge({ status }) {
     <span style={{
       fontSize: 10, fontWeight: 600,
       color, background: color + "15",
-      borderRadius: 4, padding: "1px 7px", border: "1px solid " + color + "30",
+      borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
     }}>{label}</span>
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color, active, onClick }) {
+// ── Big stat card ─────────────────────────────────────────────────────────────
+
+function BigStat({ icon: Icon, label, value, color, onClick, active }) {
   return (
     <div
       onClick={onClick}
       style={{
-        flex: 1, minWidth: 100,
-        background: active ? color + "18" : T.card,
-        border: "1px solid " + (active ? color : T.border),
+        flex: "1 1 100px",
+        background: active ? color + "15" : T.card,
+        border: "1px solid " + (active ? color + "60" : T.border),
         borderRadius: 10, padding: "14px 16px",
         cursor: onClick ? "pointer" : "default",
         transition: "border-color 0.12s, background 0.12s",
       }}
-      onMouseEnter={e => onClick && (e.currentTarget.style.borderColor = color)}
-      onMouseLeave={e => !active && onClick && (e.currentTarget.style.borderColor = T.border)}
+      onMouseEnter={e => onClick && !active && (e.currentTarget.style.borderColor = color + "50")}
+      onMouseLeave={e => onClick && !active && (e.currentTarget.style.borderColor = T.border)}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <Icon size={13} color={color} />
-        <span style={{ fontSize: 11, color: T.muted }}>{label}</span>
+        <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
       </div>
       <div style={{ fontSize: 22, fontWeight: 800, color: active ? color : T.text, lineHeight: 1 }}>
-        {value}
+        {value ?? 0}
       </div>
-      {sub !== undefined && (
-        <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{sub}</div>
-      )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Add Recipients Modal
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Compact rate item ─────────────────────────────────────────────────────────
+
+function RateItem({ label, value, color }) {
+  return (
+    <div style={{
+      flex: 1, padding: "12px 16px",
+      borderRight: "1px solid " + T.border,
+      display: "flex", flexDirection: "column", gap: 3,
+    }}>
+      <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
+      <span style={{ fontSize: 18, fontWeight: 800, color: value > 0 ? color : T.dim }}>
+        {value}%
+      </span>
+    </div>
+  );
+}
+
+// ── Lead activity panel ───────────────────────────────────────────────────────
+
+function LeadActivityPanel({ recipient, contact, loading, onClose }) {
+  if (!recipient) return null;
+
+  const c = contact ?? recipient.contact;
+  const initials = ((c?.firstName?.[0] || "") + (c?.lastName?.[0] || "")).toUpperCase() || "?";
+  const activities = contact?.activities ?? [];
+
+  return (
+    <div style={{
+      width: 340, flexShrink: 0,
+      position: "sticky", top: 0, alignSelf: "flex-start",
+      background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+      overflow: "hidden",
+    }}>
+      {/* Panel header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 16px", borderBottom: "1px solid " + T.border,
+        background: T.surface,
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Lead Activity</span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none", border: "none", color: T.muted, cursor: "pointer",
+            padding: 4, display: "flex", alignItems: "center", borderRadius: 4,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.background = T.border; }}
+          onMouseLeave={e => { e.currentTarget.style.color = T.muted; e.currentTarget.style.background = "none"; }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Contact summary */}
+      <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid " + T.border }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+            background: T.accent + "25",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 16, fontWeight: 800, color: T.accent,
+            border: "2px solid " + T.accent + "40",
+          }}>
+            {initials}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 2 }}>
+              {c?.firstName} {c?.lastName}
+            </div>
+            <div style={{
+              fontSize: 11, color: T.muted,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {c?.email || "No email"}
+            </div>
+          </div>
+        </div>
+
+        {c?.company && (
+          <div style={{ fontSize: 11, color: T.dim, marginBottom: 8 }}>
+            {c.company}
+          </div>
+        )}
+
+        {/* Badges row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {c?.lifecycleStage && <StagePill stage={c.lifecycleStage} />}
+          {recipient.abVariant && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+              color: recipient.abVariant === "A" ? T.blue : T.orange,
+              background: (recipient.abVariant === "A" ? T.blue : T.orange) + "18",
+              border: "1px solid " + (recipient.abVariant === "A" ? T.blue : T.orange) + "30",
+            }}>Variant {recipient.abVariant}</span>
+          )}
+          <RecipientStatusBadge status={recipient.status} />
+        </div>
+      </div>
+
+      {/* Activity timeline */}
+      <div style={{ overflowY: "auto", maxHeight: 480 }}>
+        {loading ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "20px 16px" }}>
+            <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Loading activity…
+          </div>
+        ) : activities.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "32px 16px", color: T.muted }}>
+            <Clock size={28} color={T.border} style={{ marginBottom: 10, display: "block", margin: "0 auto 10px" }} />
+            <div style={{ fontSize: 12 }}>No activity recorded yet</div>
+          </div>
+        ) : (
+          <div style={{ padding: "12px 0" }}>
+            {[...activities].reverse().map((act, i) => {
+              const def = ACT_DEF[act.type] ?? { label: act.type, icon: "·", color: T.muted };
+              return (
+                <div key={act.id ?? i} style={{
+                  display: "flex", gap: 12,
+                  padding: "8px 16px",
+                  position: "relative",
+                }}>
+                  {/* Timeline line */}
+                  {i < activities.length - 1 && (
+                    <div style={{
+                      position: "absolute", left: 27, top: 30,
+                      width: 1, height: "calc(100% - 10px)",
+                      background: T.border,
+                    }} />
+                  )}
+
+                  {/* Icon dot */}
+                  <div style={{
+                    width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                    background: def.color + "18",
+                    border: "1.5px solid " + def.color + "40",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, color: def.color, position: "relative", zIndex: 1,
+                  }}>
+                    {def.icon}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: def.color }}>{def.label}</span>
+                      <span style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>{fmtRelTime(act.createdAt)}</span>
+                    </div>
+                    {act.note && (
+                      <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{act.note}</div>
+                    )}
+                    {act.user?.name && (
+                      <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>by {act.user.name}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Recipients table ──────────────────────────────────────────────────────────
 
 const STAGE_FILTERS = [
-  { id: "all",            label: "All Contacts",    desc: "Every contact regardless of stage" },
-  { id: "new",            label: "New",             desc: "Contacts in the New stage" },
-  { id: "contacted",      label: "Contacted",       desc: "Contacts that have been reached" },
-  { id: "engaged",        label: "Engaged",         desc: "Engaged contacts" },
-  { id: "demo_scheduled", label: "Demo Scheduled",  desc: "Demo has been scheduled" },
-  { id: "demo_done",      label: "Demo Done",       desc: "Demo has been completed" },
-  { id: "proposal_sent",  label: "Proposal Sent",   desc: "Proposal has been sent" },
-  { id: "negotiating",    label: "Negotiating",     desc: "In negotiation" },
-  { id: "customer",       label: "Customer",        desc: "Converted to customer" },
-  { id: "not_qualified",  label: "Not Qualified",   desc: "Did not qualify" },
-  { id: "lost",           label: "Lost",            desc: "Marked as lost" },
-  { id: "churned",        label: "Churned",         desc: "Previously churned customers" },
+  { id: "all",            label: "All Contacts",   desc: "Every contact" },
+  { id: "new",            label: "New",            desc: "New stage" },
+  { id: "contacted",      label: "Contacted",      desc: "Has been reached" },
+  { id: "engaged",        label: "Engaged",        desc: "Engaged contacts" },
+  { id: "demo_scheduled", label: "Demo Scheduled", desc: "Demo scheduled" },
+  { id: "demo_done",      label: "Demo Done",      desc: "Demo completed" },
+  { id: "proposal_sent",  label: "Proposal Sent",  desc: "Proposal sent" },
+  { id: "negotiating",    label: "Negotiating",    desc: "In negotiation" },
+  { id: "customer",       label: "Customer",       desc: "Converted" },
+  { id: "not_qualified",  label: "Not Qualified",  desc: "Did not qualify" },
+  { id: "lost",           label: "Lost",           desc: "Marked lost" },
+  { id: "churned",        label: "Churned",        desc: "Churned" },
 ];
+
+const thStyle = {
+  padding: "10px 16px", textAlign: "left",
+  fontSize: 10, fontWeight: 700, color: T.muted,
+  letterSpacing: "0.07em", textTransform: "uppercase",
+  borderBottom: "1px solid " + T.border, userSelect: "none",
+};
+
+function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId }) {
+  const [data,    setData]    = useState({ rows: [], total: 0, page: 1, limit: 50 });
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+      if (search) params.search = search;
+      const res = await getCampaignRecipients(campaignId, params);
+      setData(res);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [campaignId, statusFilter, search, refreshKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "24px 20px" }}>
+      <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Loading recipients…
+    </div>
+  );
+
+  if (!data.rows.length) return (
+    <div style={{ textAlign: "center", padding: "40px 20px", color: T.muted, fontSize: 13 }}>
+      {statusFilter !== "all" ? `No recipients with status "${statusFilter}"` : "No recipients match your search."}
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ padding: "10px 16px 4px", fontSize: 11, color: T.muted }}>
+        Showing {data.rows.length} of {data.total}
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ ...thStyle, paddingLeft: 20 }}>Contact</th>
+            <th style={thStyle}>Email</th>
+            {isAbTest && <th style={{ ...thStyle, textAlign: "center" }}>Variant</th>}
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Stage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((r, i) => {
+            const isSelected = selectedContactId === r.contact?.id;
+            return (
+              <tr
+                key={r.id}
+                onClick={() => onSelectContact?.(r)}
+                style={{
+                  background: isSelected
+                    ? T.accent + "12"
+                    : i % 2 !== 0 ? T.surface + "55" : "transparent",
+                  borderLeft: isSelected ? "2px solid " + T.accent : "2px solid transparent",
+                  transition: "background 0.08s",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={e => !isSelected && (e.currentTarget.style.background = T.accent + "08")}
+                onMouseLeave={e => !isSelected && (e.currentTarget.style.background = i % 2 !== 0 ? T.surface + "55" : "transparent")}
+              >
+                <td style={{ padding: "12px 20px", borderBottom: "1px solid " + T.border + "80" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <div style={{
+                      width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                      background: isSelected ? T.accent + "30" : T.accent + "20",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 700, color: T.accent,
+                      border: isSelected ? "1.5px solid " + T.accent + "60" : "none",
+                    }}>
+                      {(r.contact?.firstName?.[0] || "?").toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? T.accent : T.text }}>
+                        {r.contact?.firstName} {r.contact?.lastName}
+                      </div>
+                      {r.contact?.company && (
+                        <div style={{ fontSize: 10, color: T.muted }}>{r.contact.company}</div>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  <span style={{ fontSize: 12, color: T.dim }}>{r.contact?.email || "—"}</span>
+                </td>
+                {isAbTest && (
+                  <td style={{ padding: "12px 16px", textAlign: "center", borderBottom: "1px solid " + T.border + "80" }}>
+                    {r.abVariant ? (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700,
+                        color: r.abVariant === "A" ? T.blue : T.orange,
+                        background: (r.abVariant === "A" ? T.blue : T.orange) + "18",
+                        border: "1px solid " + (r.abVariant === "A" ? T.blue : T.orange) + "40",
+                        padding: "2px 8px", borderRadius: 4,
+                      }}>{r.abVariant}</span>
+                    ) : "—"}
+                  </td>
+                )}
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  <RecipientStatusBadge status={r.status} />
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  {r.contact?.lifecycleStage
+                    ? <StagePill stage={r.contact.lifecycleStage} />
+                    : <span style={{ fontSize: 11, color: T.muted }}>—</span>
+                  }
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+// ── Add Recipients Modal ──────────────────────────────────────────────────────
 
 function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   const [step,    setStep]    = useState(1);
@@ -110,7 +412,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   const [adding,  setAdding]  = useState(false);
   const [error,   setError]   = useState(null);
 
-  const loadPreview = useCallback(async (f) => {
+  const loadPreview = useCallback(async f => {
     setLoading(true);
     setError(null);
     try {
@@ -123,10 +425,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }
   }, [campaignId]);
 
-  const handleNext = async () => {
-    setStep(2);
-    await loadPreview(filter);
-  };
+  const handleNext = async () => { setStep(2); await loadPreview(filter); };
 
   const handleAdd = async () => {
     setAdding(true);
@@ -143,8 +442,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 3000,
-      background: "rgba(0,0,0,0.7)",
+      position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
@@ -152,13 +450,12 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
         width: 480, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
         boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
       }}>
-        {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "18px 24px 14px", borderBottom: "1px solid " + T.border,
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
-            {step === 1 ? "Add Recipients" : step === 2 ? "Preview Recipients" : "Confirm"}
+            {step === 1 ? "Add Recipients" : "Confirm Recipients"}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
@@ -167,11 +464,13 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           {step === 1 && (
             <>
               <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
-                Filter contacts by lifecycle stage to include in this campaign.
+                {clientId
+                  ? `Filter contacts for this client by lifecycle stage. Only contacts belonging to this client will be added.`
+                  : "Filter contacts by lifecycle stage."}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 340, overflowY: "auto" }}>
                 {STAGE_FILTERS.map(f => {
-                  const selected = filter === f.id;
+                  const sel = filter === f.id;
                   return (
                     <div
                       key={f.id}
@@ -179,17 +478,18 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                       style={{
                         display: "flex", alignItems: "center", gap: 12,
                         padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                        border: "1px solid " + (selected ? T.accent : T.border),
-                        background: selected ? T.accent + "10" : T.surface,
+                        border: "1px solid " + (sel ? T.accent : T.border),
+                        background: sel ? T.accent + "10" : T.surface,
+                        transition: "border-color 0.1s, background 0.1s",
                       }}
                     >
                       <div style={{
                         width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                        border: "2px solid " + (selected ? T.accent : T.border),
-                        background: selected ? T.accent : "transparent",
+                        border: "2px solid " + (sel ? T.accent : T.border),
+                        background: sel ? T.accent : "transparent",
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
-                        {selected && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#fff" }} />}
+                        {sel && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#fff" }} />}
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{f.label}</div>
@@ -203,80 +503,75 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           )}
 
           {step === 2 && (
-            <>
-              {loading ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20 }}>
-                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading preview…
-                </div>
-              ) : (
-                <>
-                  <div style={{
-                    background: T.accent + "10", border: "1px solid " + T.accent + "30",
-                    borderRadius: 8, padding: "14px 16px", marginBottom: 16,
-                    display: "flex", alignItems: "center", gap: 10,
-                  }}>
-                    <Users size={16} color={T.accent} />
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
-                        {preview?.count ?? 0} contacts
-                      </div>
-                      <div style={{ fontSize: 11, color: T.muted }}>
-                        Stage: {STAGE_FILTERS.find(f => f.id === filter)?.label}
-                      </div>
+            loading ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20 }}>
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading preview…
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  background: T.accent + "10", border: "1px solid " + T.accent + "30",
+                  borderRadius: 8, padding: "14px 16px", marginBottom: 16,
+                  display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  <Users size={16} color={T.accent} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
+                      {preview?.count ?? 0} contacts
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted }}>
+                      Stage: {STAGE_FILTERS.find(f => f.id === filter)?.label}
                     </div>
                   </div>
+                </div>
 
-                  {preview?.sample?.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Sample
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {preview.sample.map(c => (
-                          <div key={c.id} style={{
-                            display: "flex", alignItems: "center", gap: 10,
-                            padding: "8px 10px", borderRadius: 7, background: T.surface,
-                          }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: "50%",
-                              background: T.accent + "22", flexShrink: 0,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 11, fontWeight: 700, color: T.accent,
-                            }}>
-                              {(c.firstName?.[0] || "?").toUpperCase()}
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
-                                {c.firstName} {c.lastName}
-                              </div>
-                              <div style={{ fontSize: 11, color: T.muted }}>{c.email || c.company}</div>
-                            </div>
-                          </div>
-                        ))}
-                        {preview.count > preview.sample.length && (
-                          <div style={{ fontSize: 11, color: T.muted, textAlign: "center", padding: "4px 0" }}>
-                            +{preview.count - preview.sample.length} more
-                          </div>
-                        )}
-                      </div>
+                {preview?.sample?.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: T.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Sample (first {preview.sample.length})
                     </div>
-                  )}
+                    {preview.sample.map(c => (
+                      <div key={c.id} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "8px 10px", borderRadius: 7, background: T.surface,
+                      }}>
+                        <div style={{
+                          width: 26, height: 26, borderRadius: "50%",
+                          background: T.accent + "22", flexShrink: 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 10, fontWeight: 700, color: T.accent,
+                        }}>
+                          {(c.firstName?.[0] || "?").toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
+                            {c.firstName} {c.lastName}
+                          </div>
+                          <div style={{ fontSize: 10, color: T.muted }}>{c.email || c.company}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {preview.count > preview.sample.length && (
+                      <div style={{ fontSize: 11, color: T.muted, textAlign: "center", padding: "4px 0" }}>
+                        +{preview.count - preview.sample.length} more
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                  {preview?.count === 0 && (
-                    <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>
-                      No contacts match this filter.
-                    </div>
-                  )}
-                </>
-              )}
-            </>
+                {preview?.count === 0 && (
+                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>
+                    No contacts match this filter.
+                  </div>
+                )}
+              </>
+            )
           )}
         </div>
 
-        {/* Error banner */}
         {error && (
           <div style={{
-            margin: "0 24px 0",
+            margin: "0 24px 8px",
             padding: "10px 14px", borderRadius: 7,
             background: T.red + "15", border: "1px solid " + T.red + "40",
             color: T.red, fontSize: 12,
@@ -285,7 +580,6 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           </div>
         )}
 
-        {/* Footer */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "16px 24px", borderTop: "1px solid " + T.border,
@@ -337,15 +631,12 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Send Confirm Modal
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Send Confirm Modal ────────────────────────────────────────────────────────
 
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 3100,
-      background: "rgba(0,0,0,0.75)",
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
@@ -354,10 +645,10 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
       }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginBottom: 24 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: "50%", background: T.accent + "18",
+            width: 52, height: 52, borderRadius: "50%", background: T.green + "18",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <Send size={22} color={T.accent} />
+            <Send size={22} color={T.green} />
           </div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>
@@ -378,8 +669,9 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
           <button onClick={onConfirm} disabled={loading} style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "9px 22px", borderRadius: 7, border: "none",
-            background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
+            background: T.green, color: "#fff", fontSize: 13, fontWeight: 600,
             cursor: loading ? "default" : "pointer", fontFamily: "inherit",
+            opacity: loading ? 0.7 : 1,
           }}>
             {loading
               ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending…</>
@@ -392,111 +684,34 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Recipients table
-// ─────────────────────────────────────────────────────────────────────────────
-
-function RecipientsTable({ campaignId, filter, key: _ }) {
-  const [data,    setData]    = useState({ rows: [], total: 0, page: 1 });
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = { page: data.page };
-      if (filter && filter !== "all") params.status = filter;
-      const res = await getCampaignRecipients(campaignId, params);
-      setData(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [campaignId, filter, data.page]);
-
-  useEffect(() => { load(); }, [campaignId, filter]);
-
-  if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "20px 0" }}>
-      <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Loading recipients…
-    </div>
-  );
-
-  if (!data.rows.length) return (
-    <div style={{ textAlign: "center", padding: "32px 0", color: T.muted, fontSize: 13 }}>
-      No recipients {filter && filter !== "all" ? `with status "${filter}"` : "yet"}
-    </div>
-  );
-
-  return (
-    <>
-      <div style={{ fontSize: 11, color: T.muted, marginBottom: 10 }}>
-        Showing {data.rows.length} of {data.total}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {data.rows.map(r => (
-          <div key={r.id} style={{
-            display: "flex", alignItems: "center", gap: 12,
-            padding: "10px 14px", borderRadius: 8,
-            background: T.surface, border: "1px solid " + T.border,
-          }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-              background: T.accent + "20",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 12, fontWeight: 700, color: T.accent,
-            }}>
-              {(r.contact?.firstName?.[0] || "?").toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
-                {r.contact?.firstName} {r.contact?.lastName}
-              </div>
-              <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {r.contact?.email} {r.contact?.company && `· ${r.contact.company}`}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {r.abVariant && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: T.purple, background: T.purple + "15", padding: "2px 6px", borderRadius: 4 }}>
-                  {r.abVariant}
-                </span>
-              )}
-              <RecipientStatusBadge status={r.status} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main detail page
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CampaignDetailPage() {
-  const { id }    = useParams();
-  const navigate  = useNavigate();
+  const { id }   = useParams();
+  const navigate = useNavigate();
 
-  const [campaign,        setCampaign]        = useState(null);
-  const [analytics,       setAnalytics]       = useState(null);
-  const [loading,         setLoading]         = useState(true);
-  const [showAddModal,    setShowAddModal]     = useState(false);
-  const [showSendModal,   setShowSendModal]    = useState(false);
-  const [sending,         setSending]         = useState(false);
-  const [recipientFilter, setRecipientFilter] = useState("all");
-  const [tableKey,        setTableKey]        = useState(0);
+  const [campaign,          setCampaign]          = useState(null);
+  const [analytics,         setAnalytics]         = useState(null);
+  const [loading,           setLoading]           = useState(true);
+  const [showAddModal,      setShowAddModal]      = useState(false);
+  const [showSendModal,     setShowSendModal]     = useState(false);
+  const [sending,           setSending]           = useState(false);
+  const [statusFilter,      setStatusFilter]      = useState("all");
+  const [search,            setSearch]            = useState("");
+  const [tableKey,          setTableKey]          = useState(0);
+  const [selectedRecipient, setSelectedRecipient] = useState(null);
+  const [contactDetail,     setContactDetail]     = useState(null);
+  const [contactLoading,    setContactLoading]    = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const c = await getCampaign(id);
+      const [c, a] = await Promise.all([
+        getCampaign(id),
+        getCampaignAnalytics(id).catch(() => null),
+      ]);
       setCampaign(c);
-      if (c.status === "sent") {
-        const a = await getCampaignAnalytics(id).catch(() => null);
-        setAnalytics(a);
-      }
+      setAnalytics(a);
     } catch {
       navigate("/campaigns");
     } finally {
@@ -505,6 +720,27 @@ export default function CampaignDetailPage() {
   }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleSelectRecipient = useCallback(async (recipient) => {
+    if (selectedRecipient?.id === recipient.id) {
+      setSelectedRecipient(null);
+      setContactDetail(null);
+      return;
+    }
+    setSelectedRecipient(recipient);
+    setContactDetail(null);
+    if (recipient.contact?.id) {
+      setContactLoading(true);
+      try {
+        const full = await getContact(recipient.contact.id);
+        setContactDetail(full.data ?? full);
+      } catch {
+        // fall back to basic contact data from recipient
+      } finally {
+        setContactLoading(false);
+      }
+    }
+  }, [selectedRecipient]);
 
   const handleSend = useCallback(async () => {
     setSending(true);
@@ -522,7 +758,7 @@ export default function CampaignDetailPage() {
     }
   }, [id]);
 
-  const handleAdded = useCallback((updated) => {
+  const handleAdded = useCallback(updated => {
     setCampaign(updated);
     setShowAddModal(false);
     setTableKey(k => k + 1);
@@ -534,6 +770,8 @@ export default function CampaignDetailPage() {
       await removeCampaignRecipients(id);
       setCampaign(prev => ({ ...prev, recipientsCount: 0 }));
       setTableKey(k => k + 1);
+      setSelectedRecipient(null);
+      setContactDetail(null);
     } catch (err) {
       console.error(err);
     }
@@ -552,142 +790,222 @@ export default function CampaignDetailPage() {
   const canSend   = ["draft", "paused"].includes(campaign.status) && campaign.recipientsCount > 0;
   const isSent    = campaign.status === "sent";
   const isSending = campaign.status === "sending";
+  const isAbTest  = campaign.type === "ab_test";
 
-  const openRate   = analytics?.rates?.openRate   ?? 0;
-  const clickRate  = analytics?.rates?.clickRate  ?? 0;
-  const bounceRate = analytics?.rates?.bounceRate ?? 0;
-
-  const RECIPIENT_FILTERS = [
-    { id: "all",          label: "All" },
-    { id: "pending",      label: "Pending" },
-    { id: "sent",         label: "Sent" },
-    { id: "opened",       label: "Opened" },
-    { id: "clicked",      label: "Clicked" },
-    { id: "bounced",      label: "Bounced" },
-    { id: "unsubscribed", label: "Unsub'd" },
-  ];
+  const totals = analytics?.totals ?? {};
+  const rates  = analytics?.rates  ?? {};
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ width: "100%" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
-      {/* Back + Title */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 28 }}>
+      {/* ── Header bar ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        padding: "12px 16px", marginBottom: 16,
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+      }}>
         <button
           onClick={() => navigate("/campaigns")}
           style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-            background: T.surface, color: T.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            flexShrink: 0, marginTop: 2,
+            display: "flex", alignItems: "center", gap: 5,
+            padding: "6px 12px", borderRadius: 7, border: "1px solid " + T.border,
+            background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            flexShrink: 0,
           }}
         >
           <ArrowLeft size={13} /> Back
         </button>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: T.text }}>{campaign.name}</h1>
-            <StatusBadge status={campaign.status} />
-            {campaign.type === "ab_test" && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 4, padding: "2px 7px" }}>A/B Test</span>
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: T.muted }}>
-            {campaign.template?.name || "No template selected"}
-            {campaign.sentAt && ` · Sent ${new Date(campaign.sentAt).toLocaleDateString()}`}
-          </div>
+
+        <div style={{ width: 1, height: 22, background: T.border, flexShrink: 0 }} />
+
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>{campaign.name}</span>
+          {campaign.subject && (
+            <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
+              · Subject: {campaign.subject}
+            </span>
+          )}
+          <StatusBadge status={campaign.status} />
+          {isAbTest && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, color: T.purple,
+              background: T.purple + "18", border: "1px solid " + T.purple + "30",
+              borderRadius: 3, padding: "2px 6px",
+            }}>A/B</span>
+          )}
         </div>
 
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
           {isSending && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.amber, fontSize: 12 }}>
-              <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending…
+            <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.amber, fontSize: 12 }}>
+              <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
             </div>
           )}
           {isSent && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.green, fontSize: 12 }}>
-              <CheckCircle2 size={13} /> Sent
+            <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.green, fontSize: 12 }}>
+              <CheckCircle2 size={12} /> Sent
             </div>
+          )}
+          {!isSent && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border,
+                background: T.surface, color: T.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Plus size={13} /> Add Recipients
+            </button>
           )}
           {canSend && (
             <button
               onClick={() => setShowSendModal(true)}
               style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", borderRadius: 7, border: "none",
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 16px", borderRadius: 7, border: "none",
                 background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit",
               }}
             >
-              <Send size={13} /> Send Campaign
+              <Send size={12} /> Send Campaign
             </button>
           )}
+          <button
+            onClick={load}
+            style={{
+              display: "flex", alignItems: "center",
+              padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <RefreshCw size={13} />
+          </button>
         </div>
       </div>
 
-      {/* Analytics section (only when sent) */}
-      {isSent && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}>
-            <BarChart2 size={14} color={T.accent} /> Campaign Analytics
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <StatCard
-              icon={Send} label="Total Sent" value={campaign.sentCount}
-              color={T.blue}
-              active={recipientFilter === "sent"}
-              onClick={() => setRecipientFilter(f => f === "sent" ? "all" : "sent")}
-            />
-            <StatCard
-              icon={Mail} label="Opened" value={campaign.openedCount}
-              sub={`${openRate}% open rate`} color={T.green}
-              active={recipientFilter === "opened"}
-              onClick={() => setRecipientFilter(f => f === "opened" ? "all" : "opened")}
-            />
-            <StatCard
-              icon={MousePointerClick} label="Clicked" value={campaign.clickedCount}
-              sub={`${clickRate}% click rate`} color={T.accent}
-              active={recipientFilter === "clicked"}
-              onClick={() => setRecipientFilter(f => f === "clicked" ? "all" : "clicked")}
-            />
-            <StatCard
-              icon={AlertCircle} label="Bounced" value={campaign.bouncedCount}
-              sub={`${bounceRate}% bounce rate`} color={T.red}
-              active={recipientFilter === "bounced"}
-              onClick={() => setRecipientFilter(f => f === "bounced" ? "all" : "bounced")}
-            />
-            <StatCard
-              icon={UserMinus} label="Unsubscribed" value={campaign.unsubscribedCount}
-              color={T.orange}
-              active={recipientFilter === "unsubscribed"}
-              onClick={() => setRecipientFilter(f => f === "unsubscribed" ? "all" : "unsubscribed")}
-            />
-          </div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>
-            Click a metric card to filter recipients below.
-          </div>
-        </div>
-      )}
+      {/* ── Stats row 1 — big numbers ── */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <BigStat icon={Users}             label="Recipients"
+          value={campaign.recipientsCount}
+          color={T.dim}
+          active={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")} />
+        <BigStat icon={Send}              label="Sent"
+          value={totals.sent ?? campaign.sentCount}
+          color={T.blue}
+          active={statusFilter === "sent"}
+          onClick={() => setStatusFilter(f => f === "sent" ? "all" : "sent")} />
+        <BigStat icon={Activity}          label="Delivered"
+          value={totals.delivered ?? campaign.deliveredCount}
+          color={T.teal}
+          active={statusFilter === "delivered"}
+          onClick={() => setStatusFilter(f => f === "delivered" ? "all" : "delivered")} />
+        <BigStat icon={Mail}              label="Opened"
+          value={totals.opened ?? campaign.openedCount}
+          color={T.green}
+          active={statusFilter === "opened"}
+          onClick={() => setStatusFilter(f => f === "opened" ? "all" : "opened")} />
+        <BigStat icon={MousePointerClick} label="Clicked"
+          value={totals.clicked ?? campaign.clickedCount}
+          color={T.accent}
+          active={statusFilter === "clicked"}
+          onClick={() => setStatusFilter(f => f === "clicked" ? "all" : "clicked")} />
+        <BigStat icon={AlertCircle}       label="Bounced"
+          value={totals.bounced ?? campaign.bouncedCount}
+          color={T.red}
+          active={statusFilter === "bounced"}
+          onClick={() => setStatusFilter(f => f === "bounced" ? "all" : "bounced")} />
+        <BigStat icon={UserMinus}         label="Unsubscribed"
+          value={totals.unsubscribed ?? campaign.unsubscribedCount}
+          color={T.orange}
+          active={statusFilter === "unsubscribed"}
+          onClick={() => setStatusFilter(f => f === "unsubscribed" ? "all" : "unsubscribed")} />
+      </div>
 
-      {/* Recipients section */}
+      {/* ── Stats row 2 — rates ── */}
       <div style={{
-        background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "20px 22px",
+        display: "flex", marginBottom: 16,
+        background: T.card, border: "1px solid " + T.border, borderRadius: 10, overflow: "hidden",
       }}>
-        {/* Section header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Users size={14} color={T.accent} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Recipients</span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, color: T.accent,
-              background: T.accent + "18", borderRadius: 12, padding: "2px 9px",
-            }}>
-              {campaign.recipientsCount}
-            </span>
-          </div>
+        <RateItem label="Open Rate"     value={rates.openRate        ?? 0} color={T.green}  />
+        <RateItem label="Click Rate"    value={rates.clickRate       ?? 0} color={T.accent} />
+        <RateItem label="Bounce Rate"   value={rates.bounceRate      ?? 0} color={T.red}    />
+        <RateItem label="Delivery Rate" value={rates.deliveryRate    ?? 0} color={T.teal}   />
+        <div style={{ flex: 1, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>Unsub Rate</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: (rates.unsubscribeRate ?? 0) > 0 ? T.orange : T.dim }}>
+            {rates.unsubscribeRate ?? 0}%
+          </span>
+        </div>
+      </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
+      {/* ── Main content area (recipients + optional activity panel) ── */}
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+
+        {/* ── Recipients section ── */}
+        <div style={{
+          flex: 1, minWidth: 0,
+          background: T.card, border: "1px solid " + T.border, borderRadius: 12, overflow: "hidden",
+        }}>
+          {/* Section header */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "14px 20px", borderBottom: "1px solid " + T.border,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <Users size={14} color={T.muted} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Recipients</span>
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: T.accent,
+                background: T.accent + "18", borderRadius: 10, padding: "1px 9px",
+              }}>{campaign.recipientsCount}</span>
+            </div>
+
+            <div style={{ flex: 1 }} />
+
+            {/* Search */}
+            <div style={{ position: "relative" }}>
+              <Search size={12} color={T.muted} style={{
+                position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none",
+              }} />
+              <input
+                placeholder="Search contacts…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{
+                  paddingLeft: 28, paddingRight: 10, paddingTop: 7, paddingBottom: 7,
+                  borderRadius: 7, border: "1px solid " + T.border,
+                  background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit",
+                  outline: "none", width: 180,
+                }}
+                onFocus={e => e.target.style.borderColor = T.accent}
+                onBlur={e => e.target.style.borderColor = T.border}
+              />
+            </div>
+
+            {/* Status filter */}
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              style={{
+                padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border,
+                background: T.surface, color: statusFilter === "all" ? T.muted : T.text,
+                fontSize: 12, fontFamily: "inherit", outline: "none", cursor: "pointer",
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="sent">Sent</option>
+              <option value="delivered">Delivered</option>
+              <option value="opened">Opened</option>
+              <option value="clicked">Clicked</option>
+              <option value="bounced">Bounced</option>
+              <option value="unsubscribed">Unsubscribed</option>
+            </select>
+
+            {/* Clear All */}
             {campaign.recipientsCount > 0 && !isSent && (
               <button
                 onClick={handleClearRecipients}
@@ -700,79 +1018,53 @@ export default function CampaignDetailPage() {
                 <Trash2 size={11} /> Clear All
               </button>
             )}
-            {!isSent && (
+          </div>
+
+          {/* Body */}
+          {campaign.recipientsCount === 0 ? (
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              padding: "60px 20px", textAlign: "center",
+            }}>
+              <Users size={40} color={T.border} style={{ marginBottom: 14 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: T.muted, marginBottom: 6 }}>No recipients yet</div>
+              <div style={{ fontSize: 12, color: T.muted, marginBottom: 18 }}>
+                Click "Add Recipients" to get started.
+              </div>
               <button
                 onClick={() => setShowAddModal(true)}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px", borderRadius: 7, border: "none",
-                  background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
+                  padding: "9px 18px", borderRadius: 8, border: "none",
+                  background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
                   cursor: "pointer", fontFamily: "inherit",
                 }}
               >
                 <Plus size={13} /> Add Recipients
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <RecipientsTable
+              key={`${tableKey}-${statusFilter}-${search}`}
+              campaignId={id}
+              statusFilter={statusFilter}
+              search={search}
+              isAbTest={isAbTest}
+              refreshKey={tableKey}
+              onSelectContact={handleSelectRecipient}
+              selectedContactId={selectedRecipient?.contact?.id}
+            />
+          )}
         </div>
 
-        {campaign.recipientsCount === 0 ? (
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center",
-            padding: "40px 20px", textAlign: "center",
-          }}>
-            <Users size={36} color={T.border} style={{ marginBottom: 12 }} />
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.muted, marginBottom: 6 }}>No recipients yet</div>
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 16 }}>
-              Add recipients to this campaign to get started.
-            </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "9px 18px", borderRadius: 8, border: "none",
-                background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Plus size={13} /> Add Recipients
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Status filter tabs */}
-            <div style={{
-              display: "flex", gap: 4, flexWrap: "wrap",
-              marginBottom: 16, padding: 3,
-              background: T.surface, borderRadius: 8, border: "1px solid " + T.border,
-              alignSelf: "flex-start",
-            }}>
-              {RECIPIENT_FILTERS.map(f => {
-                const active = recipientFilter === f.id;
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => setRecipientFilter(f.id)}
-                    style={{
-                      padding: "5px 12px", borderRadius: 6, border: "none",
-                      background: active ? T.card : "transparent",
-                      color: active ? T.text : T.muted,
-                      fontWeight: active ? 600 : 400, fontSize: 11,
-                      cursor: "pointer", fontFamily: "inherit",
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <RecipientsTable
-              key={`${tableKey}-${recipientFilter}`}
-              campaignId={id}
-              filter={recipientFilter}
-            />
-          </>
+        {/* ── Lead activity panel ── */}
+        {selectedRecipient && (
+          <LeadActivityPanel
+            recipient={selectedRecipient}
+            contact={contactDetail}
+            loading={contactLoading}
+            onClose={() => { setSelectedRecipient(null); setContactDetail(null); }}
+          />
         )}
       </div>
 
