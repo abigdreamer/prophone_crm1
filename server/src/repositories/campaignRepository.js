@@ -1,23 +1,14 @@
-import prisma from '../prisma.js';
+import prisma from '../lib/prisma.js';
 import { icontains, skipDups } from '../lib/db-compat.js';
 
 export async function findMany(where) {
   return prisma.campaign.findMany({
     where,
-    select: {
-      id: true, account_id: true, name: true, subject: true,
-      from_name: true, from_email: true, status: true,
-      sent_count: true, opened_count: true, clicked_count: true,
-      bounced_count: true, failed_count: true,
-      recipients_count: true, delivered_count: true,
-      hard_bounced_count: true, soft_bounced_count: true,
-      unsubscribed_count: true, complaints_count: true,
-      completed_at: true,
-      scheduled_at: true, created_at: true, updated_at: true,
-      template_id: true,
-      template: { select: { id: true, name: true } },
+    include: {
+      template: { select: { id: true, name: true, subject: true } },
+      _count:   { select: { recipients: true } },
     },
-    orderBy: { created_at: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
 }
 
@@ -25,20 +16,6 @@ export async function findById(id) {
   return prisma.campaign.findUnique({
     where:   { id },
     include: { template: { select: { id: true, name: true, subject: true } } },
-  });
-}
-
-export async function findByIdFull(id) {
-  return prisma.campaign.findUnique({
-    where:   { id },
-    include: { template: true },
-  });
-}
-
-export async function findTenantById(id) {
-  return prisma.campaign.findUnique({
-    where:  { id },
-    select: { account_id: true, status: true },
   });
 }
 
@@ -54,125 +31,112 @@ export async function removeCampaign(id) {
   return prisma.campaign.delete({ where: { id } });
 }
 
-export async function groupRecipientsByStatus(campaignId) {
-  return prisma.campaign_recipient.groupBy({
-    by:    ['status'],
-    where: { campaign_id: campaignId },
-    _count: { status: true },
-  });
-}
-
-export async function groupRecipientsByVariantAndStatus(campaignId) {
-  return prisma.campaign_recipient.groupBy({
-    by:    ['ab_variant', 'status'],
-    where: { campaign_id: campaignId },
-    _count: { status: true },
-  });
-}
-
-export async function findRecipients(campaignId, { status, variant, search, skip, limit }) {
-  const where = { campaign_id: campaignId };
-  if (status)  where.status     = status;
-  if (variant) where.ab_variant = variant;
+export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
+  const where = { campaignId };
+  if (status)    where.status    = status;
+  if (abVariant) where.abVariant = abVariant;
   if (search) {
-    where.OR = [
-      { email:      icontains(search) },
-      { first_name: icontains(search) },
-      { last_name:  icontains(search) },
-    ];
+    where.contact = {
+      OR: [
+        { email:     icontains(search) },
+        { firstName: icontains(search) },
+        { lastName:  icontains(search) },
+      ],
+    };
   }
 
   const [rows, total] = await Promise.all([
-    prisma.campaign_recipient.findMany({
+    prisma.campaignRecipient.findMany({
       where,
       skip,
       take:    limit,
-      orderBy: { created_at: 'desc' },
-      select: {
-        id: true, email: true, first_name: true, last_name: true,
-        ab_variant: true, status: true, message_id: true,
-        sent_at: true, opened_at: true, clicked_at: true, bounced_at: true,
-        error_message: true, attempts: true,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        contact: {
+          select: {
+            id: true, firstName: true, lastName: true,
+            email: true, company: true, lifecycleStage: true,
+          },
+        },
       },
     }),
-    prisma.campaign_recipient.count({ where }),
+    prisma.campaignRecipient.count({ where }),
   ]);
   return { rows, total };
 }
 
-export async function addRecipients(campaignId, contacts, variant = null) {
-  return prisma.campaign_recipient.createMany({
-    data: contacts.map(c => ({
-      campaign_id: campaignId,
-      lead_id:     c.id,
-      email:       c.email,
-      first_name:  c.first_name || '',
-      last_name:   c.last_name  || '',
-      status:      'pending',
-      ...(variant ? { ab_variant: variant } : {}),
-    })),
-    ...skipDups,
-  });
+export async function addRecipients(campaignId, contactIds) {
+  const data = contactIds.map(contactId => ({
+    campaignId,
+    contactId,
+    status: 'pending',
+  }));
+  const result = await prisma.campaignRecipient.createMany({ data, ...skipDups });
+  // Update recipientsCount
+  const count = await prisma.campaignRecipient.count({ where: { campaignId } });
+  await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
+  return result;
 }
 
 export async function removeAllRecipients(campaignId) {
-  return prisma.campaign_recipient.deleteMany({ where: { campaign_id: campaignId } });
+  const result = await prisma.campaignRecipient.deleteMany({ where: { campaignId } });
+  await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: 0 } });
+  return result;
 }
 
 export async function countPendingRecipients(campaignId) {
-  return prisma.campaign_recipient.count({
-    where: { campaign_id: campaignId, status: 'pending' },
+  return prisma.campaignRecipient.count({ where: { campaignId, status: 'pending' } });
+}
+
+export async function groupRecipientsByStatus(campaignId) {
+  return prisma.campaignRecipient.groupBy({
+    by:    ['status'],
+    where: { campaignId },
+    _count: { status: true },
   });
 }
 
-export async function findPendingRecipientIds(campaignId) {
-  const rows = await prisma.campaign_recipient.findMany({
-    where:  { campaign_id: campaignId, status: 'pending' },
+export async function assignVariants(campaignId) {
+  const recipients = await prisma.campaignRecipient.findMany({
+    where:  { campaignId, status: 'pending' },
     select: { id: true },
   });
-  return rows.map(r => r.id);
-}
-
-export async function assignVariants(campaignId, idsForB) {
-  if (!idsForB.length) return;
-  return prisma.campaign_recipient.updateMany({
-    where: { id: { in: idsForB } },
-    data:  { ab_variant: 'B' },
-  });
-}
-
-export async function findContactsByIds(contactIds, account_id) {
-  return prisma.lead.findMany({
-    where: {
-      id:         { in: contactIds },
-      account_id,
-      email:      { not: null },
-    },
-    select: { id: true, email: true, first_name: true, last_name: true, phone: true },
-  });
+  const half = Math.floor(recipients.length / 2);
+  const idsForB = recipients.slice(half).map(r => r.id);
+  if (idsForB.length) {
+    await prisma.campaignRecipient.updateMany({
+      where: { id: { in: idsForB } },
+      data:  { abVariant: 'B' },
+    });
+    await prisma.campaignRecipient.updateMany({
+      where: { campaignId, id: { notIn: idsForB } },
+      data:  { abVariant: 'A' },
+    });
+  }
 }
 
 export async function logEvent(recipientId, campaignId, event, metadata = null) {
-  return prisma.campaign_recipient_event.create({
-    data: { recipient_id: recipientId, campaign_id: campaignId, event, metadata },
-  }).catch(() => {}); // non-blocking
+  return prisma.campaignRecipientEvent.create({
+    data: { recipientId, campaignId, event, metadata },
+  }).catch(() => {});
 }
 
 export async function getRecipientEvents(recipientId) {
-  return prisma.campaign_recipient_event.findMany({
-    where:   { recipient_id: recipientId },
-    orderBy: { occurred_at: 'asc' },
-    select:  { id: true, event: true, occurred_at: true, metadata: true },
+  return prisma.campaignRecipientEvent.findMany({
+    where:   { recipientId },
+    orderBy: { occurredAt: 'asc' },
+    select:  { id: true, event: true, occurredAt: true, metadata: true },
   });
 }
 
-export async function findContactsByGroup(groupId, account_id) {
-  return prisma.lead.findMany({
-    where: {
-      group_id:   groupId,
-      account_id,
-      email:      { not: null },
-    },
-    select: { id: true, email: true, first_name: true, last_name: true, phone: true },
+export async function getContactsForFilter(clientId, filter) {
+  const where = { clientId };
+  if (filter && filter !== 'all') {
+    where.lifecycleStage = filter;
+  }
+  return prisma.contact.findMany({
+    where,
+    select: { id: true, firstName: true, lastName: true, email: true, company: true, lifecycleStage: true },
+    orderBy: { firstName: 'asc' },
   });
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAppToast } from "../../context/ToastContext";
 import Modal from "../ui/Modal";
 import Input from "../ui/Input";
 import Sel from "../ui/Sel";
@@ -12,6 +13,7 @@ import { Spinner } from "../ui/Loader";
 export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser }) {
   const isEdit = !!contact;
   const [saving, setSaving] = useState(false);
+  const toast = useAppToast();
 
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
@@ -64,7 +66,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   // Used by the explicit Save button — validates required fields first
   async function handleSave() {
     if (!form.firstName || !form.email) {
-      alert("First name and email are required.");
+      toast.warning("First name and email are required.");
       return;
     }
     await doSave();

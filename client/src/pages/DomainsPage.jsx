@@ -8,6 +8,7 @@ import T from "../theme";
 import * as db from "../services/api";
 import CLIENTS from "../data/clients";
 import { usePool } from "../context/PoolContext";
+import { useConfirmDialog } from "../context/ConfirmContext";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const clientOf  = id => CLIENTS.find(c => c.id === id) || null;
@@ -120,6 +121,7 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
   const [fromEmail,  setFromEmail]  = useState(domain.defaultFromEmail || "");
   const [savingFrom, setSavingFrom] = useState(false);
   const c = clientOf(domain.clientId);
+  const confirm = useConfirmDialog();
 
   async function handleVerify() {
     setVerifying(true);
@@ -131,7 +133,14 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
   }
 
   async function handleDelete() {
-    if (!confirm(`Remove ${domain.domainName}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: `Remove ${domain.domainName}?`,
+      description: "This cannot be undone.",
+      confirmText: "Delete domain",
+      cancelText: "Cancel",
+      type: "danger",
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
       await db.deleteDomain(domain.id);

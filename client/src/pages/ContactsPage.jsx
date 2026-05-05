@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAppToast } from "../context/ToastContext";
 import Card from "../components/ui/Card";
 import { StagePill } from "../components/ui/Pill";
 import ScoreBar from "../components/ui/ScoreBar";
@@ -22,6 +23,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
   const [addModal,     setAddModal]     = useState(false);
   const [importModal,  setImportModal]  = useState(false);
   const [editC,        setEditC]        = useState(null);
+  const toast = useAppToast();
 
   const client   = CLIENTS.find(c => c.id === clientId);
   const col      = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -69,9 +71,10 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
       const saved = await db.createContact(nc);
       setContacts(prev => [saved, ...prev]);
       setAddModal(false);
+      toast.success("Contact added.");
     } catch (err) {
       console.error("Failed to save contact:", err);
-      alert("Failed to save contact. Please try again.");
+      toast.error("Failed to save contact.");
     }
   }
 
@@ -80,9 +83,10 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
       const refreshed = await db.updateContact(updated.id, updated);
       setContacts(prev => prev.map(c => c.id === refreshed.id ? refreshed : c));
       setEditC(null);
+      toast.success("Contact saved.");
     } catch (err) {
       console.error("Failed to update contact:", err);
-      alert("Failed to update contact. Please try again.");
+      toast.error("Failed to update contact.");
     }
   }
 

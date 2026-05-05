@@ -12,11 +12,13 @@ import { STAGE_DEF, LOST_STAGES } from "../data/stages";
 import { ACT_DEF, ACT_CATS } from "../data/activities";
 import fmt from "../utils/format";
 import * as db from "../services/api";
+import { useAppToast } from "../context/ToastContext";
 
 // ─── Right-panel: lead lifecycle + activity timeline ─────────────────────────
 export default function LifecycleChart({ contact, onUpdate, currentUser }) {
   const [filter, setFilter] = useState("all");
   const [modal,  setModal]  = useState(null);   // "log" | "stage" | "edit"
+  const toast = useAppToast();
 
   if (!contact) return null;
 
@@ -51,9 +53,10 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
               const refreshed = await db.getContact(contact.id);
               onUpdate(refreshed);
               setModal(null);
+              toast.success("Activity logged.");
             } catch (err) {
               console.error("Failed to log activity:", err);
-              alert("Failed to log activity. Please try again.");
+              toast.error("Failed to log activity.");
             }
           }}
           onClose={() => setModal(null)}
@@ -72,9 +75,10 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
               const refreshed = await db.getContact(updated.id);
               onUpdate(refreshed);
               setModal(null);
+              toast.success("Stage updated.");
             } catch (err) {
               console.error("Failed to update stage:", err);
-              alert("Failed to update stage. Please try again.");
+              toast.error("Failed to update stage.");
             }
           }}
           onClose={() => setModal(null)}
@@ -89,9 +93,10 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
               const refreshed = await db.updateContact(updated.id, updated);
               onUpdate(refreshed);
               setModal(null);
+              toast.success("Contact saved.");
             } catch (err) {
               console.error("Failed to update contact:", err);
-              alert("Failed to update contact. Please try again.");
+              toast.error("Failed to update contact.");
             }
           }}
           onClose={() => setModal(null)}

@@ -4,9 +4,11 @@ import {
   MoreHorizontal, Pencil, Send, Copy, Trash2, X,
   Type as TypeIcon, RefreshCw, ChevronLeft, ChevronUp,
   GripVertical, Info, AlignLeft, AlignCenter, AlignRight,
-  Tag as TagIcon, Eye, Download, Upload, Code2,
+  Tag as TagIcon, Eye, Layers, LayoutGrid, List as ListIcon,
 } from "lucide-react";
 import * as store from "../services/api";
+import { useAppToast } from "../context/ToastContext";
+import { useConfirmDialog } from "../context/ConfirmContext";
 
 // ─── Theme (dark, matches app theme.js) ──────────────────────────────────────
 const C = {
@@ -60,14 +62,12 @@ const BLOCK_TYPES = [
   { type: "slider",    label: "Slider",     desc: "Interactive rating slider" },
   { type: "quiz",      label: "Quiz",       desc: "Multiple choice question" },
   { type: "spin_wheel", label: "Spin Wheel", desc: "Spin-to-win game" },
-  { type: "scratch",   label: "Scratch",    desc: "Scratch card reveal" },
-  { type: "html_raw",  label: "Raw HTML",   desc: "Custom HTML block" },
 ];
 
 const BLOCK_ICON = {
   heading: "T", text: "¶", image: "⊡", button: "▣", columns: "⊟",
   divider: "—", spacer: "↕", footer: "≡",
-  link: "⇗", slider: "≋", quiz: "?", spin_wheel: "◎", scratch: "✦", html_raw: "<>",
+  link: "⇗", slider: "≋", quiz: "?", spin_wheel: "◎",
 };
 
 const BLOCK_DEFAULTS = {
@@ -83,8 +83,6 @@ const BLOCK_DEFAULTS = {
   slider:     { title: "How interested are you?", min: 1, max: 10, step: 1, labels: { min: "Not interested", max: "Very interested" }, buttonText: "Submit", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
   quiz:       { question: "Which service are you most interested in?", options: ["Option A", "Option B", "Option C"], buttonText: "Submit Answer", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
   spin_wheel: { title: "Spin to Win!", prizes: ["10% Off", "Free Consult", "Gift Card", "20% Off", "Try Again", "30% Off"], buttonText: "Spin Now!", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
-  scratch:    { title: "Scratch to Reveal Your Offer", prize: "50% OFF", hint: "Use your mouse or finger to scratch!", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
-  html_raw:   { html: "", padding: { top: 0, right: 0, bottom: 0, left: 0 } },
 };
 
 const DEFAULT_BLOCKS = [
@@ -166,14 +164,6 @@ function blockToHtml(block) {
       const btnStyle = `display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;font-family:Arial,sans-serif`;
       return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">🎡 ${esc(p.title || "Spin to Win!")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Spin Now!")} →</a></td></tr></table></td></tr>`;
     }
-    case "scratch": {
-      const href = p.buttonUrl || `{{INTERACT_URL_${block.id}}}`;
-      const titleStyle = `margin:0 0 12px;font-size:18px;font-weight:800;color:#1e293b;text-align:center;font-family:Arial,sans-serif`;
-      const btnStyle = `display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;font-family:Arial,sans-serif`;
-      return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">✦ ${esc(p.title || "Scratch to Reveal!")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.hint || "Scratch Now")} →</a></td></tr></table></td></tr>`;
-    }
-    case "html_raw":
-      return `<tr><td>${p.html || ""}</td></tr>`;
     default: return "";
   }
 }
@@ -340,56 +330,9 @@ function MiniBlock({ block }) {
           <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8 }}>⚡ Interactive — personalized per contact</div>
         </div>
       );
-    case "scratch":
-      return (
-        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, textAlign: "center" }}>
-          <p style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 800, color: "#1e293b" }}>
-            ✦ {p.title || "Scratch to Reveal!"}
-          </p>
-          <div style={{ width: 110, height: 56, borderRadius: 10, background: "repeating-linear-gradient(45deg,#94a3b8,#94a3b8 4px,#cbd5e1 4px,#cbd5e1 8px)", margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 11, color: "#fff", fontWeight: 700, textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Scratch here ✦</span>
-          </div>
-          <div style={{ fontSize: 10, color: "#94a3b8" }}>⚡ Interactive — personalized per contact</div>
-        </div>
-      );
-    case "html_raw":
-      return (
-        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
-          {p.html ? <HtmlRawPreview html={p.html} /> : (
-            <div style={{ background: "#f8fafc", border: "1.5px dashed #94a3b8", borderRadius: 8, padding: "14px 16px", textAlign: "center", color: "#64748b" }}>
-              <div style={{ fontSize: 20, marginBottom: 4 }}>〈/〉</div>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Custom HTML Block — empty</div>
-            </div>
-          )}
-        </div>
-      );
     default:
       return null;
   }
-}
-
-// Renders imported HTML inline via auto-sizing iframe (no JS, read-only)
-function HtmlRawPreview({ html }) {
-  const ref = useRef(null);
-  const [h, setH] = useState(120);
-  function onLoad() {
-    try {
-      const doc = ref.current?.contentDocument;
-      if (!doc) return;
-      const height = Math.max(doc.documentElement?.scrollHeight || 0, doc.body?.scrollHeight || 0);
-      if (height > 20) setH(height);
-    } catch (_) {}
-  }
-  return (
-    <iframe
-      ref={ref}
-      srcDoc={html}
-      onLoad={onLoad}
-      sandbox="allow-same-origin"
-      scrolling="no"
-      style={{ width: "100%", height: h, border: "none", display: "block", pointerEvents: "none" }}
-    />
-  );
 }
 
 // ─── Mini email preview (scaled card thumbnail) ───────────────────────────────
@@ -464,21 +407,6 @@ function MBtn({ children, onClick, disabled, variant = "primary" }) {
 }
 
 // ─── Delete modal ─────────────────────────────────────────────────────────────
-function DeleteModal({ template, onConfirm, onCancel, busy }) {
-  return (
-    <ModalBackdrop onClose={onCancel}>
-      <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 6 }}>Delete template</div>
-      <div style={{ fontSize: 13, color: C.sub, marginBottom: 22 }}>
-        Are you sure you want to delete <strong style={{ color: C.text }}>{template.name}</strong>? This cannot be undone.
-      </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <MBtn onClick={onCancel} variant="ghost" disabled={busy}>Cancel</MBtn>
-        <MBtn onClick={onConfirm} variant="danger" disabled={busy}>{busy ? "Deleting…" : "Delete template"}</MBtn>
-      </div>
-    </ModalBackdrop>
-  );
-}
-
 // ─── Rename modal ─────────────────────────────────────────────────────────────
 function RenameModal({ template, onConfirm, onCancel }) {
   const [input, setInput] = useState(template.name);
@@ -650,19 +578,28 @@ function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, on
 }
 
 // ─── Template card ────────────────────────────────────────────────────────────
+function fmtCardDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
   const isOpen = menuOpenId === template.id;
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, overflow: "visible", boxShadow: C.shadow, cursor: "pointer", position: "relative", display: "flex", flexDirection: "column", transition: "box-shadow 0.15s, border-color 0.15s" }}
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "visible", cursor: "pointer", position: "relative", display: "flex", flexDirection: "column", transition: "border-color 0.15s, box-shadow 0.15s" }}
       onClick={onEdit}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = C.shadowMd; e.currentTarget.style.borderColor = "#cbd5e1"; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = C.shadow;   e.currentTarget.style.borderColor = C.border; }}>
-      <div style={{ margin: "12px 12px 0", borderRadius: 10, height: 224, overflow: "visible", position: "relative", border: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <div style={{ position: "absolute", inset: 0, borderRadius: 9, overflow: "hidden" }}>
-          <MiniEmailPreview template={template} />
-        </div>
-        <button data-opts onClick={e => { e.stopPropagation(); onMenuToggle(template.id); }}
-          style={{ position: "absolute", top: 10, right: 10, background: `${C.card}ee`, backdropFilter: "blur(8px)", border: `1px solid ${C.border}`, borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 10, boxShadow: "0 1px 6px rgba(0,0,0,0.35)" }}>
+      onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent + "55"; e.currentTarget.style.boxShadow = `0 4px 20px rgba(0,0,0,0.4)`; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border;        e.currentTarget.style.boxShadow = "none"; }}>
+
+      {/* Preview thumbnail — overflow hidden only on this div, button+dropdown live outside */}
+      <div style={{ borderRadius: "13px 13px 0 0", height: 200, overflow: "hidden", position: "relative", borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: "#fff" }}>
+        <MiniEmailPreview template={template} />
+      </div>
+
+      {/* Menu button + dropdown anchored to card (overflow: visible) */}
+      <div onClick={e => e.stopPropagation()} style={{ position: "absolute", top: 10, right: 10, zIndex: 20 }}>
+        <button data-opts onClick={() => onMenuToggle(template.id)}
+          style={{ background: "rgba(24,29,39,0.82)", backdropFilter: "blur(6px)", border: `1px solid ${C.border}`, borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
           <MoreHorizontal size={15} color={C.sub} />
         </button>
         {isOpen && (
@@ -671,14 +608,72 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
             onDuplicate={onDuplicate} onDeleteRequest={onDeleteRequest} onSendTest={onSendTest} />
         )}
       </div>
+
+      {/* Card footer */}
       <div style={{ padding: "12px 14px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</div>
-            <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slugify(template.name)}</div>
-          </div>
-          <StatusBadge status={template.status} />
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {template.name}
         </div>
+        <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 10 }}>
+          {slugify(template.name)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <StatusBadge status={template.status} small />
+          <span style={{ fontSize: 12, color: C.muted }}>{fmtCardDate(template.updatedAt || template.createdAt)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Template row (list view) ─────────────────────────────────────────────────
+function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
+  const isOpen = menuOpenId === template.id;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px 140px 44px", gap: 0, padding: "12px 16px", borderBottom: isLast ? "none" : `1px solid ${C.border}`, borderRadius: isLast ? "0 0 12px 12px" : 0, alignItems: "center", cursor: "pointer", transition: "background 0.1s", position: "relative" }}
+      onClick={onEdit}
+      onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+
+      {/* Template col: thumbnail + name + slug */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div style={{ width: 48, height: 56, borderRadius: 6, overflow: "hidden", flexShrink: 0, border: `1px solid ${C.border}`, background: "#fff" }}>
+          <MiniEmailPreview template={template} />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{template.name}</div>
+          <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{slugify(template.name)}</div>
+        </div>
+      </div>
+
+      {/* Subject col */}
+      <div style={{ fontSize: 13, color: C.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16 }}>
+        {template.subject || <span style={{ color: C.muted, fontStyle: "italic" }}>No subject</span>}
+      </div>
+
+      {/* Status col */}
+      <div><StatusBadge status={template.status} /></div>
+
+      {/* Updated col */}
+      <div style={{ fontSize: 13, color: C.muted }}>
+        {(template.updatedAt || template.createdAt)
+          ? new Date(template.updatedAt || template.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "—"}
+      </div>
+
+      {/* Menu col */}
+      <div style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
+        <button data-opts onClick={() => onMenuToggle(template.id)}
+          style={{ background: "transparent", border: `1px solid transparent`, borderRadius: 7, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}>
+          <MoreHorizontal size={15} color={C.sub} />
+        </button>
+        {isOpen && (
+          <OptionsDropdown template={template} onClose={() => onMenuToggle(null)} onEdit={onEdit}
+            onDetails={onDetails} onPublish={onPublish} onRename={onRename}
+            onDuplicate={onDuplicate} onDeleteRequest={onDeleteRequest} onSendTest={onSendTest} />
+        )}
       </div>
     </div>
   );
@@ -746,19 +741,111 @@ function PadInput({ value = {}, onChange }) {
 }
 
 // ─── Block property editor ────────────────────────────────────────────────────
-function BlockEditor({ block, onChange }) {
+function BlockEditor({ block, onChange, tab = "content" }) {
   const { type, props: p } = block;
   const set = (k, v) => onChange({ ...p, [k]: v });
   const setPad = v => set("padding", v);
 
+  // Design tab — shared visual properties per block
+  if (tab === "design") {
+    switch (type) {
+      case "heading":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 28} onChange={v => set("fontSize", v)} min={10} max={72} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#111827"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "text":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 15} onChange={v => set("fontSize", v)} min={10} max={48} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#374151"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "left"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Line Height</PropLabel><NumInput value={p.lineHeight || 1.6} onChange={v => set("lineHeight", v)} min={1} max={3} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "image":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Width</PropLabel><NumInput value={p.width || 100} onChange={v => set("width", v)} min={10} max={100} unit="%" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 0} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "button":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Button Color</PropLabel><ColInput value={p.bgColor || "#6366f1"} onChange={v => set("bgColor", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Text Color</PropLabel><ColInput value={p.textColor || "#ffffff"} onChange={v => set("textColor", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 6} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+          </>
+        );
+      case "divider":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#e5e7eb"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Thickness</PropLabel><NumInput value={p.thickness || 1} onChange={v => set("thickness", v)} min={1} max={10} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Top Spacing</PropLabel><NumInput value={p.marginTop || 8} onChange={v => set("marginTop", v)} min={0} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Bottom Spacing</PropLabel><NumInput value={p.marginBottom || 8} onChange={v => set("marginBottom", v)} min={0} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Side Padding</PropLabel><NumInput value={p.sidePadding || 24} onChange={v => set("sidePadding", v)} min={0} unit="px" /></div>
+          </>
+        );
+      case "spacer":
+        return <div style={{ marginBottom: 12 }}><PropLabel>Height</PropLabel><NumInput value={p.height || 32} onChange={v => set("height", v)} min={4} max={200} unit="px" /></div>;
+      case "footer":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 12} onChange={v => set("fontSize", v)} min={8} max={18} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#9ca3af"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "columns":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#374151"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "link":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#6366f1"} onChange={v => set("color", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={36} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={p.underline !== false} onChange={e => set("underline", e.target.checked)} style={{ accentColor: C.accent, width: 14, height: 14 }} />
+                <span style={{ fontSize: 12, color: C.sub, fontWeight: 600 }}>Underline</span>
+              </label>
+            </div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+          </>
+        );
+      case "slider":
+      case "quiz":
+      case "spin_wheel":
+        return <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>;
+      default:
+        return <div style={{ fontSize: 12, color: C.muted }}>No design properties.</div>;
+    }
+  }
+
+  // Content tab
   switch (type) {
     case "heading":
       return (
         <>
           <div style={{ marginBottom: 12 }}><PropLabel>Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} multiline /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 28} onChange={v => set("fontSize", v)} min={10} max={72} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#111827"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
           <div style={{ marginBottom: 12 }}>
             <PropLabel>Level</PropLabel>
             <div style={{ display: "flex", gap: 4 }}>
@@ -770,28 +857,15 @@ function BlockEditor({ block, onChange }) {
               ))}
             </div>
           </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "text":
-      return (
-        <>
-          <div style={{ marginBottom: 12 }}><PropLabel>Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} multiline /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 15} onChange={v => set("fontSize", v)} min={10} max={48} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#374151"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "left"} onChange={v => set("align", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
-        </>
-      );
+      return <div style={{ marginBottom: 12 }}><PropLabel>Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} multiline /></div>;
     case "image":
       return (
         <>
           <div style={{ marginBottom: 12 }}><PropLabel>Image URL</PropLabel><TxtInput value={p.src || ""} onChange={v => set("src", v)} placeholder="https://..." /></div>
           <div style={{ marginBottom: 12 }}><PropLabel>Alt Text</PropLabel><TxtInput value={p.alt || ""} onChange={v => set("alt", v)} placeholder="Image description" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Width</PropLabel><NumInput value={p.width || 100} onChange={v => set("width", v)} min={10} max={100} unit="%" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 0} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "button":
@@ -799,43 +873,18 @@ function BlockEditor({ block, onChange }) {
         <>
           <div style={{ marginBottom: 12 }}><PropLabel>Label</PropLabel><TxtInput value={p.label || ""} onChange={v => set("label", v)} /></div>
           <div style={{ marginBottom: 12 }}><PropLabel>URL</PropLabel><TxtInput value={p.url || ""} onChange={v => set("url", v)} placeholder="https://..." /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Button Color</PropLabel><ColInput value={p.bgColor || "#6366f1"} onChange={v => set("bgColor", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Text Color</PropLabel><ColInput value={p.textColor || "#ffffff"} onChange={v => set("textColor", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 6} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
         </>
       );
     case "divider":
-      return (
-        <>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#e5e7eb"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Thickness</PropLabel><NumInput value={p.thickness || 1} onChange={v => set("thickness", v)} min={1} max={10} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Top Spacing</PropLabel><NumInput value={p.marginTop || 8} onChange={v => set("marginTop", v)} min={0} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Bottom Spacing</PropLabel><NumInput value={p.marginBottom || 8} onChange={v => set("marginBottom", v)} min={0} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Side Padding</PropLabel><NumInput value={p.sidePadding || 24} onChange={v => set("sidePadding", v)} min={0} unit="px" /></div>
-        </>
-      );
     case "spacer":
-      return <div style={{ marginBottom: 12 }}><PropLabel>Height</PropLabel><NumInput value={p.height || 32} onChange={v => set("height", v)} min={4} max={200} unit="px" /></div>;
+      return <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>Use the Design tab to style this block.</div>;
     case "footer":
-      return (
-        <>
-          <div style={{ marginBottom: 12 }}><PropLabel>Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} multiline /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 12} onChange={v => set("fontSize", v)} min={8} max={18} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#9ca3af"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
-        </>
-      );
+      return <div style={{ marginBottom: 12 }}><PropLabel>Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} multiline /></div>;
     case "columns":
       return (
         <>
           <div style={{ marginBottom: 12 }}><PropLabel>Left Column</PropLabel><TxtInput value={p.leftText || ""} onChange={v => set("leftText", v)} multiline /></div>
           <div style={{ marginBottom: 12 }}><PropLabel>Right Column</PropLabel><TxtInput value={p.rightText || ""} onChange={v => set("rightText", v)} multiline /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#374151"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "link":
@@ -844,33 +893,9 @@ function BlockEditor({ block, onChange }) {
           <div style={{ marginBottom: 12 }}><PropLabel>Link Text</PropLabel><TxtInput value={p.text || ""} onChange={v => set("text", v)} placeholder="Click here to learn more" /></div>
           <div style={{ marginBottom: 12 }}>
             <PropLabel>URL</PropLabel>
-            <input
-              value={p.url || ""}
-              onChange={e => set("url", e.target.value)}
-              placeholder="https://example.com"
-              style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }}
-            />
+            <input value={p.url || ""} onChange={e => set("url", e.target.value)} placeholder="https://example.com"
+              style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }} />
           </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#6366f1"} onChange={v => set("color", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={36} unit="px" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["left","center","right"].map(a => (
-                <button key={a} onClick={() => set("align", a)}
-                  style={{ flex: 1, padding: "5px 0", borderRadius: 6, border: `1px solid ${p.align===a ? C.accent : C.border}`, background: p.align===a ? C.accentLo : C.surface, color: p.align===a ? C.accent : C.sub, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textTransform: "capitalize" }}>
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <input type="checkbox" checked={p.underline !== false} onChange={e => set("underline", e.target.checked)}
-                style={{ accentColor: C.accent, width: 14, height: 14 }} />
-              <span style={{ fontSize: 12, color: C.sub, fontWeight: 600 }}>Underline</span>
-            </label>
-          </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "slider":
@@ -889,7 +914,6 @@ function BlockEditor({ block, onChange }) {
               style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }} />
             {p.buttonUrl && <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>⚠ Custom URL set — interactive session tracking bypassed</div>}
           </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "quiz":
@@ -907,7 +931,6 @@ function BlockEditor({ block, onChange }) {
               style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }} />
             {p.buttonUrl && <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>⚠ Custom URL set — interactive session tracking bypassed</div>}
           </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
         </>
       );
     case "spin_wheel":
@@ -924,40 +947,6 @@ function BlockEditor({ block, onChange }) {
             <input value={p.buttonUrl || ""} onChange={e => set("buttonUrl", e.target.value)} placeholder="https://… (leave blank for interactive page)"
               style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }} />
             {p.buttonUrl && <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>⚠ Custom URL set — interactive session tracking bypassed</div>}
-          </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
-        </>
-      );
-    case "scratch":
-      return (
-        <>
-          <div style={{ marginBottom: 12 }}><PropLabel>Title</PropLabel><TxtInput value={p.title || ""} onChange={v => set("title", v)} /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Prize Text</PropLabel><TxtInput value={p.prize || ""} onChange={v => set("prize", v)} placeholder="e.g. 50% OFF" /></div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Hint Text</PropLabel><TxtInput value={p.hint || ""} onChange={v => set("hint", v)} /></div>
-          <div style={{ marginBottom: 12 }}>
-            <PropLabel>Button Link (URL)</PropLabel>
-            <input value={p.buttonUrl || ""} onChange={e => set("buttonUrl", e.target.value)} placeholder="https://… (leave blank for interactive page)"
-              style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }} />
-            {p.buttonUrl && <div style={{ fontSize: 10, color: C.amber, marginTop: 4 }}>⚠ Custom URL set — interactive session tracking bypassed</div>}
-          </div>
-          <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
-        </>
-      );
-    case "html_raw":
-      return (
-        <>
-          <div style={{ marginBottom: 8 }}>
-            <PropLabel>HTML Content</PropLabel>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>
-              Paste valid email HTML. Inserted as-is into the email.
-            </div>
-            <textarea
-              value={p.html || ""}
-              onChange={e => set("html", e.target.value)}
-              placeholder="<div>Your HTML here…</div>"
-              rows={8}
-              style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 11, color: C.text, outline: "none", fontFamily: "monospace", resize: "vertical" }}
-            />
           </div>
         </>
       );
@@ -1044,20 +1033,15 @@ function spinWheelPreviewHtml(p) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}body{background:#fff;padding:20px 24px;text-align:center}h2{font-size:16px;font-weight:800;color:#1e293b;margin-bottom:16px}.wrap{position:relative;width:220px;height:220px;margin:0 auto 16px}.ptr{position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:22px solid #1e293b;z-index:10}canvas{border-radius:50%;box-shadow:0 4px 20px rgba(0,0,0,0.18)}button{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:12px 32px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}button:disabled{opacity:0.6;cursor:not-allowed}.badge{font-size:10px;color:#94a3b8;margin-top:12px;background:#f8fafc;padding:5px;border-radius:6px}</style></head><body><h2>🎡 ${esc(p.title||"Spin to Win!")}</h2><div class="wrap"><div class="ptr"></div><canvas id="c" width="220" height="220"></canvas></div><button id="btn" onclick="spin()">${esc(p.buttonText||"Spin Now!")}</button><div class="badge">⚡ Preview — interactions are simulated</div><script>var P=${JSON.stringify(prizes)},COL=${JSON.stringify(colors)},n=P.length,arc=2*Math.PI/n,rot=0,spinning=false;var cv=document.getElementById('c'),ctx=cv.getContext('2d');function draw(r){ctx.clearRect(0,0,220,220);for(var i=0;i<n;i++){ctx.beginPath();ctx.moveTo(110,110);ctx.arc(110,110,106,r+i*arc,r+(i+1)*arc);ctx.fillStyle=COL[i%COL.length];ctx.fill();ctx.save();ctx.translate(110,110);ctx.rotate(r+(i+0.5)*arc);ctx.textAlign='right';ctx.fillStyle='#fff';ctx.font='bold 10px Arial';ctx.fillText(P[i].slice(0,12),98,4);ctx.restore()}ctx.beginPath();ctx.arc(110,110,13,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#e2e8f0';ctx.lineWidth=2;ctx.stroke()}draw(0);function spin(){if(spinning)return;spinning=true;document.getElementById('btn').disabled=true;var total=(Math.PI*2*5)+(Math.random()*Math.PI*2),dur=4000,start=Date.now(),from=rot;function frame(){var t=Date.now()-start,prog=t/dur;if(prog>=1){prog=1;spinning=false;document.getElementById('btn').disabled=false;var idx=Math.floor(((from+total)%(Math.PI*2))/arc);var won=P[(n-1-idx%n+n)%n];setTimeout(function(){alert('Preview: You won "'+won+'"! In the real email this is recorded.')},200)}var ease=1-Math.pow(1-prog,3);rot=from+total*ease;draw(rot);if(prog<1)requestAnimationFrame(frame)}requestAnimationFrame(frame)}</script></body></html>`;
 }
 
-function scratchPreviewHtml(p) {
-  const esc = s => String(s||"").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}body{background:#fff;padding:20px 24px;text-align:center}h2{font-size:16px;font-weight:800;color:#1e293b;margin-bottom:6px}p{font-size:12px;color:#64748b;margin-bottom:16px}.card{position:relative;width:200px;height:90px;margin:0 auto 14px;border-radius:12px;overflow:hidden}.prize{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#6366f1;background:linear-gradient(135deg,#ede9fe,#ddd6fe)}canvas{position:absolute;inset:0;cursor:crosshair;touch-action:none}.done{display:none;font-size:14px;font-weight:700;color:#22c55e;margin-top:8px}.badge{font-size:10px;color:#94a3b8;margin-top:10px;background:#f8fafc;padding:5px;border-radius:6px}</style></head><body><h2>✦ ${esc(p.title||"Scratch to Reveal!")}</h2><p>${esc(p.hint||"Use your mouse or finger to scratch!")}</p><div class="card"><div class="prize">${esc(p.prize||"🎁 OFFER")}</div><canvas id="c" width="200" height="90"></canvas></div><div class="done" id="done">🎉 Revealed! In the real email this is recorded.</div><div class="badge">⚡ Preview — interactions are simulated</div><script>var cv=document.getElementById('c'),ctx=cv.getContext('2d'),cnt=0,done=false;ctx.fillStyle='#94a3b8';ctx.fillRect(0,0,200,90);for(var i=0;i<200;i+=10)for(var j=0;j<90;j+=10){ctx.fillStyle=i%20===0?'#7c8d9e':'#8fa0b0';ctx.fillRect(i,j,8,8)}ctx.fillStyle='#fff';ctx.font='bold 14px Arial';ctx.textAlign='center';ctx.fillText('Scratch here ✦',100,50);function sc(x,y){if(done)return;ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(x,y,16,0,2*Math.PI);ctx.fill();cnt++;if(cnt>20){done=true;document.getElementById('done').style.display='block'}}function pos(e,el){var r=el.getBoundingClientRect();if(e.touches)return{x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top};return{x:e.clientX-r.left,y:e.clientY-r.top}}var drag=false;cv.addEventListener('mousedown',function(e){drag=true;var p=pos(e,cv);sc(p.x,p.y)});cv.addEventListener('mousemove',function(e){if(!drag)return;var p=pos(e,cv);sc(p.x,p.y)});cv.addEventListener('mouseup',function(){drag=false});cv.addEventListener('touchstart',function(e){e.preventDefault();var p=pos(e,cv);sc(p.x,p.y)},{passive:false});cv.addEventListener('touchmove',function(e){e.preventDefault();var p=pos(e,cv);sc(p.x,p.y)},{passive:false});</script></body></html>`;
-}
-
 // Renders one block in preview — interactive blocks get real iframe UI
 function PreviewBlock({ block }) {
-  const isInteractive = ["slider","quiz","spin_wheel","scratch"].includes(block.type);
+  const isInteractive = ["slider","quiz","spin_wheel"].includes(block.type);
   const iframeRef = useRef(null);
   const [iframeH, setIframeH] = useState(220);
 
   if (!isInteractive) return <MiniBlock block={block} />;
 
-  const generators = { slider: sliderPreviewHtml, quiz: quizPreviewHtml, spin_wheel: spinWheelPreviewHtml, scratch: scratchPreviewHtml };
+  const generators = { slider: sliderPreviewHtml, quiz: quizPreviewHtml, spin_wheel: spinWheelPreviewHtml };
   const html = generators[block.type]?.(block.props || {}) || "";
 
   function handleLoad() {
@@ -1130,67 +1114,6 @@ function InlinePreview({ body, name, onClose }) {
   );
 }
 
-// ─── HTML Import modal ────────────────────────────────────────────────────────
-function HtmlImportModal({ onImport, onClose }) {
-  const [html, setHtml] = useState("");
-  const [mode, setMode] = useState("paste");
-
-  function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setHtml(ev.target.result || "");
-    reader.readAsText(file);
-  }
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.65)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(4px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "28px", boxShadow: C.shadowLg, width: "100%", maxWidth: 580 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>Import HTML Template</div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Paste or upload an existing email HTML file. It will be added as an editable Raw HTML block.</div>
-          </div>
-          <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 7px", cursor: "pointer", color: C.sub, display: "flex", marginLeft: 12, flexShrink: 0 }}>
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Mode tabs */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-          {[["paste", "Paste HTML"], ["file", "Upload File"]].map(([m, label]) => (
-            <button key={m} onClick={() => setMode(m)}
-              style={{ flex: 1, background: mode === m ? C.accent : C.bg, color: mode === m ? "#fff" : C.sub, border: `1px solid ${mode === m ? C.accent : C.border}`, borderRadius: 8, padding: "7px 0", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "paste" ? (
-          <textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste your HTML email code here…"
-            style={{ width: "100%", boxSizing: "border-box", height: 220, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 11, color: C.text, outline: "none", fontFamily: "monospace", resize: "vertical" }} />
-        ) : (
-          <div style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: "36px 20px", textAlign: "center", background: C.bg }}>
-            <Upload size={26} color={C.muted} style={{ marginBottom: 10 }} />
-            <div style={{ fontSize: 13, color: C.sub, marginBottom: 12 }}>Drop a .html file or click to browse</div>
-            <input type="file" accept=".html,.htm" onChange={handleFileChange}
-              style={{ display: "block", margin: "0 auto", fontSize: 12, color: C.sub }} />
-            {html && <div style={{ marginTop: 12, fontSize: 12, color: C.green, fontWeight: 600 }}>✓ File loaded ({html.length.toLocaleString()} chars)</div>}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <MBtn onClick={onClose} variant="ghost">Cancel</MBtn>
-          <MBtn onClick={() => html.trim() && onImport(html.trim())} disabled={!html.trim()} variant={html.trim() ? "primary" : "disabled"}>
-            <Upload size={12} style={{ marginRight: 5 }} />Import HTML
-          </MBtn>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Email builder view ───────────────────────────────────────────────────────
 function EmailBuilder({ templateId, onBack, onSaved }) {
   const [name,       setName]       = useState("Untitled Template");
@@ -1199,21 +1122,26 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
   const [settings,   setSettings]   = useState({ backgroundColor: "#f4f4f4", containerBg: "#ffffff", containerWidth: 600 });
   const [from,       setFrom]       = useState("");
   const [selectedId, setSelectedId] = useState(null);
-  const [saving,       setSaving]       = useState(false);
-  const [saveStatus,   setSaveStatus]   = useState(null);
-  const [publishError, setPublishError] = useState(null);
-  const [tid,          setTid]          = useState(templateId || null);
+  const [saving,  setSaving]  = useState(false);
+  const [tid,     setTid]     = useState(templateId || null);
+  const toast = useAppToast();
   const [loading,    setLoading]    = useState(!!templateId);
   const [domains,    setDomains]    = useState([]);
   const [fromOpen,   setFromOpen]   = useState(false);
   const [dragIdx,    setDragIdx]    = useState(null);
   const [dropIdx,    setDropIdx]    = useState(null);
-  const [editingName, setEditingName] = useState(false);
-  const [showImport,   setShowImport]   = useState(false);
-  const [previewMode,  setPreviewMode]  = useState(false);
+  const [editingName,   setEditingName]   = useState(false);
+  const [previewMode,   setPreviewMode]   = useState(false);
+  const [previewDevice, setPreviewDevice] = useState("desktop");
+  const [sidebarTab,    setSidebarTab]    = useState("blocks");
+  const [blockSearch,   setBlockSearch]   = useState("");
+  const [settingsTab,   setSettingsTab]   = useState("style");
+  const [blockEditorTab, setBlockEditorTab] = useState("content");
   const fromRef = useRef(null);
 
   const selectedBlock = blocks.find(b => b.id === selectedId) || null;
+
+  useEffect(() => { setBlockEditorTab("content"); }, [selectedId]);
 
   useEffect(() => {
     if (templateId) {
@@ -1256,54 +1184,37 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
     return { version: 1, ...settings, from, blocks };
   }
 
-  async function handleSave(extra = {}) {
-    setPublishError(null);
-
-    // Block publish if no verified domain — auto-save as draft instead
-    let blockedPublish = false;
-    if (extra.status === "published" && domains.length === 0) {
-      blockedPublish = true;
-      setPublishError("No verified domain found. Go to Domains → verify a domain first.");
-      extra = { ...extra, status: "draft" };
-    }
-
-    setSaving(true); setSaveStatus(null);
-    const body = buildBody();
-    const htmlOutput = bodyToHtml(body);
-    const payload = { name, subject, body, htmlOutput, ...extra };
-    try {
-      if (tid) {
-        await store.updateTemplate(tid, payload);
-      } else {
-        const created = await store.createTemplate(payload);
-        setTid(created.id);
-      }
-      if (blockedPublish) {
-        setSaveStatus("draft");
-        setTimeout(() => setSaveStatus(null), 3000);
-      } else {
-        setSaveStatus("saved");
-        onSaved?.();
-        setTimeout(() => setSaveStatus(null), 2500);
-      }
-    } catch {
-      setSaveStatus("error");
-    } finally {
-      setSaving(false);
-    }
+ async function handleSave(extra = {}) {
+  // Block publish if no verified domain — show warning and stop
+  if (extra.status === "published" && domains.length === 0) {
+    toast.warning("No verified domain found. Go to Domains → verify a domain first.");
+    return; // ← just return, don't save as draft silently
   }
+
+  setSaving(true);
+  const body = buildBody();
+  const htmlOutput = bodyToHtml(body);
+  const payload = { name, subject, body, htmlOutput, ...extra };
+  try {
+    if (tid) {
+      await store.updateTemplate(tid, payload);
+    } else {
+      const created = await store.createTemplate(payload);
+      setTid(created.id);
+    }
+    toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+    onSaved?.();
+  } catch {
+    toast.error("Failed to save template.");
+  } finally {
+    setSaving(false);
+  }
+}
 
   function addBlock(type) {
     const nb = { id: generateId(), type, props: { ...BLOCK_DEFAULTS[type] } };
     setBlocks(p => [...p, nb]);
     setSelectedId(nb.id);
-  }
-
-  function handleHtmlImport(html) {
-    const nb = { id: generateId(), type: "html_raw", props: { html, padding: { top: 0, right: 0, bottom: 0, left: 0 } } };
-    setBlocks([nb]);
-    setSelectedId(nb.id);
-    setShowImport(false);
   }
 
   function updateBlock(id, newProps) {
@@ -1384,18 +1295,28 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
 
         <div style={{ flex: 1 }} />
 
-        {saveStatus === "saved" && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Saved</span>}
-        {saveStatus === "draft" && <span style={{ fontSize: 12, color: C.amber, fontWeight: 600 }}>Saved as draft</span>}
-        {saveStatus === "error" && <span style={{ fontSize: 12, color: C.red,   fontWeight: 600 }}>Save failed</span>}
+        {/* Edit / Preview toggle */}
+        <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
+          <button onClick={() => setPreviewMode(false)}
+            style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: !previewMode ? C.accent : "transparent", color: !previewMode ? "#fff" : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+            <Pencil size={10} /> Edit
+          </button>
+          <button onClick={() => setPreviewMode(true)}
+            style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: previewMode ? C.accent : "transparent", color: previewMode ? "#fff" : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+            <Eye size={10} /> Preview
+          </button>
+        </div>
 
-        <button onClick={() => setPreviewMode(p => !p)}
-          style={{ background: previewMode ? C.accentLo : C.surface, border: `1px solid ${previewMode ? C.accent : C.border}`, borderRadius: 9, padding: "6px 14px", fontSize: 13, fontWeight: 600, color: previewMode ? C.accent : C.sub, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-          <Eye size={13} /> {previewMode ? "Editing…" : "Preview"}
-        </button>
-        <button onClick={() => setShowImport(true)}
-          style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "6px 12px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-          <Upload size={13} /> Import HTML
-        </button>
+        {/* Device toggle */}
+        <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
+          {[["desktop", "🖥 Desktop"], ["mobile", "📱 Mobile"]].map(([d, label]) => (
+            <button key={d} onClick={() => setPreviewDevice(d)}
+              style={{ padding: "4px 11px", borderRadius: 6, border: "none", cursor: "pointer", background: previewDevice === d ? C.surface : "transparent", color: previewDevice === d ? C.text : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", outline: previewDevice === d ? `1px solid ${C.border}` : "none" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         <button onClick={() => handleSave({ status: "draft" })} disabled={saving}
           style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "6px 14px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: saving ? 0.7 : 1 }}>
           Save draft
@@ -1406,63 +1327,127 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
         </button>
       </div>
 
-      {/* Publish-blocked banner */}
-      {publishError && (
-        <div style={{ background: C.amberBg, borderBottom: `1px solid ${C.amberBdr}`, padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0, zIndex: 9 }}>
-          <span style={{ fontSize: 12, color: C.amber, fontWeight: 500 }}>{publishError}</span>
-          <button onClick={() => setPublishError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.amber, display: "flex", padding: 2 }}>
-            <X size={13} />
-          </button>
-        </div>
-      )}
-
       {/* Builder body: left palette | center canvas | right settings */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-
-        {/* Inline preview overlay — covers entire builder body */}
-        {previewMode && (
-          <InlinePreview
-            body={buildBody()}
-            name={name}
-            onClose={() => setPreviewMode(false)}
-          />
-        )}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* Left: Component palette */}
-        <div style={{ width: 158, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-          <div style={{ padding: "10px 12px 8px", fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: `1px solid ${C.border}` }}>
-            Components
-          </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
-            {BLOCK_TYPES.map(({ type, label, desc }, idx) => (
-              <div key={type}>
-                {idx === 8 && (
-                  <div style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 4px", borderTop: `1px solid ${C.border}`, marginTop: 4 }}>
-                    ⚡ Interactive
-                  </div>
-                )}
-                <button onClick={() => addBlock(type)}
-                  style={{ width: "100%", background: "transparent", border: `1px solid ${idx >= 8 ? C.accent + "40" : C.border}`, borderRadius: 8, padding: "7px 9px", cursor: "pointer", textAlign: "left", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 9, transition: "background 0.12s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent + "60"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = idx >= 8 ? C.accent + "40" : C.border; }}>
-                  <div style={{ width: 26, height: 26, background: idx >= 8 ? C.accentLo : C.bg, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0, color: idx >= 8 ? C.accent : C.sub, fontWeight: 700 }}>
-                    {BLOCK_ICON[type] || "≡"}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{label}</div>
-                    <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.3 }}>{desc}</div>
-                  </div>
-                </button>
-              </div>
+        <div style={{ width: 192, background: C.surface, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+          {/* Tab switcher */}
+          <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: "flex", gap: 3 }}>
+            {[["blocks", "Blocks"], ["layers", "Layers"]].map(([tab, label]) => (
+              <button key={tab} onClick={() => setSidebarTab(tab)}
+                style={{ flex: 1, background: sidebarTab === tab ? C.accent : "transparent", color: sidebarTab === tab ? "#fff" : C.muted, border: `1px solid ${sidebarTab === tab ? C.accent : C.border}`, borderRadius: 7, padding: "5px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                {tab === "layers" ? <Layers size={10} /> : null}{label}
+              </button>
             ))}
           </div>
-          <div style={{ padding: "8px 10px", fontSize: 10, color: C.muted, borderTop: `1px solid ${C.border}`, textAlign: "center", lineHeight: 1.4 }}>
-            Click to add · Drag to reorder
-          </div>
+
+          {sidebarTab === "blocks" ? (
+            <>
+              {/* Search */}
+              <div style={{ padding: "7px 8px 4px", flexShrink: 0 }}>
+                <div style={{ position: "relative" }}>
+                  <Search size={11} color={C.muted} style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                  <input value={blockSearch} onChange={e => setBlockSearch(e.target.value)} placeholder="Search blocks…"
+                    style={{ width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 8px 5px 26px", fontSize: 11, color: C.text, outline: "none", fontFamily: "inherit" }} />
+                </div>
+              </div>
+
+              {/* Block grid */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 8px" }}>
+                {/* Components */}
+                {BLOCK_TYPES.slice(0, 8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px" }}>Components</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
+                      {BLOCK_TYPES.slice(0, 8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).map(({ type, label }) => (
+                        <button key={type} onClick={() => addBlock(type)}
+                          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 6px 8px", cursor: "pointer", textAlign: "center", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent + "60"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}>
+                          <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.sub, fontWeight: 700 }}>
+                            {BLOCK_ICON[type] || "≡"}
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Interactive */}
+                {BLOCK_TYPES.slice(8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).length > 0 && (
+                  <>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px", borderTop: `1px solid ${C.border}`, marginTop: 2 }}>⚡ Interactive</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                      {BLOCK_TYPES.slice(8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).map(({ type, label }) => (
+                        <button key={type} onClick={() => addBlock(type)}
+                          style={{ background: C.accentLo, border: `1px solid ${C.accent}30`, borderRadius: 8, padding: "9px 6px 8px", cursor: "pointer", textAlign: "center", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = C.accent + "22"; e.currentTarget.style.borderColor = C.accent + "80"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent + "30"; }}>
+                          <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.accent, fontWeight: 700 }}>
+                            {BLOCK_ICON[type] || "≡"}
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {blockSearch && BLOCK_TYPES.filter(b => b.label.toLowerCase().includes(blockSearch.toLowerCase())).length === 0 && (
+                  <div style={{ textAlign: "center", padding: "20px 8px", color: C.muted, fontSize: 11 }}>No blocks match</div>
+                )}
+              </div>
+
+              <div style={{ padding: "7px 10px", fontSize: 10, color: C.muted, borderTop: `1px solid ${C.border}`, textAlign: "center", lineHeight: 1.4 }}>
+                Click to add · Drag to reorder
+              </div>
+            </>
+          ) : (
+            /* Layers tab */
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+              {blocks.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "24px 8px", color: C.muted, fontSize: 11 }}>No blocks yet</div>
+              ) : (
+                blocks.map((block, i) => {
+                  const isSel = selectedId === block.id;
+                  return (
+                    <button key={block.id} onClick={() => setSelectedId(block.id)}
+                      style={{ width: "100%", background: isSel ? C.accentLo : "transparent", border: `1px solid ${isSel ? C.accent + "60" : "transparent"}`, borderRadius: 7, padding: "6px 8px", cursor: "pointer", textAlign: "left", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}
+                      onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = C.bg; }}
+                      onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "transparent"; }}>
+                      <span style={{ fontSize: 9, color: C.muted, width: 14, flexShrink: 0, textAlign: "right" }}>{i + 1}</span>
+                      <div style={{ width: 20, height: 20, background: C.surface, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: isSel ? C.accent : C.sub, fontWeight: 700, flexShrink: 0 }}>
+                        {BLOCK_ICON[block.type] || "≡"}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: isSel ? C.accent : C.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "capitalize" }}>
+                        {block.type.replace(/_/g, " ")}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Center: Canvas */}
-        <div style={{ flex: 1, overflowY: "auto", background: "#0d0f15", display: "flex", flexDirection: "column", alignItems: "center" }}
+        {/* Center: Canvas — edit or preview */}
+        {previewMode ? (
+          <div style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 20px" }}>
+            <div style={{ width: previewDevice === "mobile" ? 390 : settings.containerWidth, maxWidth: "100%", background: settings.containerBg, borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 28px rgba(0,0,0,0.4)", flexShrink: 0 }}>
+              {blocks.length === 0 ? (
+                <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No blocks added yet. Switch to Edit to add content.</div>
+              ) : (
+                blocks.map(block => <PreviewBlock key={block.id} block={block} />)
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 14 }}>
+              {previewDevice === "mobile" ? "390px · mobile preview" : `${settings.containerWidth}px · desktop preview`}
+            </div>
+          </div>
+        ) : (
+        <div style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center" }}
           onClick={() => setSelectedId(null)}>
           <div style={{ width: Math.min(settings.containerWidth + 80, 800), maxWidth: "100%", padding: "24px 40px" }}>
 
@@ -1506,9 +1491,9 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
                 <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 56, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>Subject</span>
                 <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Enter subject line…"
                   style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, padding: "10px 0", fontFamily: "inherit" }} />
-                <button style={{ background: C.accentLo, border: `1px solid ${C.accent}30`, borderRadius: 6, padding: "3px 8px", fontSize: 11, color: C.accent, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 3 }}>
+                {/* <button style={{ background: C.accentLo, border: `1px solid ${C.accent}30`, borderRadius: 6, padding: "3px 8px", fontSize: 11, color: C.accent, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 3 }}>
                   <TagIcon size={10} /> Tags
-                </button>
+                </button> */}
               </div>
             </div>
 
@@ -1546,26 +1531,48 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
             </div>
           </div>
         </div>
+        )}
 
         {/* Right: Settings panel */}
         <div style={{ width: 256, background: C.surface, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", fontSize: 13, fontWeight: 700, color: C.text, borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            {selectedBlock ? (
-              <>
-                <span style={{ textTransform: "capitalize" }}>{selectedBlock.type} Block</span>
+
+          {/* Header + tab switcher */}
+          <div style={{ padding: "10px 14px 8px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text, textTransform: selectedBlock ? "capitalize" : "none" }}>
+                {selectedBlock ? selectedBlock.type.replace(/_/g, " ") + " Block" : "Template Settings"}
+              </span>
+              {selectedBlock && (
                 <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, display: "flex", padding: 2 }}>
                   <X size={13} />
                 </button>
-              </>
-            ) : "Template Settings"}
+              )}
+            </div>
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 3 }}>
+              {(selectedBlock
+                ? [["content", "Content"], ["design", "Design"]]
+                : [["style", "Style"], ["layout", "Layout"]]
+              ).map(([tab, label]) => {
+                const active = selectedBlock ? blockEditorTab === tab : settingsTab === tab;
+                return (
+                  <button key={tab}
+                    onClick={() => selectedBlock ? setBlockEditorTab(tab) : setSettingsTab(tab)}
+                    style={{ flex: 1, background: active ? C.accent : "transparent", color: active ? "#fff" : C.muted, border: `1px solid ${active ? C.accent : C.border}`, borderRadius: 7, padding: "4px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
           <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px" }}>
             {selectedBlock ? (
-              <BlockEditor block={selectedBlock} onChange={newProps => updateBlock(selectedBlock.id, newProps)} />
-            ) : (
+              <BlockEditor block={selectedBlock} onChange={newProps => { updateBlock(selectedBlock.id, newProps); }} tab={blockEditorTab} />
+            ) : settingsTab === "style" ? (
               <>
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Colors</div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Colors</div>
                   <div style={{ marginBottom: 10 }}>
                     <PropLabel>Page Background</PropLabel>
                     <ColInput value={settings.backgroundColor} onChange={v => setSettings(p => ({ ...p, backgroundColor: v }))} />
@@ -1575,20 +1582,24 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
                     <ColInput value={settings.containerBg} onChange={v => setSettings(p => ({ ...p, containerBg: v }))} />
                   </div>
                 </div>
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Layout</div>
-                  <div style={{ marginBottom: 10 }}>
-                    <PropLabel>Container Width</PropLabel>
-                    <NumInput value={settings.containerWidth} onChange={v => setSettings(p => ({ ...p, containerWidth: v }))} min={320} max={900} unit="px" />
-                  </div>
-                </div>
-                <div style={{ background: C.greenBg, border: `1px solid ${C.greenBdr}`, borderRadius: 9, padding: "12px 14px", marginBottom: 16 }}>
+                <div style={{ background: C.greenBg, border: `1px solid ${C.greenBdr}`, borderRadius: 9, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 6 }}>{"{"+"x"+"}"} Dynamic Variables</div>
                   <div style={{ fontSize: 11, color: C.green, lineHeight: 1.6 }}>
-                    Use <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{firstName}}"}</code>, <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{company}}"}</code>, or any <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{variable}}"}</code> inside your text blocks for personalization.
+                    Use <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{firstName}}"}</code>, <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{company}}"}</code>, or any <code style={{ background: "rgba(22,163,74,0.12)", padding: "1px 4px", borderRadius: 3 }}>{"{{variable}}"}</code> in text blocks.
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: C.muted, textAlign: "center", lineHeight: 1.5 }}>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Layout</div>
+                <div style={{ marginBottom: 14 }}>
+                  <PropLabel>Container Width</PropLabel>
+                  <NumInput value={settings.containerWidth} onChange={v => setSettings(p => ({ ...p, containerWidth: v }))} min={320} max={900} unit="px" />
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px" }}>
+                  Standard email width is <strong style={{ color: C.sub }}>600px</strong>. Mobile clients will scale to fit screen width.
+                </div>
+                <div style={{ marginTop: 14, fontSize: 12, color: C.muted, textAlign: "center", lineHeight: 1.5 }}>
                   Select a block on the canvas to edit its properties.
                 </div>
               </>
@@ -1597,8 +1608,6 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
         </div>
 
       </div>
-
-      {showImport && <HtmlImportModal onImport={handleHtmlImport} onClose={() => setShowImport(false)} />}
     </div>
   );
 }
@@ -1616,14 +1625,15 @@ function TemplateList({ onOpenBuilder }) {
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
   const [statusFilter,   setStatusFilter]   = useState("all");
+  const [cardView,       setCardView]       = useState(false);
   const [menuOpenId,     setMenuOpenId]     = useState(null);
   const [statusDropOpen, setStatusDropOpen] = useState(false);
-  const [deleteTarget,   setDeleteTarget]   = useState(null);
   const [renameTarget,   setRenameTarget]   = useState(null);
   const [detailsTarget,  setDetailsTarget]  = useState(null);
   const [sendTestTarget, setSendTestTarget] = useState(null);
-  const [deleting,       setDeleting]       = useState(false);
   const statusRef = useRef(null);
+  const toast   = useAppToast();
+  const confirm = useConfirmDialog();
 
   useEffect(() => { load(); }, []);
 
@@ -1643,17 +1653,21 @@ function TemplateList({ onOpenBuilder }) {
     finally { setLoading(false); }
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+  async function handleDelete(template) {
+    const ok = await confirm({
+      title: `Delete "${template.name}"?`,
+      description: "This cannot be undone.",
+      confirmText: "Delete template",
+      cancelText: "Cancel",
+      type: "danger",
+    });
+    if (!ok) return;
     try {
-      await store.deleteTemplate(deleteTarget.id);
-      setTemplates(p => p.filter(t => t.id !== deleteTarget.id));
-      setDeleteTarget(null);
+      await store.deleteTemplate(template.id);
+      setTemplates(p => p.filter(t => t.id !== template.id));
+      toast.success("Template deleted.");
     } catch {
-      alert("Failed to delete template.");
-    } finally {
-      setDeleting(false);
+      toast.error("Failed to delete template.");
     }
   }
 
@@ -1661,8 +1675,9 @@ function TemplateList({ onOpenBuilder }) {
     try {
       const copy = await store.duplicateTemplate(id);
       setTemplates(p => [copy, ...p]);
+      toast.success("Template duplicated.");
     } catch {
-      alert("Failed to duplicate template.");
+      toast.error("Failed to duplicate template.");
     }
   }
 
@@ -1671,8 +1686,9 @@ function TemplateList({ onOpenBuilder }) {
       const updated = await store.updateTemplate(template.id, { name: newName });
       setTemplates(p => p.map(t => t.id === template.id ? { ...t, name: updated.name } : t));
       setRenameTarget(null);
+      toast.success("Template renamed.");
     } catch {
-      alert("Failed to rename template.");
+      toast.error("Failed to rename template.");
     }
   }
 
@@ -1681,8 +1697,9 @@ function TemplateList({ onOpenBuilder }) {
     try {
       const updated = await store.updateTemplate(template.id, { status: newStatus });
       setTemplates(p => p.map(t => t.id === template.id ? { ...t, status: updated.status } : t));
+      toast.success(newStatus === "published" ? "Template published." : "Moved to draft.");
     } catch {
-      alert("Failed to update status.");
+      toast.error("Failed to update status.");
     }
   }
 
@@ -1694,12 +1711,20 @@ function TemplateList({ onOpenBuilder }) {
 
   const currentLabel = STATUS_OPTIONS.find(o => o.value === statusFilter)?.label ?? "All Statuses";
 
+  const totalCount     = templates.length;
+  const publishedCount = templates.filter(t => t.status === "published").length;
+  const draftCount     = templates.filter(t => t.status === "draft").length;
+  const thisWeekCount  = templates.filter(t => {
+    const d = new Date(t.createdAt || t.updatedAt || 0);
+    return Date.now() - d.getTime() < 7 * 24 * 60 * 60 * 1000;
+  }).length;
+
   return (
     <div style={{ minHeight: "100%", background: C.bg, padding: "32px 36px", fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} input::placeholder{color:#94a3b8!important}`}</style>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28, gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em" }}>Templates</h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: C.sub }}>Design and manage your email templates.</p>
@@ -1712,22 +1737,39 @@ function TemplateList({ onOpenBuilder }) {
           </button>
           <button onClick={() => onOpenBuilder(null)}
             style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(99,102,241,0.28)" }}>
-            <Plus size={15} /> New builder
+            <Plus size={15} /> New template
           </button>
         </div>
       </div>
 
-      {/* Search + Filter */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
+      {/* Stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+        {[
+          { label: "Total templates", value: totalCount, sub: thisWeekCount > 0 ? `+${thisWeekCount} this week` : null, subColor: C.green, valueColor: C.text },
+          { label: "Published",       value: publishedCount, valueColor: C.green },
+          { label: "Drafts",          value: draftCount,     valueColor: C.amber },
+        ].map(({ label, value, sub, subColor, valueColor }) => (
+          <div key={label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 22px" }}>
+            <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginBottom: 8 }}>{label}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 28, fontWeight: 800, color: valueColor, lineHeight: 1 }}>{value}</span>
+              {sub && <span style={{ fontSize: 12, fontWeight: 600, color: subColor }}>{sub}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + Filter + View toggle */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
         <div style={{ flex: 1, position: "relative" }}>
           <Search size={14} color={C.muted} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates…"
-            style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 13px 10px 38px", fontSize: 13, color: C.text, outline: "none", fontFamily: "inherit", boxSizing: "border-box", boxShadow: C.shadow }} />
+            style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 13px 10px 38px", fontSize: 13, color: C.text, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
         </div>
         <div ref={statusRef} style={{ position: "relative", flexShrink: 0 }}>
           <button onClick={() => setStatusDropOpen(p => !p)}
-            style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.text, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, minWidth: 148, boxShadow: C.shadow }}>
-            <span style={{ flex: 1, textAlign: "left" }}>{currentLabel}</span>
+            style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.text, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, minWidth: 148 }}>
+            <span style={{ flex: 1, textAlign: "left", color: C.sub }}>{currentLabel}</span>
             <ChevronDown size={13} color={C.muted} style={{ transform: statusDropOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
           </button>
           {statusDropOpen && (
@@ -1740,6 +1782,20 @@ function TemplateList({ onOpenBuilder }) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* View mode toggle */}
+        <div style={{ display: "flex", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+          <button onClick={() => setCardView(true)}
+            title="Card view"
+            style={{ width: 40, height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: cardView ? C.accentLo : "transparent", border: "none", borderRight: `1px solid ${C.border}`, cursor: "pointer", color: cardView ? C.accent : C.muted }}>
+            <LayoutGrid size={15} />
+          </button>
+          <button onClick={() => setCardView(false)}
+            title="List view"
+            style={{ width: 40, height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: !cardView ? C.accentLo : "transparent", border: "none", cursor: "pointer", color: !cardView ? C.accent : C.muted }}>
+            <ListIcon size={15} />
+          </button>
         </div>
       </div>
 
@@ -1769,9 +1825,9 @@ function TemplateList({ onOpenBuilder }) {
         </div>
       )}
 
-      {/* Grid */}
-      {!loading && filtered.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+      {/* Card grid / List */}
+      {!loading && filtered.length > 0 && (cardView ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
           {filtered.map(t => (
             <TemplateCard
               key={t.id}
@@ -1783,17 +1839,40 @@ function TemplateList({ onOpenBuilder }) {
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
               onPublish={() => handlePublishToggle(t)}
-              onDeleteRequest={() => setDeleteTarget(t)}
+              onDeleteRequest={() => handleDelete(t)}
               onSendTest={() => setSendTestTarget(t)}
             />
           ))}
         </div>
-      )}
+      ) : (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+          {/* Table header */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px 140px 44px", gap: 0, padding: "10px 16px", borderBottom: `1px solid ${C.border}`, background: C.card, borderRadius: "12px 12px 0 0" }}>
+            {["Template", "Subject", "Status", "Updated", ""].map((h, i) => (
+              <div key={i} style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
+            ))}
+          </div>
+          {/* Rows */}
+          {filtered.map((t, idx) => (
+            <TemplateRow
+              key={t.id}
+              template={t}
+              isLast={idx === filtered.length - 1}
+              menuOpenId={menuOpenId}
+              onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
+              onEdit={() => onOpenBuilder(t.id)}
+              onDuplicate={() => handleDuplicate(t.id)}
+              onRename={() => setRenameTarget(t)}
+              onDetails={() => setDetailsTarget(t)}
+              onPublish={() => handlePublishToggle(t)}
+              onDeleteRequest={() => handleDelete(t)}
+              onSendTest={() => setSendTestTarget(t)}
+            />
+          ))}
+        </div>
+      ))}
 
       {/* Modals */}
-      {deleteTarget && (
-        <DeleteModal template={deleteTarget} onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)} busy={deleting} />
-      )}
       {renameTarget && (
         <RenameModal template={renameTarget} onConfirm={n => handleRename(renameTarget, n)} onCancel={() => setRenameTarget(null)} />
       )}
