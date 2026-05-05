@@ -8,10 +8,12 @@ import T from "../theme";
 import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
+import { useAppToast } from "../context/ToastContext";
 
 // ─── Center panel: contact record body ───────────────────────────────────────
 export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   const [modal, setModal] = useState(null); // "log" | "stage" | "edit"
+  const toast = useAppToast();
 
   if (!contact) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: T.muted, fontSize: 13 }}>
@@ -28,8 +30,9 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       const refreshed = await db.getContact(contact.id);
       onUpdate(refreshed);
       setModal(null);
+      toast.success("Activity logged.");
     } catch {
-      alert("Failed to log activity.");
+      toast.error("Failed to log activity.");
     }
   }
 
@@ -41,8 +44,9 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       const refreshed = await db.getContact(updated.id);
       onUpdate(refreshed);
       setModal(null);
+      toast.success("Stage updated.");
     } catch {
-      alert("Failed to update stage.");
+      toast.error("Failed to update stage.");
     }
   }
 
@@ -51,8 +55,9 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       const refreshed = await db.updateContact(updated.id, updated);
       onUpdate(refreshed);
       setModal(null);
+      toast.success("Contact saved.");
     } catch {
-      alert("Failed to update contact.");
+      toast.error("Failed to update contact.");
     }
   }
 

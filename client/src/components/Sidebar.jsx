@@ -3,6 +3,7 @@ import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
 import T from "../theme";
+import { useAppToast } from "../context/ToastContext";
 import CLIENTS from "../data/clients";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
@@ -18,6 +19,7 @@ export default function Sidebar({
   const [addModal,    setAddModal]    = useState(false);
   const [editContact, setEditContact] = useState(null);
   const listRef = useRef(null);
+  const toast = useAppToast();
 
   const client = CLIENTS.find(c => c.id === clientId);
   const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -97,9 +99,10 @@ export default function Sidebar({
       const saved = await db.createContact(nc);
       setContacts(prev => [saved, ...prev]);
       setAddModal(false);
+      toast.success("Contact added.");
     } catch (err) {
       console.error("Failed to save contact:", err);
-      alert("Failed to save contact. Please try again.");
+      toast.error("Failed to save contact.");
     }
   }
 
@@ -130,8 +133,9 @@ export default function Sidebar({
               const refreshed = await db.updateContact(updated.id, updated);
               onSelect(refreshed);
               setEditContact(null);
+              toast.success("Contact saved.");
             } catch {
-              alert("Failed to save contact.");
+              toast.error("Failed to save contact.");
               setEditContact(null);
             }
           }}

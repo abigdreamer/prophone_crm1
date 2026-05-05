@@ -12,6 +12,7 @@ import contactsRoutes      from './routes/contacts.routes.js';
 import domainsRoutes       from './routes/domains.routes.js';
 import emailTemplateRoutes from './routes/emailTemplates.routes.js';
 import interactiveRoutes   from './routes/interactive.routes.js';
+import campaignRoutes      from './routes/campaigns.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -43,6 +44,7 @@ app.use('/api/contacts',            contactsRoutes);
 app.use('/api/domains',             domainsRoutes);
 app.use('/api/email-templates',     emailTemplateRoutes);
 app.use('/api/interactive/sessions', interactiveRoutes);
+app.use('/api/campaigns',           campaignRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;

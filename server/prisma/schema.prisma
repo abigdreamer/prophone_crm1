@@ -32,6 +32,7 @@ model Client {
   contacts       Contact[]
   contactGroups  ContactGroup[]
   emailTemplates EmailTemplate[]
+  campaigns      Campaign[]
 
   @@map("clients")
 }
@@ -64,7 +65,7 @@ model Contact {
   title          String     @default("")
   website        String     @default("")
   city           String     @default("")
-  trucks         Int        @default(0) // 
+  trucks         Int        @default(0)
   lifecycleStage String     @default("new") @map("lifecycle_stage")
   leadScore      Int        @default(0) @map("lead_score")
   status         String     @default("active")
@@ -85,6 +86,7 @@ model Contact {
   createdAt      DateTime   @default(now()) @map("created_at")
   client         Client?    @relation(fields: [clientId], references: [id])
   activities     Activity[]
+  campaignRecipients CampaignRecipient[]
 
   contactGroupId String? @map("contact_group_id")
   contactGroup   ContactGroup? @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
@@ -134,6 +136,7 @@ model EmailTemplate {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  campaigns    Campaign[]
 
   @@index([clientId])
   @@map("email_templates")
@@ -155,4 +158,73 @@ model InteractiveSession {
   @@index([contactId])
   @@index([templateId])
   @@map("interactive_sessions")
+}
+
+model Campaign {
+  id                String    @id @default(uuid())
+  clientId          String?   @map("client_id")
+  name              String
+  type              String    @default("regular")
+  status            String    @default("draft")
+  templateId        String?   @map("template_id")
+  templateIdB       String?   @map("template_id_b")
+  subject           String    @default("")
+  subjectB          String    @default("") @map("subject_b")
+  fromName          String    @default("") @map("from_name")
+  fromEmail         String    @default("") @map("from_email")
+  sentAt            DateTime? @map("sent_at")
+  completedAt       DateTime? @map("completed_at")
+  recipientsCount   Int       @default(0) @map("recipients_count")
+  sentCount         Int       @default(0) @map("sent_count")
+  deliveredCount    Int       @default(0) @map("delivered_count")
+  openedCount       Int       @default(0) @map("opened_count")
+  clickedCount      Int       @default(0) @map("clicked_count")
+  bouncedCount      Int       @default(0) @map("bounced_count")
+  unsubscribedCount Int       @default(0) @map("unsubscribed_count")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  client     Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  template   EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipients CampaignRecipient[]
+
+  @@index([clientId])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String    @id @default(uuid())
+  campaignId String    @map("campaign_id")
+  contactId  String    @map("contact_id")
+  abVariant  String?   @map("ab_variant")
+  status     String    @default("pending")
+  messageId  String?   @map("message_id")
+  sentAt     DateTime? @map("sent_at")
+  openedAt   DateTime? @map("opened_at")
+  clickedAt  DateTime? @map("clicked_at")
+  bouncedAt  DateTime? @map("bounced_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  events   CampaignRecipientEvent[]
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId])
+  @@map("campaign_recipients")
+}
+
+model CampaignRecipientEvent {
+  id          String   @id @default(uuid())
+  recipientId String   @map("recipient_id")
+  campaignId  String   @map("campaign_id")
+  event       String
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  metadata    Json?
+
+  recipient CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId])
+  @@index([campaignId])
+  @@map("campaign_recipient_events")
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAppToast } from "../../context/ToastContext";
 import Modal from "../ui/Modal";
 import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
@@ -11,9 +12,10 @@ export default function LogActivityModal({ contact, onSave, onClose, currentUser
   const [type,   setType]   = useState("call_made");
   const [note,   setNote]   = useState("");
   const [saving, setSaving] = useState(false);
+  const toast = useAppToast();
 
   async function handleSave() {
-    if (!note.trim()) { alert("Please add a note."); return; }
+    if (!note.trim()) { toast.warning("Please add a note."); return; }
     setSaving(true);
     try {
       await onSave({

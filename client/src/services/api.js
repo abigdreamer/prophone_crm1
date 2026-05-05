@@ -188,3 +188,72 @@ export async function getContactInteractiveSessions(contactId) {
   const r = await request('GET', `/api/interactive/sessions/contact/${contactId}`);
   return r.data ?? r;
 }
+
+// ── Campaigns ─────────────────────────────────────────────────────────────────
+
+export async function getCampaigns() {
+  const { clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  const r = await request('GET', `/api/campaigns?${params}`);
+  return r.data ?? r;
+}
+
+export async function getCampaign(id) {
+  const r = await request('GET', `/api/campaigns/${id}`);
+  return r.data ?? r;
+}
+
+export async function createCampaign(data) {
+  const r = await request('POST', '/api/campaigns', data);
+  return r.data ?? r;
+}
+
+export async function updateCampaign(id, data) {
+  const r = await request('PATCH', `/api/campaigns/${id}`, data);
+  return r.data ?? r;
+}
+
+export async function deleteCampaign(id) {
+  return request('DELETE', `/api/campaigns/${id}`);
+}
+
+export async function getCampaignRecipients(id, params = {}) {
+  const q = new URLSearchParams(params).toString();
+  const r = await request('GET', `/api/campaigns/${id}/recipients${q ? '?' + q : ''}`);
+  return r.data ?? r;
+}
+
+export async function addCampaignRecipients(id, data) {
+  const r = await request('POST', `/api/campaigns/${id}/recipients`, data);
+  return r.data ?? r;
+}
+
+export async function removeCampaignRecipients(id) {
+  return request('DELETE', `/api/campaigns/${id}/recipients`);
+}
+
+export async function previewCampaignRecipients(campaignId, filter) {
+  const { clientId } = getActivePool();
+  const params = new URLSearchParams({ filter, clientId: clientId || '' });
+  const r = await request('GET', `/api/campaigns/${campaignId}/recipients/preview?${params}`);
+  return r.data ?? r;
+}
+
+export async function sendCampaign(id) {
+  const r = await request('POST', `/api/campaigns/${id}/send`);
+  return r.data ?? r;
+}
+
+export async function getCampaignAnalytics(id) {
+  const r = await request('GET', `/api/campaigns/${id}/analytics`);
+  return r.data ?? r;
+}
+
+export async function getPublishedTemplates() {
+  const { clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  const r = await request('GET', `/api/campaigns/templates/published?${params}`);
+  return r.data ?? r;
+}

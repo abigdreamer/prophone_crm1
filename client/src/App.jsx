@@ -15,6 +15,8 @@ import ContactsPage from "./pages/ContactsPage";
 import DomainsPage from "./pages/DomainsPage";
 import ClientsPage from "./pages/ClientsPage";
 import TemplatesPage from "./pages/TemplatesPage";
+import CampaignsPage from "./pages/CampaignsPage";
+import CampaignDetailPage from "./pages/CampaignDetailPage";
 import ContactDetailPanel from "./components/ContactDetailPanel";
 
 import T from "./theme";
@@ -260,12 +262,14 @@ function AppLayout({ currentUser, onSignOut }) {
                     currentUser={currentUser}
                   />
                 } />
-                <Route path="/domains"    element={<DomainsPage />} />
-                <Route path="/templates" element={<TemplatesPage />} />
-                <Route path="/reports"   element={<ComingSoon page="reports" />} />
-                <Route path="/settings"  element={<ComingSoon page="settings" />} />
-                <Route path="/clients"  element={<ClientsPage />} />
-                <Route path="*"         element={<Navigate to="/dashboard" replace />} />
+                <Route path="/domains"        element={<DomainsPage />} />
+                <Route path="/templates"     element={<TemplatesPage />} />
+                <Route path="/campaigns"     element={<CampaignsPage />} />
+                <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+                <Route path="/reports"       element={<ComingSoon page="reports" />} />
+                <Route path="/settings"      element={<ComingSoon page="settings" />} />
+                <Route path="/clients"       element={<ClientsPage />} />
+                <Route path="*"             element={<Navigate to="/dashboard" replace />} />
               </Routes>
             )}
           </div>
