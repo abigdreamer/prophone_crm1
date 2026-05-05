@@ -15,6 +15,7 @@ import ContactsPage from "./pages/ContactsPage";
 import DomainsPage from "./pages/DomainsPage";
 import ClientsPage from "./pages/ClientsPage";
 import TemplatesPage from "./pages/TemplatesPage";
+import ContactDetailPanel from "./components/ContactDetailPanel";
 
 import T from "./theme";
 import { useAuth } from "./hooks/useAuth";
@@ -70,7 +71,6 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleSelect = useCallback((c) => {
     setSelected(c);
     setCharted(c);
-    if (c) setSearch("");
   }, []);
 
   const handleUpdate = useCallback((updated) => {
@@ -230,36 +230,44 @@ function AppLayout({ currentUser, onSignOut }) {
           <div style={{ flex: 1, overflowY: "auto", padding: 20, position: "relative" }}>
             {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
 
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={
-                <DashboardPage
-                  pool={pool} clientId={clientId}
-                  viewMode={viewMode}
-                  setViewMode={(v) => { setViewMode(v); navigate("/contacts"); }}
-                  setPage={navigateTo}
-                  contacts={contacts}
-                  currentUser={currentUser}
-                />
-              } />
-              <Route path="/contacts" element={
-                <ContactsPage
-                  pool={pool} clientId={clientId}
-                  viewMode={viewMode}
-                  onSelect={handleSelect}
-                  selected={selected}
-                  search={search}
-                  contacts={contacts} setContacts={setContacts}
-                  currentUser={currentUser}
-                />
-              } />
-              <Route path="/domains"    element={<DomainsPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
-              <Route path="/reports"   element={<ComingSoon page="reports" />} />
-              <Route path="/settings"  element={<ComingSoon page="settings" />} />
-              <Route path="/clients"  element={<ClientsPage />} />
-              <Route path="*"         element={<Navigate to="/dashboard" replace />} />
-            </Routes>
+            {isContacts && selected ? (
+              <ContactDetailPanel
+                contact={selected}
+                onUpdate={handleUpdate}
+                currentUser={currentUser}
+              />
+            ) : (
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={
+                  <DashboardPage
+                    pool={pool} clientId={clientId}
+                    viewMode={viewMode}
+                    setViewMode={(v) => { setViewMode(v); navigate("/contacts"); }}
+                    setPage={navigateTo}
+                    contacts={contacts}
+                    currentUser={currentUser}
+                  />
+                } />
+                <Route path="/contacts" element={
+                  <ContactsPage
+                    pool={pool} clientId={clientId}
+                    viewMode={viewMode}
+                    onSelect={handleSelect}
+                    selected={selected}
+                    search={search}
+                    contacts={contacts} setContacts={setContacts}
+                    currentUser={currentUser}
+                  />
+                } />
+                <Route path="/domains"    element={<DomainsPage />} />
+                <Route path="/templates" element={<TemplatesPage />} />
+                <Route path="/reports"   element={<ComingSoon page="reports" />} />
+                <Route path="/settings"  element={<ComingSoon page="settings" />} />
+                <Route path="/clients"  element={<ClientsPage />} />
+                <Route path="*"         element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            )}
           </div>
         </div>
 

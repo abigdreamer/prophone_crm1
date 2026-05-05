@@ -24,12 +24,8 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  async function handleSave() {
-    if (!form.firstName || !form.email) {
-      alert("First name and email are required.");
-      return;
-    }
-    const saved = {
+  function buildPayload() {
+    return {
       ...form,
       id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
       leadScore:     contact?.leadScore     || 10,
@@ -51,16 +47,34 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
       trucks:        parseInt(form.trucks)        || 1,
       contractValue: parseInt(form.contractValue) || 0,
     };
+  }
+
+  // Used by all dismiss paths in edit mode — saves without blocking validation
+  async function doSave() {
     setSaving(true);
     try {
-      await onSave(saved);
+      await onSave(buildPayload());
+    } catch {
+      onClose();
     } finally {
       setSaving(false);
     }
   }
 
+  // Used by the explicit Save button — validates required fields first
+  async function handleSave() {
+    if (!form.firstName || !form.email) {
+      alert("First name and email are required.");
+      return;
+    }
+    await doSave();
+  }
+
+  // In edit mode every dismiss path saves; in add mode it just closes
+  const handleClose = isEdit ? doSave : onClose;
+
   return (
-    <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={onClose} width={600}>
+    <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={handleClose} width={600}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Input label="First Name *" value={form.firstName}     onChange={v => set("firstName",     v)} placeholder="Mike" />
         <Input label="Last Name"    value={form.lastName}      onChange={v => set("lastName",      v)} placeholder="Johnson" />
@@ -106,7 +120,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-        <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancel</Btn>
+        {!isEdit && <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancel</Btn>}
         <Btn onClick={handleSave} disabled={saving}>
           {saving
             ? <span style={{ display: "flex", alignItems: "center", gap: 7 }}>

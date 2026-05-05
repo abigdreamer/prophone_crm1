@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
@@ -13,9 +13,11 @@ export default function Sidebar({
   pool, clientId, viewMode, selected, onSelect,
   search, setSearch, searchRef, contacts, setContacts, currentUser,
 }) {
-  const [stageF,    setStageF]    = useState("all");
-  const [sortF,     setSortF]     = useState("recent");
-  const [addModal,  setAddModal]  = useState(false);
+  const [stageF,      setStageF]      = useState("all");
+  const [sortF,       setSortF]       = useState("recent");
+  const [addModal,    setAddModal]    = useState(false);
+  const [editContact, setEditContact] = useState(null);
+  const listRef = useRef(null);
 
   const client = CLIENTS.find(c => c.id === clientId);
   const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -50,6 +52,46 @@ export default function Sidebar({
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
+  function handleSearchKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (selected) setEditContact(selected);
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
+    e.preventDefault();
+    const visible = filtered.slice(0, 150);
+    if (visible.length === 0) return;
+    const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
+
+    let nextIdx;
+    if (e.key === "ArrowDown") {
+      nextIdx = currentIdx === -1 ? 0 : Math.min(currentIdx + 1, visible.length - 1);
+    } else if (e.key === "ArrowUp") {
+      if (currentIdx <= 0) return;
+      nextIdx = currentIdx - 1;
+    } else {
+      // PageDown / PageUp — compute page size from actual DOM dimensions
+      const container = listRef.current;
+      const firstRow  = container?.querySelector("[data-contact-id]");
+      const pageSize  = (container && firstRow)
+        ? Math.max(1, Math.floor(container.clientHeight / firstRow.offsetHeight))
+        : 10;
+      if (e.key === "PageDown") {
+        nextIdx = currentIdx === -1 ? pageSize - 1 : Math.min(currentIdx + pageSize, visible.length - 1);
+      } else {
+        nextIdx = currentIdx === -1 ? 0 : Math.max(currentIdx - pageSize, 0);
+      }
+    }
+
+    const next = visible[nextIdx];
+    onSelect(next);
+    requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector(`[data-contact-id="${next.id}"]`);
+      el?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
   async function handleAdd(nc) {
     try {
       const saved = await db.createContact(nc);
@@ -76,6 +118,26 @@ export default function Sidebar({
           onClose={() => setAddModal(false)}
           pool={pool}
           clientId={clientId}
+          currentUser={currentUser}
+        />
+      )}
+
+      {editContact && (
+        <ContactModal
+          contact={editContact}
+          onSave={async (updated) => {
+            try {
+              const refreshed = await db.updateContact(updated.id, updated);
+              onSelect(refreshed);
+              setEditContact(null);
+            } catch {
+              alert("Failed to save contact.");
+              setEditContact(null);
+            }
+          }}
+          onClose={() => setEditContact(null)}
+          pool={editContact.pool}
+          clientId={editContact.clientId}
           currentUser={currentUser}
         />
       )}
@@ -120,6 +182,7 @@ export default function Sidebar({
             ref={searchRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Search name, company, city…"
             style={{
               width: "100%", boxSizing: "border-box",
@@ -171,7 +234,7 @@ export default function Sidebar({
       </div>
 
       {/* Contact list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
         {filtered.length === 0 ? (
           <div style={{ padding: "20px 14px", textAlign: "center", color: T.muted, fontSize: 12 }}>
             No contacts match.
@@ -184,6 +247,7 @@ export default function Sidebar({
             return (
               <div
                 key={c.id}
+                data-contact-id={c.id}
                 onClick={() => onSelect(c)}
                 style={{
                   padding: "10px 13px",
