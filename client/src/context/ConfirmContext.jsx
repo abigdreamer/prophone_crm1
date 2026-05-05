@@ -1,16 +1,18 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
-import T from "../theme";
+import { useTheme } from "./ThemeContext";
 
 const ConfirmCtx = createContext(null);
 
-const TYPE = {
-  danger:  { color: T.red,    icon: "✕" },
-  warning: { color: T.amber,  icon: "⚠" },
-  default: { color: T.accent, icon: "?" },
+const TYPE_META = {
+  danger:  { icon: "✕", colorKey: "red"    },
+  warning: { icon: "⚠", colorKey: "amber"  },
+  default: { icon: "?", colorKey: "accent" },
 };
 
 function ConfirmDialog({ title, description, confirmText, cancelText, type, onConfirm, onCancel }) {
-  const { color, icon } = TYPE[type] || TYPE.default;
+  const T = useTheme();
+  const meta = TYPE_META[type] || TYPE_META.default;
+  const color = T[meta.colorKey];
 
   useEffect(() => {
     function handle(e) {
@@ -25,7 +27,7 @@ function ConfirmDialog({ title, description, confirmText, cancelText, type, onCo
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 9000,
-        background: "rgba(11,12,16,0.72)",
+        background: "rgba(0,0,0,0.65)",
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 20, backdropFilter: "blur(4px)",
         fontFamily: "'Inter','DM Sans',system-ui,sans-serif",
@@ -37,13 +39,12 @@ function ConfirmDialog({ title, description, confirmText, cancelText, type, onCo
       <div style={{
         background: T.card, border: `1px solid ${T.border}`,
         borderRadius: 14, padding: "24px 24px 20px",
-        boxShadow: "0 8px 40px rgba(0,0,0,0.65)",
+        boxShadow: T.shadowLg,
         width: "100%", maxWidth: 420,
         animation: "confirmSlideUp 0.18s ease",
       }}>
         <style>{`@keyframes confirmSlideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
-        {/* Icon + content */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 22 }}>
           <div style={{
             width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
@@ -52,7 +53,7 @@ function ConfirmDialog({ title, description, confirmText, cancelText, type, onCo
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 14, fontWeight: 800, color,
           }}>
-            {icon}
+            {meta.icon}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6, lineHeight: 1.3 }}>
@@ -66,7 +67,6 @@ function ConfirmDialog({ title, description, confirmText, cancelText, type, onCo
           </div>
         </div>
 
-        {/* Actions */}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button
             onClick={onCancel}

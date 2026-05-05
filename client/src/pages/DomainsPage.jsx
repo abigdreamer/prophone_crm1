@@ -4,7 +4,7 @@ import {
   X, AlertTriangle, ExternalLink,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import * as db from "../services/api";
 import CLIENTS from "../data/clients";
 import { usePool } from "../context/PoolContext";
@@ -20,6 +20,7 @@ function parseRec(json) {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status, small }) {
+  const T = useTheme();
   const cfg = {
     verified: { color: T.green,  icon: "✓", label: "VERIFIED" },
     pending:  { color: T.amber,  icon: "●", label: "PENDING"  },
@@ -42,6 +43,7 @@ function StatusBadge({ status, small }) {
 
 // ── Client chip ───────────────────────────────────────────────────────────────
 function ClientChip({ clientId }) {
+  const T = useTheme();
   const c = clientOf(clientId);
   if (!clientId || !c) return (
     <span style={{
@@ -60,6 +62,7 @@ function ClientChip({ clientId }) {
 
 // ── Copy button ───────────────────────────────────────────────────────────────
 function CopyBtn({ text, size = 13 }) {
+  const T = useTheme();
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -77,6 +80,7 @@ function CopyBtn({ text, size = 13 }) {
 
 // ── DNS record block (used in detail panel) ───────────────────────────────────
 function DnsBlock({ label, recordJson, status }) {
+  const T = useTheme();
   const rec = parseRec(recordJson);
   if (!rec.value) return null;
   const verified = status === "verified";
@@ -116,6 +120,7 @@ function DnsBlock({ label, recordJson, status }) {
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
+  const T = useTheme();
   const [verifying,  setVerifying]  = useState(false);
   const [deleting,   setDeleting]   = useState(false);
   const [fromEmail,  setFromEmail]  = useState(domain.defaultFromEmail || "");
@@ -329,6 +334,7 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
 
 // ── Domain row ────────────────────────────────────────────────────────────────
 function DomainRow({ domain, selected, onClick }) {
+  const T = useTheme();
   const isSelected = selected?.id === domain.id;
   return (
     <div
@@ -385,6 +391,7 @@ function DomainRow({ domain, selected, onClick }) {
 
 // ── Add domain modal ──────────────────────────────────────────────────────────
 function AddDomainModal({ onClose, onAdded }) {
+  const T = useTheme();
   const [name,      setName]      = useState("");
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
@@ -506,6 +513,7 @@ function AddDomainModal({ onClose, onAdded }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function DomainsPage() {
+  const T = useTheme();
   const { pool, clientId } = usePool();
   const [domains,    setDomains]    = useState([]);
   const [loading,    setLoading]    = useState(true);

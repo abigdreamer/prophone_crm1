@@ -2,18 +2,18 @@ import { useState, useRef } from "react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import CLIENTS from "../data/clients";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 
-// ─── Left sidebar — contact list ──────────────────────────────────────────────
 export default function Sidebar({
   pool, clientId, viewMode, selected, onSelect,
   search, setSearch, searchRef, contacts, setContacts, currentUser,
 }) {
+  const T = useTheme();
   const [stageF,      setStageF]      = useState("all");
   const [sortF,       setSortF]       = useState("recent");
   const [addModal,    setAddModal]    = useState(false);
@@ -73,7 +73,6 @@ export default function Sidebar({
       if (currentIdx <= 0) return;
       nextIdx = currentIdx - 1;
     } else {
-      // PageDown / PageUp — compute page size from actual DOM dimensions
       const container = listRef.current;
       const firstRow  = container?.querySelector("[data-contact-id]");
       const pageSize  = (container && firstRow)
@@ -227,11 +226,11 @@ export default function Sidebar({
             <option value="score">Score ↓</option>
           </select>
 
-          <StageFilterBtn label="All" active={stageF === "all"} color={col} onClick={() => setStageF("all")} />
+          <StageFilterBtn T={T} label="All" active={stageF === "all"} color={col} onClick={() => setStageF("all")} />
           {stageOpts.slice(0, 5).map(s => {
             const sd = STAGE_DEF[s];
             return (
-              <StageFilterBtn key={s} label={sd.label} active={stageF === s} color={sd.color} onClick={() => setStageF(s)} />
+              <StageFilterBtn key={s} T={T} label={sd.label} active={stageF === s} color={sd.color} onClick={() => setStageF(s)} />
             );
           })}
         </div>
@@ -293,8 +292,7 @@ export default function Sidebar({
   );
 }
 
-// ─── Small stage filter button ────────────────────────────────────────────────
-function StageFilterBtn({ label, active, color, onClick }) {
+function StageFilterBtn({ T, label, active, color, onClick }) {
   return (
     <button
       onClick={onClick}

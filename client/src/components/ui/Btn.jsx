@@ -1,7 +1,7 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// ─── Button ───────────────────────────────────────────────────────────────────
 export default function Btn({ children, onClick, variant = "primary", color, style = {}, disabled }) {
+  const T = useTheme();
   const bg = disabled ? T.surface : color ? color : variant === "primary" ? T.accent : variant === "ghost" ? "transparent" : T.surface;
   const bd = color ? color : variant === "primary" ? T.accent : T.border;
 

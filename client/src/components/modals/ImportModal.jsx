@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { Upload, X, ChevronRight, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 import { Spinner } from "../ui/Loader";
 import * as db from "../../services/api";
 
@@ -44,14 +44,9 @@ function detectMapping(headers) {
   return headers.map(h => AUTO_MAP[h.toLowerCase().trim()] || "__skip__");
 }
 
-// ── Shared styles ─────────────────────────────────────────────────────────────
-const sectionLabel = {
-  fontSize: 10, fontWeight: 700, color: T.muted,
-  letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8,
-};
-
 // ── Step indicator ────────────────────────────────────────────────────────────
 function Steps({ current }) {
+  const T = useTheme();
   const steps = ["Upload", "Map", "Preview", "Import"];
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 24 }}>
@@ -87,6 +82,7 @@ function Steps({ current }) {
 
 // ── Step 1: Upload ────────────────────────────────────────────────────────────
 function StepUpload({ onParsed }) {
+  const T = useTheme();
   const [dragging, setDragging] = useState(false);
   const [error,    setError]    = useState("");
   const inputRef = useRef(null);
@@ -167,7 +163,7 @@ function StepUpload({ onParsed }) {
       )}
 
       <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 8, background: T.surface, border: `1px solid ${T.border}` }}>
-        <div style={{ ...sectionLabel, marginBottom: 6 }}>Expected columns (any order)</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Expected columns (any order)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {["First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "# of Trucks", "Contract Value"].map(f => (
             <span key={f} style={{
@@ -186,9 +182,10 @@ function StepUpload({ onParsed }) {
 
 // ── Step 2: Map columns ───────────────────────────────────────────────────────
 function StepMap({ headers, mapping, setMapping }) {
+  const T = useTheme();
   return (
     <div>
-      <div style={sectionLabel}>Map your CSV columns to contact fields</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Map your CSV columns to contact fields</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {headers.map((h, i) => (
           <div key={h} style={{
@@ -235,13 +232,14 @@ function StepMap({ headers, mapping, setMapping }) {
 
 // ── Step 3: Preview ───────────────────────────────────────────────────────────
 function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateAction }) {
+  const T = useTheme();
   const mapped = headers.map((h, i) => ({ header: h, field: mapping[i] })).filter(m => m.field !== "__skip__");
   const preview = rows.slice(0, 8);
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={sectionLabel}>Preview — first {preview.length} of {rows.length} rows</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Preview — first {preview.length} of {rows.length} rows</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11, color: T.muted }}>Duplicates:</span>
           {["ignore", "update"].map(opt => (
@@ -309,6 +307,7 @@ function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateActi
 
 // ── Step 4: Result summary ────────────────────────────────────────────────────
 function StepSummary({ result, onClose, onStartOver }) {
+  const T = useTheme();
   const { total, imported, updated, skipped, invalid, errors } = result;
   const success = imported + updated;
 
@@ -407,6 +406,7 @@ function StepSummary({ result, onClose, onStartOver }) {
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function ImportModal({ onClose, clientId, pool, onImported }) {
+  const T = useTheme();
   const [step,            setStep]            = useState(0);
   const [fileName,        setFileName]        = useState("");
   const [headers,         setHeaders]         = useState([]);

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, Megaphone, FolderOpen,
   BarChart2, Settings, ChevronDown,
 } from "lucide-react";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 
 const NAV = [
   { label: "Dashboard", id: "dashboard", Icon: LayoutDashboard },
@@ -23,6 +23,7 @@ const NAV = [
 ];
 
 export default function TopNav({ page, viewMode, setPage, setViewMode }) {
+  const T = useTheme();
   const [open, setOpen] = useState(null);
   const ref = useRef(null);
 
@@ -90,7 +91,7 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
                 position: "absolute", top: "calc(100% + 2px)", left: 0,
                 background: T.card, border: "1px solid " + T.border,
                 borderRadius: 8, minWidth: 160, zIndex: 400,
-                overflow: "hidden", boxShadow: "0 10px 36px rgba(0,0,0,0.7)",
+                overflow: "hidden", boxShadow: T.shadowLg,
               }}>
                 {g.items.map(item => {
                   const a = item.id === page;

@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// ─── Overlay modal ────────────────────────────────────────────────────────────
 export default function Modal({ title, onClose, children, width = 520, noHeader = false }) {
+  const T = useTheme();
+
   useEffect(() => {
     const h = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -13,7 +14,7 @@ export default function Modal({ title, onClose, children, width = 520, noHeader 
     <div
       style={{
         position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(0,0,0,0.65)",
         zIndex: 1000,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 20,
@@ -29,10 +30,9 @@ export default function Modal({ title, onClose, children, width = 520, noHeader 
           maxWidth: "100%",
           maxHeight: "90vh",
           overflow: "auto",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+          boxShadow: T.shadowLg,
         }}
       >
-        {/* Header */}
         {!noHeader && (
           <div
             style={{
@@ -50,8 +50,6 @@ export default function Modal({ title, onClose, children, width = 520, noHeader 
             </button>
           </div>
         )}
-
-        {/* Body */}
         <div style={{ padding: 20 }}>{children}</div>
       </div>
     </div>

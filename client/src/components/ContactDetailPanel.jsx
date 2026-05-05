@@ -4,15 +4,15 @@ import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
 import ContactModal from "./modals/ContactModal";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 
-// ─── Center panel: contact record body ───────────────────────────────────────
 export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
-  const [modal, setModal] = useState(null); // "log" | "stage" | "edit"
+  const T = useTheme();
+  const [modal, setModal] = useState(null);
   const toast = useAppToast();
 
   if (!contact) return (
@@ -64,7 +64,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
 
-      {/* Modals */}
       {modal === "log" && (
         <LogActivityModal contact={contact} onSave={handleLogActivity} onClose={() => setModal(null)} currentUser={currentUser} />
       )}
@@ -78,14 +77,13 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         />
       )}
 
-      {/* ── Hero header ─────────────────────────────────────────────────────── */}
+      {/* Hero header */}
       <div style={{
         display: "flex", alignItems: "flex-start", gap: 18,
         padding: "20px 22px",
         background: d.color + "0a", border: "1px solid " + d.color + "25",
         borderRadius: 10, marginBottom: 16,
       }}>
-        {/* Avatar */}
         <div style={{
           width: 64, height: 64, borderRadius: "50%", flexShrink: 0,
           background: d.color + "20", border: "2px solid " + d.color + "55",
@@ -95,7 +93,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           {(contact.firstName || "?")[0]}{(contact.lastName || "")[0]}
         </div>
 
-        {/* Name / title / company */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1.1, marginBottom: 5 }}>
             {contact.firstName} {contact.lastName}
@@ -112,7 +109,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           </div>
         </div>
 
-        {/* Action buttons */}
         <div style={{ display: "flex", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Btn onClick={() => setModal("log")} style={{ fontSize: 11, padding: "7px 14px" }}>
             + Log Activity
@@ -126,7 +122,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         </div>
       </div>
 
-      {/* ── Metrics strip ───────────────────────────────────────────────────── */}
+      {/* Metrics strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
         <MetricCard label="Lead Score" color={T.amber}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -161,10 +157,8 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         </MetricCard>
       </div>
 
-      {/* ── Info sections ───────────────────────────────────────────────────── */}
+      {/* Info sections */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-
-        {/* Contact Info */}
         <Section title="Contact Info">
           <Field label="Email"   value={contact.email}   href={contact.email   ? `mailto:${contact.email}` : null} color={T.accent} />
           <Field label="Phone"   value={contact.phone}   href={contact.phone   ? `tel:${contact.phone}`    : null} color={T.text}   />
@@ -172,7 +166,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           <Field label="City"    value={contact.city} />
         </Section>
 
-        {/* Company & Acquisition */}
         <Section title="Company & Acquisition">
           <Field label="Company"      value={contact.company}  />
           <Field label="Account Size" value={contact.accountSize} />
@@ -181,7 +174,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         </Section>
       </div>
 
-      {/* ── CRM metadata ────────────────────────────────────────────────────── */}
+      {/* CRM metadata */}
       <div style={{
         display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0,
         background: T.card, border: "1px solid " + T.border, borderRadius: 8,
@@ -208,7 +201,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         ))}
       </div>
 
-      {/* ── Notes ───────────────────────────────────────────────────────────── */}
+      {/* Notes */}
       <Section title="Notes" style={{ marginBottom: 12 }}>
         {contact.notes ? (
           <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
@@ -221,7 +214,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         )}
       </Section>
 
-      {/* ── Tags ────────────────────────────────────────────────────────────── */}
+      {/* Tags */}
       {tags.length > 0 && (
         <Section title="Tags">
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
@@ -244,9 +237,8 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   );
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
-
 function Section({ title, children, style }) {
+  const T = useTheme();
   return (
     <div style={{
       background: T.card, border: "1px solid " + T.border,
@@ -267,6 +259,7 @@ function Section({ title, children, style }) {
 }
 
 function Field({ label, value, href, color }) {
+  const T = useTheme();
   const missing = !value;
   const text = value || "—";
   return (
@@ -298,6 +291,7 @@ function Field({ label, value, href, color }) {
 }
 
 function MetricCard({ label, color, children }) {
+  const T = useTheme();
   return (
     <div style={{
       background: T.card, border: "1px solid " + T.border,

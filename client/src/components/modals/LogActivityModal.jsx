@@ -3,12 +3,13 @@ import { useAppToast } from "../../context/ToastContext";
 import Modal from "../ui/Modal";
 import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 import { ACT_DEF } from "../../data/activities";
 import { Spinner } from "../ui/Loader";
 
 // ─── Log Activity modal ───────────────────────────────────────────────────────
 export default function LogActivityModal({ contact, onSave, onClose, currentUser }) {
+  const T = useTheme();
   const [type,   setType]   = useState("call_made");
   const [note,   setNote]   = useState("");
   const [saving, setSaving] = useState(false);

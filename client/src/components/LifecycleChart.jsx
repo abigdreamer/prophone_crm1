@@ -6,7 +6,7 @@ import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
 import ContactModal from "./modals/ContactModal";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { STAGE_DEF, LOST_STAGES } from "../data/stages";
 import { ACT_DEF, ACT_CATS } from "../data/activities";
@@ -16,6 +16,7 @@ import { useAppToast } from "../context/ToastContext";
 
 // ─── Right-panel: lead lifecycle + activity timeline ─────────────────────────
 export default function LifecycleChart({ contact, onUpdate, currentUser }) {
+  const T = useTheme();
   const [filter, setFilter] = useState("all");
   const [modal,  setModal]  = useState(null);   // "log" | "stage" | "edit"
   const toast = useAppToast();

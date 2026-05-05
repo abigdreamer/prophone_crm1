@@ -2,12 +2,13 @@ import { useState } from "react";
 import Modal from "../ui/Modal";
 import { StagePill } from "../ui/Pill";
 import Btn from "../ui/Btn";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
 
 // ─── Change Stage modal ───────────────────────────────────────────────────────
 export default function StageModal({ contact, onSave, onClose, currentUser }) {
+  const T = useTheme();
   const [stage,  setStage]  = useState(contact.lifecycleStage);
   const [note,   setNote]   = useState("");
   const [saving, setSaving] = useState(false);

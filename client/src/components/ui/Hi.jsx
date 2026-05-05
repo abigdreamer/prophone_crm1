@@ -1,7 +1,7 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// ─── Search-term highlighter ──────────────────────────────────────────────────
 export default function Hi({ text, q }) {
+  const T = useTheme();
   if (!q || !text) return <span>{text}</span>;
   const i = text.toLowerCase().indexOf(q.toLowerCase());
   if (i === -1) return <span>{text}</span>;

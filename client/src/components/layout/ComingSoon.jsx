@@ -1,7 +1,8 @@
 import { Clock } from "lucide-react";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function ComingSoon({ page }) {
+  const T = useTheme();
   const label = page.charAt(0).toUpperCase() + page.slice(1);
   return (
     <div style={{

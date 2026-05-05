@@ -1,13 +1,15 @@
 import { useState } from "react";
 import Input from "../components/ui/Input";
 import Avatar from "../components/ui/Avatar";
-import T from "../theme";
+import { useTheme, useThemeName } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { loginUser } from "../services/api";
 import { Spinner } from "../components/ui/Loader";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
 export default function LoginPage({ onLogin }) {
+  const T = useTheme();
+  const themeName = useThemeName();
   const [email, setEmail] = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
@@ -34,16 +36,18 @@ export default function LoginPage({ onLogin }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center",
-      minHeight: "100vh", background: "#05060a",
+      minHeight: "100vh", background: T.bg,
       fontFamily: "'Inter', sans-serif",
-      backgroundImage: "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)",
+      backgroundImage: themeName === "dark"
+        ? "radial-gradient(circle at 50% -20%, #1e1b4b 0%, #05060a 100%)"
+        : "radial-gradient(circle at 50% -20%, #e0e7ff 0%, #f1f5f9 100%)",
     }}>
       <div style={{
-        width: 440, background: "rgba(19, 22, 31, 0.8)",
+        width: 440, background: T.card,
         backdropFilter: "blur(20px)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        border: "1px solid " + T.border,
         borderRadius: 28, padding: "48px 40px",
-        boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
+        boxShadow: "0 40px 100px rgba(0,0,0,0.4)",
       }}>
 
         {/* Logo */}
@@ -56,13 +60,13 @@ export default function LoginPage({ onLogin }) {
             margin: "0 auto 16px",
             boxShadow: "0 0 30px rgba(99, 102, 241, 0.3)",
           }}>G</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.5px" }}>GeniusAI</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", letterSpacing: "2px", marginTop: 4 }}>PROPHONE CRM</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.5px" }}>GeniusAI</div>
+          <div style={{ fontSize: 11, color: T.muted, letterSpacing: "2px", marginTop: 4 }}>PROPHONE CRM</div>
         </div>
 
         {/* Quick Select */}
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 16 }}>Quick Select</div>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 16 }}>Quick Select</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {USERS_DB.slice(0, 4).map(u => {
               const active = email === u.email;
@@ -72,16 +76,16 @@ export default function LoginPage({ onLogin }) {
                   onClick={() => setEmail(u.email)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "14px",
-                    background: active ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.02)",
-                    border: `1px solid ${active ? "#6366f1" : "rgba(255,255,255,0.05)"}`,
+                    background: active ? T.accent + "15" : T.surface,
+                    border: `1px solid ${active ? T.accent : T.border}`,
                     borderRadius: 16, cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                     textAlign: "left", position: "relative",
                   }}
                 >
                   <Avatar user={u} size={34} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? "#fff" : "rgba(255,255,255,0.7)" }}>{u.name.split(" ")[0]}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{u.role || "Staff"}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? T.text : T.dim }}>{u.name.split(" ")[0]}</div>
+                    <div style={{ fontSize: 10, color: T.muted }}>{u.role || "Staff"}</div>
                   </div>
                   {active && <Check size={14} color="#6366f1" style={{ position: "absolute", right: 12, top: 12 }} />}
                 </button>
@@ -93,12 +97,12 @@ export default function LoginPage({ onLogin }) {
         {/* Inputs */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>EMAIL ADDRESS</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>EMAIL ADDRESS</label>
             <Input value={email} onChange={setEmail} placeholder="name@company.com" />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}>PASSWORD</label>
+            <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>PASSWORD</label>
             <div style={{ position: "relative" }}>
               <Input
                 value={password}
@@ -112,7 +116,7 @@ export default function LoginPage({ onLogin }) {
                 style={{
                   position: "absolute", right: 12, bottom: 12,
                   background: "none", border: "none", cursor: "pointer",
-                  color: "rgba(255,255,255,0.3)",
+                  color: T.muted,
                 }}
               >
                 <Eye size={18} />
@@ -124,8 +128,8 @@ export default function LoginPage({ onLogin }) {
         {error && (
           <div style={{
             marginTop: 20, padding: "12px", borderRadius: 12,
-            background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)",
-            color: "#f87171", fontSize: 12, textAlign: "center",
+            background: T.red + "18", border: "1px solid " + T.red + "30",
+            color: T.red, fontSize: 12, textAlign: "center",
           }}>{error}</div>
         )}
 
@@ -148,7 +152,7 @@ export default function LoginPage({ onLogin }) {
         </button>
 
         <div style={{
-          marginTop: 40, fontSize: 10, color: "rgba(255,255,255,0.2)",
+          marginTop: 40, fontSize: 10, color: T.muted,
           textAlign: "center", letterSpacing: "1px", fontWeight: 500,
         }}>
           SECURED BY GENIUSAI ECOSYSTEM

@@ -4,7 +4,7 @@ import {
   Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
   Loader2, Check, Search, Trash2, MoreVertical, Megaphone, ChevronRight,
 } from "lucide-react";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import {
   getCampaigns, createCampaign, deleteCampaign,
   getPublishedTemplates, getActivePool, getClients,
@@ -28,6 +28,7 @@ function thisWeekCount(list) {
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
+  const T = useTheme();
   const map = {
     draft:   { label: "Draft",   color: T.muted  },
     sending: { label: "Sending", color: T.amber  },
@@ -48,6 +49,7 @@ function StatusBadge({ status }) {
 // ── Campaign thumbnail ────────────────────────────────────────────────────────
 
 function CampaignThumb({ campaign }) {
+  const T = useTheme();
   const isAB = campaign.type === "ab_test";
   const bg   = isAB ? T.purple + "20" : T.accent + "20";
   const bdr  = isAB ? T.purple + "35" : T.accent + "35";
@@ -68,6 +70,7 @@ function CampaignThumb({ campaign }) {
 const GRID_COLS = "1fr 1fr 140px 140px 44px";
 
 function CampaignRow({ campaign, isLast, onOpen, onDelete }) {
+  const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -177,6 +180,7 @@ function CampaignRow({ campaign, isLast, onOpen, onDelete }) {
 // ── Wizard shared ─────────────────────────────────────────────────────────────
 
 function StepDot({ n, active, done, label }) {
+  const T = useTheme();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{
@@ -193,6 +197,7 @@ function StepDot({ n, active, done, label }) {
 }
 
 function StepIndicator({ step }) {
+  const T = useTheme();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 24px", borderBottom: "1px solid " + T.border }}>
       <StepDot n={1} label="Campaign info"      active={step === 1} done={step > 1} />
@@ -203,6 +208,7 @@ function StepIndicator({ step }) {
 }
 
 function Field({ label, value, onChange, placeholder, type = "text", required, onKeyDown, autoFocus }) {
+  const T = useTheme();
   return (
     <div>
       <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 5, letterSpacing: "0.03em" }}>
@@ -225,6 +231,7 @@ function Field({ label, value, onChange, placeholder, type = "text", required, o
 
 
 function TemplatePickerList({ tpls, selected, onSelect, accent, maxHeight = 220 }) {
+  const T = useTheme();
   if (!tpls.length) return (
     <div style={{ padding: "24px 0", textAlign: "center" }}>
       <Mail size={24} color={T.muted} style={{ marginBottom: 6 }} />
@@ -260,6 +267,7 @@ function TemplatePickerList({ tpls, selected, onSelect, accent, maxHeight = 220 
 // ── Wizard Step 1 ─────────────────────────────────────────────────────────────
 
 function WizardStep1({ form, setForm, onNext, onClose }) {
+  const T = useTheme();
   const nameOk = form.name.trim().length > 0;
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -307,6 +315,7 @@ function WizardStep1({ form, setForm, onNext, onClose }) {
 // ── Wizard Step 2 ─────────────────────────────────────────────────────────────
 
 function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clientName }) {
+  const T = useTheme();
   const [tpls, setTpls] = useState(templates);
   const [loading, setLoading] = useState(!templates.length);
 
@@ -432,6 +441,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
 // ── New Campaign Modal ────────────────────────────────────────────────────────
 
 function NewCampaignModal({ onClose, onCreated }) {
+  const T = useTheme();
   const { clientId: poolClientId } = getActivePool();
   const [step, setStep]         = useState(1);
   const [saving, setSaving]     = useState(false);
@@ -492,6 +502,7 @@ function NewCampaignModal({ onClose, onCreated }) {
 // ── Delete Modal ──────────────────────────────────────────────────────────────
 
 function DeleteModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: 28, width: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
@@ -513,6 +524,7 @@ function DeleteModal({ campaign, onClose, onConfirm, loading }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CampaignsPage() {
+  const T = useTheme();
   const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState([]);
   const [loading,   setLoading]   = useState(true);

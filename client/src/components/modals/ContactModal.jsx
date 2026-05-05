@@ -4,13 +4,14 @@ import Modal from "../ui/Modal";
 import Input from "../ui/Input";
 import Sel from "../ui/Sel";
 import Btn from "../ui/Btn";
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 import USERS_DB from "../../data/users";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
 
 // ─── Add / Edit Contact modal ─────────────────────────────────────────────────
 export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser }) {
+  const T = useTheme();
   const isEdit = !!contact;
   const [saving, setSaving] = useState(false);
   const toast = useAppToast();
