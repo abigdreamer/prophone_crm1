@@ -13,9 +13,10 @@ export default function Sidebar({
   pool, clientId, viewMode, selected, onSelect,
   search, setSearch, searchRef, contacts, setContacts, currentUser,
 }) {
-  const [stageF,    setStageF]    = useState("all");
-  const [sortF,     setSortF]     = useState("recent");
-  const [addModal,  setAddModal]  = useState(false);
+  const [stageF,      setStageF]      = useState("all");
+  const [sortF,       setSortF]       = useState("recent");
+  const [addModal,    setAddModal]    = useState(false);
+  const [editContact, setEditContact] = useState(null);
   const listRef = useRef(null);
 
   const client = CLIENTS.find(c => c.id === clientId);
@@ -52,6 +53,11 @@ export default function Sidebar({
     });
 
   function handleSearchKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (selected) setEditContact(selected);
+      return;
+    }
     if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
     e.preventDefault();
     const visible = filtered.slice(0, 150);
@@ -112,6 +118,26 @@ export default function Sidebar({
           onClose={() => setAddModal(false)}
           pool={pool}
           clientId={clientId}
+          currentUser={currentUser}
+        />
+      )}
+
+      {editContact && (
+        <ContactModal
+          contact={editContact}
+          onSave={async (updated) => {
+            try {
+              const refreshed = await db.updateContact(updated.id, updated);
+              onSelect(refreshed);
+              setEditContact(null);
+            } catch {
+              alert("Failed to save contact.");
+              setEditContact(null);
+            }
+          }}
+          onClose={() => setEditContact(null)}
+          pool={editContact.pool}
+          clientId={editContact.clientId}
           currentUser={currentUser}
         />
       )}
