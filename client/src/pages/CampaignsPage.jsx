@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Megaphone, Plus, RefreshCw, Mail, Users, MousePointerClick,
+  Megaphone, Plus, RefreshCw, Mail, MousePointerClick,
   AlertCircle, Send, ChevronRight, Trash2, MoreVertical, FlaskConical,
-  CheckCircle2, Clock, Loader2,
+  CheckCircle2, Loader2,
 } from "lucide-react";
 import T from "../theme";
 import {
   getCampaigns, createCampaign, deleteCampaign,
   getPublishedTemplates, getActivePool,
 } from "../services/api";
-import { getClients } from "../services/api";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -166,7 +165,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
 }
 
 // ── Wizard: Step 1 ────────────────────────────────────────────────────────────
-function WizardStep1({ form, setForm, clients, onNext, onClose }) {
+function WizardStep1({ form, setForm, onNext, onClose }) {
   const nameOk = form.name.trim().length > 0;
 
   return (
@@ -181,9 +180,7 @@ function WizardStep1({ form, setForm, clients, onNext, onClose }) {
           background: T.accent, display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 13, fontWeight: 800, color: "#fff",
         }}>1</div>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Campaign info</div>
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Campaign info</div>
         <div style={{ flex: 1, height: 1, background: T.border, margin: "0 4px" }} />
         <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.border, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: T.muted }}>2</div>
         <div style={{ fontSize: 13, color: T.muted }}>Template &amp; content</div>
@@ -198,8 +195,8 @@ function WizardStep1({ form, setForm, clients, onNext, onClose }) {
             border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden",
           }}>
             {[
-              { id: "regular",  label: "Regular",    icon: Mail },
-              { id: "ab_test",  label: "A/B Test",   icon: FlaskConical },
+              { id: "regular", label: "Regular",  icon: Mail },
+              { id: "ab_test", label: "A/B Test", icon: FlaskConical },
             ].map(({ id, label, icon: Icon }) => {
               const active = form.type === id;
               return (
@@ -233,28 +230,6 @@ function WizardStep1({ form, setForm, clients, onNext, onClose }) {
           )}
         </div>
 
-        {/* Account / client selector */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 8 }}>
-            Account <span style={{ color: T.accent }}>*</span>
-          </div>
-          <select
-            value={form.clientId}
-            onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}
-            style={{
-              width: "100%", padding: "10px 12px", borderRadius: 7,
-              background: T.surface, border: "1px solid " + T.border,
-              color: form.clientId ? T.text : T.muted, fontSize: 13,
-              fontFamily: "inherit", outline: "none", cursor: "pointer",
-            }}
-          >
-            <option value="" disabled>Select account...</option>
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-
         {/* Campaign name */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: T.text, marginBottom: 8 }}>
@@ -265,7 +240,7 @@ function WizardStep1({ form, setForm, clients, onNext, onClose }) {
             placeholder="e.g. Q2 Towing Outreach"
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            onKeyDown={e => e.key === "Enter" && nameOk && form.clientId && onNext()}
+            onKeyDown={e => e.key === "Enter" && nameOk && onNext()}
             style={{
               width: "100%", padding: "10px 12px", borderRadius: 7, boxSizing: "border-box",
               background: T.surface, border: "1px solid " + T.border,
@@ -292,13 +267,13 @@ function WizardStep1({ form, setForm, clients, onNext, onClose }) {
         >Cancel</button>
         <button
           onClick={onNext}
-          disabled={!nameOk || !form.clientId}
+          disabled={!nameOk}
           style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "9px 20px", borderRadius: 7, border: "none",
-            background: nameOk && form.clientId ? T.accent : T.border,
-            color: nameOk && form.clientId ? "#fff" : T.muted,
-            fontSize: 13, fontWeight: 600, cursor: nameOk && form.clientId ? "pointer" : "default", fontFamily: "inherit",
+            background: nameOk ? T.accent : T.border,
+            color: nameOk ? "#fff" : T.muted,
+            fontSize: 13, fontWeight: 600, cursor: nameOk ? "pointer" : "default", fontFamily: "inherit",
           }}
         >
           Next <ChevronRight size={14} />
@@ -480,14 +455,13 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
 }
 
 // ── New campaign wizard modal ─────────────────────────────────────────────────
-function NewCampaignModal({ clients, onClose, onCreated }) {
+function NewCampaignModal({ onClose, onCreated }) {
   const { clientId: poolClientId } = getActivePool();
   const [step, setStep]     = useState(1);
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [form, setForm] = useState({
     type:        "regular",
-    clientId:    poolClientId || "",
     name:        "",
     templateId:  null,
     templateIdB: null,
@@ -505,7 +479,7 @@ function NewCampaignModal({ clients, onClose, onCreated }) {
       const campaign = await createCampaign({
         name:        form.name.trim(),
         type:        form.type,
-        clientId:    form.clientId,
+        clientId:    poolClientId || null,
         templateId:  form.templateId,
         templateIdB: form.templateIdB || null,
       });
@@ -515,7 +489,7 @@ function NewCampaignModal({ clients, onClose, onCreated }) {
     } finally {
       setSaving(false);
     }
-  }, [form, onCreated]);
+  }, [form, poolClientId, onCreated]);
 
   return (
     <div style={{
@@ -542,7 +516,7 @@ function NewCampaignModal({ clients, onClose, onCreated }) {
 
         {step === 1 ? (
           <WizardStep1
-            form={form} setForm={setForm} clients={clients}
+            form={form} setForm={setForm}
             onNext={goStep2} onClose={onClose}
           />
         ) : (
@@ -595,7 +569,6 @@ function DeleteModal({ campaign, onClose, onConfirm, loading }) {
 export default function CampaignsPage() {
   const navigate    = useNavigate();
   const [campaigns, setCampaigns] = useState([]);
-  const [clients,   setClients]   = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [showNew,   setShowNew]   = useState(false);
   const [toDelete,  setToDelete]  = useState(null);
@@ -604,9 +577,8 @@ export default function CampaignsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [c, cl] = await Promise.all([getCampaigns(), getClients()]);
+      const c = await getCampaigns();
       setCampaigns(Array.isArray(c) ? c : []);
-      setClients(Array.isArray(cl) ? cl : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -728,7 +700,6 @@ export default function CampaignsPage() {
       {/* Modals */}
       {showNew && (
         <NewCampaignModal
-          clients={clients}
           onClose={() => setShowNew(false)}
           onCreated={handleCreated}
         />

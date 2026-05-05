@@ -236,10 +236,7 @@ export const getCampaignAnalytics = async (req, res) => {
 
 export const listPublishedTemplates = async (req, res) => {
   try {
-    const { clientId } = req.query;
-    const where = { status: 'published' };
-    if (clientId) where.clientId = clientId;
-    const rows = await templateRepo.findMany(where);
+    const rows = await templateRepo.findMany({ status: 'published' });
     sendSuccess(res, rows);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
