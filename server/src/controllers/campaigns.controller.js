@@ -26,7 +26,10 @@ export const getCampaign = async (req, res) => {
 };
 
 export const createCampaign = async (req, res) => {
-  const { name, type = 'regular', clientId, templateId, subject } = req.body ?? {};
+  const {
+    name, type = 'regular', clientId, templateId, templateIdB,
+    subject, subjectB, fromName, fromEmail,
+  } = req.body ?? {};
   if (!name) return sendError(res, 'name is required', 400);
 
   try {
@@ -40,10 +43,14 @@ export const createCampaign = async (req, res) => {
     const row = await repo.createCampaign({
       name,
       type,
-      status: 'draft',
-      clientId:   clientId || null,
-      templateId: templateId || null,
-      subject:    resolvedSubject,
+      status:      'draft',
+      clientId:    clientId    || null,
+      templateId:  templateId  || null,
+      templateIdB: templateIdB || null,
+      subject:     resolvedSubject,
+      subjectB:    subjectB  || '',
+      fromName:    fromName  || '',
+      fromEmail:   fromEmail || '',
     });
     sendSuccess(res, row, 201);
   } catch (err) {
