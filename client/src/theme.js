@@ -20,6 +20,12 @@ export const darkTheme = {
   shadow:    "0 1px 4px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.25)",
   shadowMd:  "0 4px 16px rgba(0,0,0,0.50)",
   shadowLg:  "0 8px 32px rgba(0,0,0,0.60)",
+  // Navbar-specific tokens (navbar is always dark in both themes)
+  navBg:     "#12151c",
+  navBorder: "#222836",
+  navText:   "#e2e8f0",
+  navMuted:  "#64748b",
+  navDim:    "#94a3b8",
 };
 
 // ─── Light Theme ──────────────────────────────────────────────────────────────
@@ -44,6 +50,12 @@ export const lightTheme = {
   shadow:    "0 1px 4px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05)",
   shadowMd:  "0 4px 16px rgba(0,0,0,0.10)",
   shadowLg:  "0 8px 32px rgba(0,0,0,0.14)",
+  // Navbar-specific tokens — dark navy bar in light mode
+  navBg:     "#173256",
+  navBorder: "rgba(255,255,255,0.10)",
+  navText:   "#ffffff",
+  navMuted:  "rgba(255,255,255,0.50)",
+  navDim:    "rgba(255,255,255,0.75)",
 };
 
 // Default export kept for any static/non-component usage

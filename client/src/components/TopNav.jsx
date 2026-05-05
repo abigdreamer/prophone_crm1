@@ -62,14 +62,14 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
                 borderBottom: active ? `2px solid ${T.accent}` : "2px solid transparent",
                 borderTop: "2px solid transparent",
                 cursor: "pointer",
-                color: active ? T.text : T.muted,
+                color: active ? T.navText : T.navMuted,
                 fontWeight: active ? 600 : 400,
                 fontSize: 12, fontFamily: "inherit",
                 transition: "color 0.15s",
                 whiteSpace: "nowrap",
               }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.dim; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.color = T.muted; }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.navDim; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.color = T.navMuted; }}
             >
               <Icon size={14} strokeWidth={active ? 2.2 : 1.8} />
               {g.label}
