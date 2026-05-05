@@ -5,12 +5,11 @@ import Input from "../components/ui/Input";
 import Sel from "../components/ui/Sel";
 import Btn from "../components/ui/Btn";
 import { Spinner } from "../components/ui/Loader";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import * as db from "../services/api";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const PLANS = ["Starter", "Pro", "Enterprise"];
-const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
 const COLORS = [
   "#6366f1", "#38bdf8", "#fb923c", "#4ade80",
   "#f43f5e", "#fbbf24", "#c084fc", "#2dd4bf",
@@ -22,6 +21,8 @@ const slugify = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // ── Plan badge ────────────────────────────────────────────────────────────────
 function PlanBadge({ plan }) {
+  const T = useTheme();
+  const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
   const color = PLAN_COLOR[plan] || T.muted;
   return (
     <span style={{
@@ -34,6 +35,7 @@ function PlanBadge({ plan }) {
 
 // ── Stat tile ─────────────────────────────────────────────────────────────────
 function StatTile({ label, value, color }) {
+  const T = useTheme();
   return (
     <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "18px 20px" }}>
       <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1, marginBottom: 6 }}>{value}</div>
@@ -44,6 +46,7 @@ function StatTile({ label, value, color }) {
 
 // ── Client card ───────────────────────────────────────────────────────────────
 function ClientCard({ client, isSelected, total, onClick }) {
+  const T = useTheme();
   return (
     <div
       onClick={onClick}
@@ -91,6 +94,7 @@ function ClientCard({ client, isSelected, total, onClick }) {
 
 // ── Client modal (add or edit) ────────────────────────────────────────────────
 function ClientModal({ client, onSave, onClose }) {
+  const T = useTheme();
   const isEdit = !!client;
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState("");
@@ -279,6 +283,8 @@ function ClientModal({ client, onSave, onClose }) {
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 function DetailPanel({ client, total, onClose, onEdit }) {
+  const T = useTheme();
+  const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
   const col = client.color;
 
   const rows = [
@@ -399,6 +405,8 @@ function DetailPanel({ client, total, onClose, onEdit }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ClientsPage() {
+  const T = useTheme();
+  const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
   const [clients,  setClients]  = useState([]);
   const [counts,   setCounts]   = useState({});
   const [loading,  setLoading]  = useState(true);

@@ -1,6 +1,6 @@
 import Card from "../components/ui/Card";
 import Avatar from "../components/ui/Avatar";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import CLIENTS from "../data/clients";
 import { STAGE_DEF, LEAD_STAGES, LOST_STAGES } from "../data/stages";
@@ -8,6 +8,7 @@ import fmt from "../utils/format";
 
 // ─── Dashboard overview page ──────────────────────────────────────────────────
 export default function DashboardPage({ pool, clientId, viewMode, setViewMode, setPage, contacts }) {
+  const T = useTheme();
   const client    = CLIENTS.find(c => c.id === clientId);
   const col       = pool === "prospect" ? T.accent : (client?.color || T.accent);
 

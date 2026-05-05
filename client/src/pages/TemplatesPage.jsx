@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
+import { useTheme } from "../context/ThemeContext";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
   MoreHorizontal, Pencil, Send, Copy, Trash2, X,
@@ -10,31 +11,19 @@ import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 import { useConfirmDialog } from "../context/ConfirmContext";
 
-// ─── Theme (dark, matches app theme.js) ──────────────────────────────────────
-const C = {
-  bg:        "#0b0c10",
-  surface:   "#12151c",
-  card:      "#181d27",
-  border:    "#222836",
-  borderSub: "#1a1d26",
-  text:      "#e2e8f0",
-  sub:       "#94a3b8",
-  muted:     "#64748b",
-  accent:    "#6366f1",
-  accentLo:  "rgba(99,102,241,0.12)",
-  green:     "#22c55e",
-  greenBg:   "rgba(34,197,94,0.10)",
-  greenBdr:  "rgba(34,197,94,0.28)",
-  amber:     "#f59e0b",
-  amberBg:   "rgba(245,158,11,0.10)",
-  amberBdr:  "rgba(245,158,11,0.28)",
-  red:       "#ef4444",
-  redBg:     "rgba(239,68,68,0.10)",
-  redBdr:    "rgba(239,68,68,0.28)",
-  shadow:    "0 1px 4px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.25)",
-  shadowMd:  "0 4px 16px rgba(0,0,0,0.50)",
-  shadowLg:  "0 8px 32px rgba(0,0,0,0.60)",
-};
+const CCtx = createContext(null);
+function makeC(T) {
+  return {
+    bg: T.bg, surface: T.surface, card: T.card,
+    border: T.border, borderSub: T.border,
+    text: T.text, sub: T.dim, muted: T.muted,
+    accent: T.accent, accentLo: T.accent + "20",
+    green: T.green, greenBg: T.green + "1a", greenBdr: T.green + "47",
+    amber: T.amber, amberBg: T.amber + "1a", amberBdr: T.amber + "47",
+    red: T.red, redBg: T.red + "1a", redBdr: T.red + "47",
+    shadow: T.shadow, shadowMd: T.shadowMd, shadowLg: T.shadowLg,
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function generateId() {
@@ -207,6 +196,7 @@ ${blocksHtml}
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
+  const C = useContext(CCtx);
   const pub = status === "published";
   return (
     <span style={{
@@ -225,6 +215,7 @@ function StatusBadge({ status }) {
 const EMAIL_W = 560;
 
 function MiniBlock({ block }) {
+  const C = useContext(CCtx);
   const { type, props: p } = block;
   if (!p) return null;
   const pt = p.padding?.top    ?? 0;
@@ -380,6 +371,7 @@ function MiniBlock({ block }) {
 
 // ─── Mini email preview (scaled card thumbnail) ───────────────────────────────
 function MiniEmailPreview({ template }) {
+  const C = useContext(CCtx);
   const wrapRef = useRef(null);
   const [w, setW] = useState(300);
 
@@ -421,6 +413,7 @@ function MiniEmailPreview({ template }) {
 
 // ─── Modal utilities ──────────────────────────────────────────────────────────
 function ModalBackdrop({ children, onClose }) {
+  const C = useContext(CCtx);
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(3px)" }}
@@ -434,6 +427,7 @@ function ModalBackdrop({ children, onClose }) {
 }
 
 function MBtn({ children, onClick, disabled, variant = "primary" }) {
+  const C = useContext(CCtx);
   const V = {
     primary:  { bg: C.accent,  color: "#fff",   bdr: "none" },
     ghost:    { bg: C.bg,      color: C.sub,    bdr: `1px solid ${C.border}` },
@@ -452,6 +446,7 @@ function MBtn({ children, onClick, disabled, variant = "primary" }) {
 // ─── Delete modal ─────────────────────────────────────────────────────────────
 // ─── Rename modal ─────────────────────────────────────────────────────────────
 function RenameModal({ template, onConfirm, onCancel }) {
+  const C = useContext(CCtx);
   const [input, setInput] = useState(template.name);
   const canSave = input.trim() && input.trim() !== template.name;
   return (
@@ -472,6 +467,7 @@ function RenameModal({ template, onConfirm, onCancel }) {
 
 // ─── Details modal ────────────────────────────────────────────────────────────
 function DetailsModal({ template, onClose, onEdit }) {
+  const C = useContext(CCtx);
   const blocks = template.body?.blocks || [];
   const blockCounts = {};
   blocks.forEach(b => { blockCounts[b.type] = (blockCounts[b.type] || 0) + 1; });
@@ -522,6 +518,7 @@ function DetailsModal({ template, onClose, onEdit }) {
 
 // ─── Send test email modal ────────────────────────────────────────────────────
 function SendTestModal({ template, onClose }) {
+  const C = useContext(CCtx);
   const [email,   setEmail]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [error,   setError]   = useState(null);
@@ -588,6 +585,7 @@ function SendTestModal({ template, onClose }) {
 
 // ─── Options dropdown ─────────────────────────────────────────────────────────
 function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onDeleteRequest, onSendTest }) {
+  const C = useContext(CCtx);
   const isPub = template.status === "published";
   const items = [
     { label: "Continue editing",                   Icon: Pencil, action: () => { onEdit();          onClose(); } },
@@ -627,6 +625,7 @@ function fmtCardDate(iso) {
 }
 
 function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
+  const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "visible", cursor: "pointer", position: "relative", display: "flex", flexDirection: "column", transition: "border-color 0.15s, box-shadow 0.15s" }}
@@ -671,6 +670,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
 
 // ─── Template row (list view) ─────────────────────────────────────────────────
 function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
+  const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px 140px 44px", gap: 0, padding: "12px 16px", borderBottom: isLast ? "none" : `1px solid ${C.border}`, borderRadius: isLast ? "0 0 12px 12px" : 0, alignItems: "center", cursor: "pointer", transition: "background 0.1s", position: "relative" }}
@@ -724,16 +724,19 @@ function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDup
 
 // ─── Builder prop editor primitives ──────────────────────────────────────────
 function PropLabel({ children }) {
+  const C = useContext(CCtx);
   return <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{children}</div>;
 }
 
 function TxtInput({ value, onChange, placeholder, multiline }) {
+  const C = useContext(CCtx);
   const style = { width: "100%", boxSizing: "border-box", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit", resize: multiline ? "vertical" : "none" };
   if (multiline) return <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} style={style} />;
   return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style} />;
 }
 
 function NumInput({ value, onChange, min, max, unit }) {
+  const C = useContext(CCtx);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <input type="number" value={value} min={min} max={max} onChange={e => onChange(Number(e.target.value))}
@@ -744,6 +747,7 @@ function NumInput({ value, onChange, min, max, unit }) {
 }
 
 function ColInput({ value, onChange }) {
+  const C = useContext(CCtx);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <input type="color" value={value || "#000000"} onChange={e => onChange(e.target.value)}
@@ -755,6 +759,7 @@ function ColInput({ value, onChange }) {
 }
 
 function AlignBtns({ value, onChange }) {
+  const C = useContext(CCtx);
   return (
     <div style={{ display: "flex", gap: 4 }}>
       {["left", "center", "right"].map(a => (
@@ -768,6 +773,7 @@ function AlignBtns({ value, onChange }) {
 }
 
 function PadInput({ value = {}, onChange }) {
+  const C = useContext(CCtx);
   const pad = { top: 0, right: 0, bottom: 0, left: 0, ...value };
   const set = (k, v) => onChange({ ...pad, [k]: v });
   return (
@@ -785,6 +791,7 @@ function PadInput({ value = {}, onChange }) {
 
 // ─── Section background helper ────────────────────────────────────────────────
 function SectionBgRow({ value, onChange }) {
+  const C = useContext(CCtx);
   return (
     <div style={{ marginBottom: 12, paddingTop: 8, borderTop: `1px solid ${C.borderSub}` }}>
       <PropLabel>Section Background</PropLabel>
@@ -801,6 +808,7 @@ function SectionBgRow({ value, onChange }) {
 
 // ─── Block property editor ────────────────────────────────────────────────────
 function BlockEditor({ block, onChange, tab = "content" }) {
+  const C = useContext(CCtx);
   const { type, props: p } = block;
   const set = (k, v) => onChange({ ...p, [k]: v });
   const setPad = v => set("padding", v);
@@ -1094,6 +1102,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
 
 // ─── Canvas block (draggable, interactive) ────────────────────────────────────
 function CanvasBlock({ block, selected, isFirst, isLast, isDragOver, onSelect, onDelete, onMoveUp, onMoveDown, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
+  const C = useContext(CCtx);
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -1203,6 +1212,7 @@ function PreviewBlock({ block }) {
 
 // Inline preview — overlays the builder body (no separate page/modal)
 function InlinePreview({ body, name, onClose }) {
+  const C = useContext(CCtx);
   const [mode, setMode] = useState("desktop");
   const { blocks = [], backgroundColor = "#f4f4f4", containerBg = "#ffffff", containerWidth = 600 } = body || {};
   const previewW = mode === "mobile" ? 390 : containerWidth;
@@ -1253,6 +1263,7 @@ function InlinePreview({ body, name, onClose }) {
 
 // ─── Email builder view ───────────────────────────────────────────────────────
 function EmailBuilder({ templateId, onBack, onSaved }) {
+  const C = useContext(CCtx);
   const [name,       setName]       = useState("Untitled Template");
   const [subject,    setSubject]    = useState("");
   const [blocks,     setBlocks]     = useState(DEFAULT_BLOCKS);
@@ -1510,42 +1521,98 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
 
               {/* Block grid */}
               <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 8px" }}>
-                {/* Components */}
-                {BLOCK_TYPES.slice(0, 8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).length > 0 && (
+               {/* Components */}
+                {BLOCK_TYPES.slice(0, 8)
+                  .filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase()))
+                  .length > 0 && (
                   <>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px" }}>Components</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px" }}>
+                      Components
+                    </div>
+
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
-                      {BLOCK_TYPES.slice(0, 8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).map(({ type, label }) => (
-                        <button key={type} onClick={() => addBlock(type)}
-                          style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 6px 8px", cursor: "pointer", textAlign: "center", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}
-                          onMouseEnter={e => { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent + "60"; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}>
-                          <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.sub, fontWeight: 700 }}>
-                            {BLOCK_ICON[type] || "≡"}
-                          </div>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
-                        </button>
-                      ))}
+                      {BLOCK_TYPES.slice(0, 8)
+                        .filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase()))
+                        .map(({ type, label }) => (
+                          <button
+                            key={type}
+                            onClick={() => addBlock(type)}
+                            style={{
+                              background: C.bg,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 8,
+                              padding: "9px 6px 8px",
+                              cursor: "pointer",
+                              textAlign: "center",
+                              fontFamily: "inherit",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 5
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = C.accentLo;
+                              e.currentTarget.style.borderColor = C.accent + "60";
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = C.bg;
+                              e.currentTarget.style.borderColor = C.border;
+                            }}
+                          >
+                            <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.sub, fontWeight: 700 }}>
+                              {BLOCK_ICON[type] || "≡"}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
+                          </button>
+                        ))}
                     </div>
                   </>
                 )}
 
                 {/* Interactive */}
-                {BLOCK_TYPES.slice(8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).length > 0 && (
+                {BLOCK_TYPES.slice(8)
+                  .filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase()))
+                  .length > 0 && (
                   <>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px", borderTop: `1px solid ${C.border}`, marginTop: 2 }}>⚡ Interactive</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                      {BLOCK_TYPES.slice(8).filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase())).map(({ type, label }) => (
-                        <button key={type} onClick={() => addBlock(type)}
-                          style={{ background: C.accentLo, border: `1px solid ${C.accent}30`, borderRadius: 8, padding: "9px 6px 8px", cursor: "pointer", textAlign: "center", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}
-                          onMouseEnter={e => { e.currentTarget.style.background = C.accent + "22"; e.currentTarget.style.borderColor = C.accent + "80"; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = C.accentLo; e.currentTarget.style.borderColor = C.accent + "30"; }}>
-                          <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.accent, fontWeight: 700 }}>
-                            {BLOCK_ICON[type] || "≡"}
-                          </div>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
-                        </button>
-                      ))}
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", padding: "6px 2px 6px", borderTop: `1px solid ${C.border}`, marginTop: 2 }}>
+                      Interactive
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
+                      {BLOCK_TYPES.slice(8)
+                        .filter(b => !blockSearch || b.label.toLowerCase().includes(blockSearch.toLowerCase()))
+                        .map(({ type, label }) => (
+                          <button
+                            key={type}
+                            onClick={() => addBlock(type)}
+                            style={{
+                              background: C.bg,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: 8,
+                              padding: "9px 6px 8px",
+                              cursor: "pointer",
+                              textAlign: "center",
+                              fontFamily: "inherit",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 5
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = C.accentLo;
+                              e.currentTarget.style.borderColor = C.accent + "60";
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = C.bg;
+                              e.currentTarget.style.borderColor = C.border;
+                            }}
+                          >
+                            <div style={{ width: 28, height: 28, background: C.surface, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.sub, fontWeight: 700 }}>
+                              {BLOCK_ICON[type] || "≡"}
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: C.text, lineHeight: 1.2 }}>{label}</div>
+                          </button>
+                        ))}
                     </div>
                   </>
                 )}
@@ -1589,7 +1656,7 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
 
         {/* Center: Canvas — edit or preview */}
         {previewMode ? (
-          <div style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 20px" }}>
+          <div style={{ flex: 1, overflowY: "auto", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 20px" }}>
             <div style={{ width: previewDevice === "mobile" ? 390 : settings.containerWidth, maxWidth: "100%", background: settings.containerBg, borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 28px rgba(0,0,0,0.4)", flexShrink: 0 }}>
               {blocks.length === 0 ? (
                 <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No blocks added yet. Switch to Edit to add content.</div>
@@ -1602,7 +1669,7 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
             </div>
           </div>
         ) : (
-        <div ref={canvasRef} style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center" }}
+        <div ref={canvasRef} style={{ flex: 1, overflowY: "auto", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center" }}
           onClick={() => setSelectedId(null)}>
           <div style={{ width: Math.min(settings.containerWidth + 80, 800), maxWidth: "100%", padding: "24px 40px" }}>
 
@@ -1776,6 +1843,7 @@ const STATUS_OPTIONS = [
 
 // ─── Template list ────────────────────────────────────────────────────────────
 function TemplateList({ onOpenBuilder }) {
+  const C = useContext(CCtx);
   const [templates,      setTemplates]      = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
@@ -2043,22 +2111,28 @@ function TemplateList({ onOpenBuilder }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function TemplatesPage() {
+  const T = useTheme();
+  const C = makeC(T);
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
 
   if (view === "builder") {
     return (
-      <EmailBuilder
-        templateId={editingId}
-        onBack={() => setView("list")}
-        onSaved={() => {}}
-      />
+      <CCtx.Provider value={C}>
+        <EmailBuilder
+          templateId={editingId}
+          onBack={() => setView("list")}
+          onSaved={() => {}}
+        />
+      </CCtx.Provider>
     );
   }
 
   return (
-    <TemplateList
-      onOpenBuilder={id => { setEditingId(id || null); setView("builder"); }}
-    />
+    <CCtx.Provider value={C}>
+      <TemplateList
+        onOpenBuilder={id => { setEditingId(id || null); setView("builder"); }}
+      />
+    </CCtx.Provider>
   );
 }

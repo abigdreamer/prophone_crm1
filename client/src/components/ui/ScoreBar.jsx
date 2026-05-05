@@ -1,7 +1,7 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// ─── Lead score progress bar ──────────────────────────────────────────────────
 export default function ScoreBar({ score }) {
+  const T = useTheme();
   const c = score >= 70 ? T.green : score >= 40 ? T.amber : T.red;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 70 }}>

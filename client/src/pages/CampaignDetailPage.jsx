@@ -5,7 +5,7 @@ import {
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
   Search, Trash2, Activity, X, Clock,
 } from "lucide-react";
-import T from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, getCampaignAnalytics,
@@ -30,6 +30,7 @@ function fmtRelTime(ts) {
 }
 
 function StatusBadge({ status }) {
+  const T = useTheme();
   const map = {
     draft:   { label: "Draft",   color: T.muted  },
     sending: { label: "Sending", color: T.amber  },
@@ -48,6 +49,7 @@ function StatusBadge({ status }) {
 }
 
 function RecipientStatusBadge({ status }) {
+  const T = useTheme();
   const map = {
     pending:      { color: T.muted,   label: "Pending"      },
     sent:         { color: T.blue,    label: "Sent"         },
@@ -70,6 +72,7 @@ function RecipientStatusBadge({ status }) {
 // ── Big stat card ─────────────────────────────────────────────────────────────
 
 function BigStat({ icon: Icon, label, value, color, onClick, active }) {
+  const T = useTheme();
   return (
     <div
       onClick={onClick}
@@ -98,6 +101,7 @@ function BigStat({ icon: Icon, label, value, color, onClick, active }) {
 // ── Compact rate item ─────────────────────────────────────────────────────────
 
 function RateItem({ label, value, color }) {
+  const T = useTheme();
   return (
     <div style={{
       flex: 1, padding: "12px 16px",
@@ -115,6 +119,7 @@ function RateItem({ label, value, color }) {
 // ── Lead activity panel ───────────────────────────────────────────────────────
 
 function LeadActivityPanel({ recipient, contact, loading, onClose }) {
+  const T = useTheme();
   if (!recipient) return null;
 
   const c = contact ?? recipient.contact;
@@ -274,14 +279,14 @@ const STAGE_FILTERS = [
   { id: "churned",        label: "Churned",        desc: "Churned" },
 ];
 
-const thStyle = {
-  padding: "10px 16px", textAlign: "left",
-  fontSize: 10, fontWeight: 700, color: T.muted,
-  letterSpacing: "0.07em", textTransform: "uppercase",
-  borderBottom: "1px solid " + T.border, userSelect: "none",
-};
-
 function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId }) {
+  const T = useTheme();
+  const thStyle = {
+    padding: "10px 16px", textAlign: "left",
+    fontSize: 10, fontWeight: 700, color: T.muted,
+    letterSpacing: "0.07em", textTransform: "uppercase",
+    borderBottom: "1px solid " + T.border, userSelect: "none",
+  };
   const [data,    setData]    = useState({ rows: [], total: 0, page: 1, limit: 50 });
   const [loading, setLoading] = useState(true);
 
@@ -405,6 +410,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
 // ── Add Recipients Modal ──────────────────────────────────────────────────────
 
 function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
+  const T = useTheme();
   const [step,    setStep]    = useState(1);
   const [filter,  setFilter]  = useState("all");
   const [preview, setPreview] = useState(null);
@@ -634,6 +640,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
 // ── Send Confirm Modal ────────────────────────────────────────────────────────
 
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
@@ -687,6 +694,7 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CampaignDetailPage() {
+  const T = useTheme();
   const { id }   = useParams();
   const navigate = useNavigate();
 

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { usePool } from "./context/PoolContext";
+import { useTheme } from "./context/ThemeContext";
 
 import TopNav from "./components/TopNav";
 import PoolSwitcher from "./components/PoolSwitcher";
 import Sidebar from "./components/Sidebar";
 import LifecycleChart from "./components/LifecycleChart";
 import UserChip from "./components/layout/UserChip";
+import ThemeSwitcher from "./components/layout/ThemeSwitcher";
 import ComingSoon from "./components/layout/ComingSoon";
 
 import LoginPage from "./pages/LoginPage";
@@ -19,12 +21,10 @@ import CampaignsPage from "./pages/CampaignsPage";
 import CampaignDetailPage from "./pages/CampaignDetailPage";
 import ContactDetailPanel from "./components/ContactDetailPanel";
 
-import T from "./theme";
 import { useAuth } from "./hooks/useAuth";
 import { useContacts } from "./hooks/useContacts";
 import { PageLoader, ContentLoader } from "./components/ui/Loader";
 
-// ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
 
@@ -44,8 +44,8 @@ export default function App() {
   );
 }
 
-// ─── Main layout (rendered only when authenticated) ───────────────────────────
 function AppLayout({ currentUser, onSignOut }) {
+  const T = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -62,14 +62,12 @@ function AppLayout({ currentUser, onSignOut }) {
   const page      = location.pathname.replace("/", "") || "dashboard";
   const isContacts = page === "contacts";
 
-  // ── Navigation helper ───────────────────────────────────────────────────────
   const navigateTo = useCallback((p) => {
     setSelected(null);
     setCharted(null);
     navigate("/" + p);
   }, [navigate]);
 
-  // ── Contact handlers ────────────────────────────────────────────────────────
   const handleSelect = useCallback((c) => {
     setSelected(c);
     setCharted(c);
@@ -81,7 +79,6 @@ function AppLayout({ currentUser, onSignOut }) {
     setCharted(updated);
   }, [setContacts]);
 
-  // ── Pool / client switching ─────────────────────────────────────────────────
   const handlePoolSwitch = useCallback((p) => {
     setPool(p);
     setSelected(null);
@@ -95,7 +92,6 @@ function AppLayout({ currentUser, onSignOut }) {
     setCharted(null);
   }, [setClientId, setPool]);
 
-  // ── Global keyboard search ──────────────────────────────────────────────────
   useEffect(() => {
     function handler(e) {
       const tag = e.target.tagName;
@@ -116,10 +112,10 @@ function AppLayout({ currentUser, onSignOut }) {
       fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif",
       fontSize: 13, overflow: "hidden",
     }}>
-      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      {/* Top bar */}
       <div style={{
         height: 50, flexShrink: 0, position: "relative",
-        background: T.surface, borderBottom: "1px solid " + T.border,
+        background: T.navBg, borderBottom: "1px solid " + T.navBorder,
         display: "flex", alignItems: "center",
         padding: "0 14px", gap: 10, zIndex: 2000,
       }}>
@@ -131,8 +127,8 @@ function AppLayout({ currentUser, onSignOut }) {
             fontSize: 12, fontWeight: 800, color: "#fff",
           }}>G</div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: T.text, lineHeight: 1, letterSpacing: "-0.02em" }}>GeniusAI</div>
-            <div style={{ fontSize: 8, color: T.muted, letterSpacing: "0.05em" }}>PROPHONE</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T.navText, lineHeight: 1, letterSpacing: "-0.02em" }}>GeniusAI</div>
+            <div style={{ fontSize: 8, color: T.navMuted, letterSpacing: "0.05em" }}>PROPHONE</div>
           </div>
         </div>
 
@@ -151,32 +147,30 @@ function AppLayout({ currentUser, onSignOut }) {
           setViewMode={setViewMode}
         />
 
-        {/* Right side: search badge + user chip */}
+        {/* Right side: search badge + theme switcher + user chip */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           {search && (
             <div style={{
               display: "flex", alignItems: "center", gap: 5,
-              background: T.accent + "14", border: "1px solid " + T.accent + "40",
+              background: "rgba(99,102,241,0.18)", border: "1px solid rgba(99,102,241,0.35)",
               borderRadius: 5, padding: "3px 8px",
             }}>
-              <span style={{ fontSize: 11, color: T.accent }}>⌕ "{search}"</span>
+              <span style={{ fontSize: 11, color: "#a5b4fc" }}>⌕ "{search}"</span>
               <button
                 onClick={() => setSearch("")}
-                style={{ background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 11, padding: 0 }}
+                style={{ background: "none", border: "none", color: "#a5b4fc", cursor: "pointer", fontSize: 11, padding: 0 }}
               >✕</button>
             </div>
           )}
+          <ThemeSwitcher />
           <UserChip user={currentUser} onSignOut={onSignOut} />
         </div>
       </div>
 
-      {/* ── First-load full page loader ──────────────────────────────────────── */}
       {firstLoad && loading && <PageLoader text="Loading CRM data…" />}
 
-      {/* ── Main content ────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
 
-        {/* Sidebar — only on contacts page */}
         {isContacts && (
           <Sidebar
             pool={pool} clientId={clientId} viewMode={viewMode}
@@ -187,10 +181,8 @@ function AppLayout({ currentUser, onSignOut }) {
           />
         )}
 
-        {/* Page body */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
-          {/* Contacts sub-nav */}
           {isContacts && (
             <div style={{
               display: "flex", gap: 2,
@@ -275,7 +267,6 @@ function AppLayout({ currentUser, onSignOut }) {
           </div>
         </div>
 
-        {/* Right panel: lifecycle chart */}
         {charted && (
           <div style={{
             width: 420, flexShrink: 0,

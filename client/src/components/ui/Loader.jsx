@@ -1,6 +1,6 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// Inject keyframe animations once
+// Inject keyframe animations once (no colors — transforms only)
 const _s = document.createElement("style");
 _s.textContent = `
   @keyframes crm-spin    { to { transform: rotate(360deg); } }
@@ -13,8 +13,8 @@ _s.textContent = `
 `;
 document.head.appendChild(_s);
 
-// ── Spinner ring ──────────────────────────────────────────────────────────────
 export function Spinner({ size = 26, color, style: sx }) {
+  const T = useTheme();
   const c = color || T.accent;
   return (
     <div
@@ -29,8 +29,8 @@ export function Spinner({ size = 26, color, style: sx }) {
   );
 }
 
-// ── Three dots loader ─────────────────────────────────────────────────────────
 export function Dots({ color }) {
+  const T = useTheme();
   const c = color || T.accent;
   const dot = (delay) => ({
     width: 7, height: 7, borderRadius: "50%",
@@ -47,8 +47,8 @@ export function Dots({ color }) {
   );
 }
 
-// ── Full-page loader (first load / auth) ──────────────────────────────────────
 export function PageLoader({ text = "Loading CRM…" }) {
+  const T = useTheme();
   return (
     <div
       style={{
@@ -60,7 +60,6 @@ export function PageLoader({ text = "Loading CRM…" }) {
         fontFamily: "'Inter','DM Sans',system-ui,sans-serif",
       }}
     >
-      {/* Glow ring behind logo */}
       <div style={{ position: "relative", marginBottom: 4 }}>
         <div
           style={{
@@ -84,7 +83,6 @@ export function PageLoader({ text = "Loading CRM…" }) {
         </div>
       </div>
 
-      {/* Brand */}
       <div style={{ textAlign: "center", marginBottom: 4 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: T.text, letterSpacing: "-0.02em" }}>
           GeniusAI
@@ -94,13 +92,9 @@ export function PageLoader({ text = "Loading CRM…" }) {
         </div>
       </div>
 
-      {/* Spinner */}
       <Spinner size={34} />
-
-      {/* Text */}
       <div style={{ fontSize: 11, color: T.muted }}>{text}</div>
 
-      {/* Progress bar */}
       <div
         style={{
           width: 160, height: 2,
@@ -120,8 +114,8 @@ export function PageLoader({ text = "Loading CRM…" }) {
   );
 }
 
-// ── Content-area overlay (pool/client switch) ─────────────────────────────────
 export function ContentLoader({ text = "Loading contacts…" }) {
+  const T = useTheme();
   return (
     <div
       style={{
@@ -138,7 +132,7 @@ export function ContentLoader({ text = "Loading contacts…" }) {
           display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
           background: T.card, border: "1px solid " + T.border,
           borderRadius: 12, padding: "24px 32px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          boxShadow: T.shadowMd,
         }}
       >
         <div
@@ -159,8 +153,8 @@ export function ContentLoader({ text = "Loading contacts…" }) {
   );
 }
 
-// ── Inline mini spinner (for buttons, small spaces) ───────────────────────────
 export function InlineLoader({ text = "Saving…" }) {
+  const T = useTheme();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <Spinner size={13} />
@@ -169,8 +163,8 @@ export function InlineLoader({ text = "Saving…" }) {
   );
 }
 
-// ── Skeleton row (for table/list placeholders) ────────────────────────────────
 export function SkeletonRow({ cols = 5 }) {
+  const T = useTheme();
   return (
     <tr>
       {Array.from({ length: cols }).map((_, i) => (

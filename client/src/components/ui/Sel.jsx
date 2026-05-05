@@ -1,7 +1,7 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 
-// ─── Labelled select dropdown ─────────────────────────────────────────────────
 export default function Sel({ label, value, onChange, options, style = {} }) {
+  const T = useTheme();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
       {label && (

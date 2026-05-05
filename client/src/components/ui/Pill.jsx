@@ -1,15 +1,16 @@
-import T from "../../theme";
+import { useTheme } from "../../context/ThemeContext";
 import { STAGE_DEF } from "../../data/stages";
 
-// ─── Generic coloured pill ────────────────────────────────────────────────────
-export function Pill({ color = T.muted, children, small, onClick }) {
+export function Pill({ color, children, small, onClick }) {
+  const T = useTheme();
+  const c = color || T.muted;
   return (
     <span
       onClick={onClick}
       style={{
         display: "inline-flex", alignItems: "center", gap: 3,
-        background: color + "1a", color,
-        border: "1px solid " + color + "40",
+        background: c + "1a", color: c,
+        border: "1px solid " + c + "40",
         borderRadius: 4,
         padding: small ? "1px 5px" : "2px 7px",
         fontSize: small ? 9 : 10,
@@ -25,7 +26,6 @@ export function Pill({ color = T.muted, children, small, onClick }) {
   );
 }
 
-// ─── Stage-specific pill ──────────────────────────────────────────────────────
 export function StagePill({ stage }) {
   const d = STAGE_DEF[stage];
   if (!d) return null;
