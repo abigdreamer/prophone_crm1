@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
   MoreHorizontal, Pencil, Send, Copy, Trash2, X,
@@ -54,6 +54,7 @@ const BLOCK_TYPES = [
   { type: "text",      label: "Text",       desc: "Body paragraph" },
   { type: "image",     label: "Image",      desc: "Image block" },
   { type: "button",    label: "Button",     desc: "Call-to-action" },
+  { type: "social",    label: "Social",     desc: "Social media links" },
   { type: "columns",   label: "Columns",    desc: "Two-column layout" },
   { type: "divider",   label: "Divider",    desc: "Horizontal rule" },
   { type: "spacer",    label: "Spacer",     desc: "Vertical space" },
@@ -66,23 +67,35 @@ const BLOCK_TYPES = [
 
 const BLOCK_ICON = {
   heading: "T", text: "¶", image: "⊡", button: "▣", columns: "⊟",
-  divider: "—", spacer: "↕", footer: "≡",
+  divider: "—", spacer: "↕", footer: "≡", social: "⊕",
   link: "⇗", slider: "≋", quiz: "?", spin_wheel: "◎",
 };
 
+const SOCIAL_PLATFORMS = [
+  { id: "facebook",  label: "Facebook",  color: "#1877F2", abbr: "f"  },
+  { id: "instagram", label: "Instagram", color: "#E1306C", abbr: "ig" },
+  { id: "linkedin",  label: "LinkedIn",  color: "#0A66C2", abbr: "in" },
+  { id: "twitter",   label: "Twitter/X", color: "#111111", abbr: "X"  },
+  { id: "youtube",   label: "YouTube",   color: "#FF0000", abbr: "▶"  },
+  { id: "tiktok",    label: "TikTok",    color: "#010101", abbr: "tt" },
+  { id: "pinterest", label: "Pinterest", color: "#E60023", abbr: "P"  },
+  { id: "snapchat",  label: "Snapchat",  color: "#FFFC00", abbr: "👻" },
+];
+
 const BLOCK_DEFAULTS = {
-  heading:    { text: "Welcome!", level: "h2", fontSize: 28, fontWeight: 700, color: "#111827", align: "center", padding: { top: 24, right: 24, bottom: 8, left: 24 } },
-  text:       { text: "Write your email body text here. Keep it concise and engaging.", fontSize: 15, color: "#374151", align: "left", lineHeight: 1.6, padding: { top: 8, right: 24, bottom: 8, left: 24 } },
-  image:      { src: "", alt: "", width: 100, borderRadius: 0, align: "center", padding: { top: 8, right: 0, bottom: 8, left: 0 } },
-  button:     { label: "Click Here", url: "", bgColor: "#6366f1", textColor: "#ffffff", fontSize: 14, borderRadius: 6, align: "center" },
-  columns:    { leftText: "Left column text", rightText: "Right column text", fontSize: 14, color: "#374151", padding: { top: 8, right: 24, bottom: 8, left: 24 } },
-  divider:    { color: "#e5e7eb", thickness: 1, marginTop: 8, marginBottom: 8, sidePadding: 24 },
-  spacer:     { height: 32 },
-  footer:     { text: "© 2024 Your Company. All rights reserved.\nYou received this email because you opted in.", fontSize: 12, color: "#9ca3af", align: "center", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
-  link:       { text: "Click here to learn more", url: "", color: "#6366f1", fontSize: 14, align: "center", underline: true, padding: { top: 8, right: 24, bottom: 8, left: 24 } },
-  slider:     { title: "How interested are you?", min: 1, max: 10, step: 1, labels: { min: "Not interested", max: "Very interested" }, buttonText: "Submit", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
-  quiz:       { question: "Which service are you most interested in?", options: ["Option A", "Option B", "Option C"], buttonText: "Submit Answer", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
-  spin_wheel: { title: "Spin to Win!", prizes: ["10% Off", "Free Consult", "Gift Card", "20% Off", "Try Again", "30% Off"], buttonText: "Spin Now!", buttonUrl: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+  heading:    { text: "Welcome!", level: "h2", fontSize: 28, fontWeight: 700, color: "#111827", align: "center", sectionBg: "", padding: { top: 24, right: 24, bottom: 8, left: 24 } },
+  text:       { text: "Write your email body text here. Keep it concise and engaging.", fontSize: 15, color: "#374151", align: "left", lineHeight: 1.6, sectionBg: "", padding: { top: 8, right: 24, bottom: 8, left: 24 } },
+  image:      { src: "", alt: "", width: 100, borderRadius: 0, align: "center", sectionBg: "", padding: { top: 8, right: 0, bottom: 8, left: 0 } },
+  button:     { label: "Click Here", url: "", bgColor: "#6366f1", textColor: "#ffffff", fontSize: 14, borderRadius: 6, align: "center", sectionBg: "" },
+  social:     { links: [{ platform: "facebook", url: "" }, { platform: "instagram", url: "" }, { platform: "linkedin", url: "" }], iconSize: 36, align: "center", sectionBg: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+  columns:    { leftText: "Left column text", rightText: "Right column text", fontSize: 14, color: "#374151", sectionBg: "", padding: { top: 8, right: 24, bottom: 8, left: 24 } },
+  divider:    { color: "#e5e7eb", thickness: 1, marginTop: 8, marginBottom: 8, sidePadding: 24, sectionBg: "" },
+  spacer:     { height: 32, sectionBg: "" },
+  footer:     { text: "© 2026 Your Company. All rights reserved.\nYou received this email because you opted in.", fontSize: 12, color: "#9ca3af", align: "center", sectionBg: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+  link:       { text: "Click here to learn more", url: "", color: "#6366f1", fontSize: 14, align: "center", underline: true, sectionBg: "", padding: { top: 8, right: 24, bottom: 8, left: 24 } },
+  slider:     { title: "How interested are you?", min: 1, max: 10, step: 1, labels: { min: "Not interested", max: "Very interested" }, buttonText: "Submit", buttonUrl: "", sectionBg: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+  quiz:       { question: "Which service are you most interested in?", options: ["Option A", "Option B", "Option C"], buttonText: "Submit Answer", buttonUrl: "", sectionBg: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
+  spin_wheel: { title: "Spin to Win!", prizes: ["10% Off", "Free Consult", "Gift Card", "20% Off", "Try Again", "30% Off"], buttonText: "Spin Now!", buttonUrl: "", sectionBg: "", padding: { top: 16, right: 24, bottom: 16, left: 24 } },
 };
 
 const DEFAULT_BLOCKS = [
@@ -101,68 +114,80 @@ function blockToHtml(block) {
     ? `padding:${p.padding.top || 0}px ${p.padding.right || 0}px ${p.padding.bottom || 0}px ${p.padding.left || 0}px`
     : "padding:0";
   const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const bgAttr = p.sectionBg ? ` bgcolor="${p.sectionBg}" style="background:${p.sectionBg}"` : "";
 
   switch (type) {
     case "heading": {
       const tag = p.level || "h2";
       const style = `margin:0;font-size:${p.fontSize || 28}px;font-weight:${p.fontWeight || 700};color:${p.color || "#111827"};text-align:${p.align || "center"};line-height:1.2;font-family:Arial,sans-serif`;
-      return `<tr><td style="${padStr}"><${tag} style="${style}">${esc(p.text)}</${tag}></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><${tag} style="${style}">${esc(p.text)}</${tag}></td></tr>`;
     }
     case "text": {
       const style = `margin:0;font-size:${p.fontSize || 15}px;color:${p.color || "#374151"};text-align:${p.align || "left"};line-height:${p.lineHeight || 1.6};font-family:Arial,sans-serif`;
       const content = (p.text || "").replace(/\n/g, "<br>");
-      return `<tr><td style="${padStr}"><p style="${style}">${content}</p></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><p style="${style}">${content}</p></td></tr>`;
     }
     case "image": {
       const align = p.align || "center";
       const margin = align === "center" ? "0 auto" : align === "right" ? "0 0 0 auto" : "0";
       const imgStyle = `max-width:${p.width || 100}%;height:auto;display:block;border-radius:${p.borderRadius || 0}px;margin:${margin}`;
-      if (!p.src) return `<tr><td style="${padStr};text-align:${align}"><div style="height:120px;background:#f3f4f6;text-align:center;line-height:120px;color:#9ca3af;font-family:Arial">[Image]</div></td></tr>`;
-      return `<tr><td style="${padStr};text-align:${align}"><img src="${p.src}" alt="${esc(p.alt)}" style="${imgStyle}" /></td></tr>`;
+      if (!p.src) return `<tr${bgAttr}><td style="${padStr};text-align:${align}"><div style="height:120px;background:#f3f4f6;text-align:center;line-height:120px;color:#9ca3af;font-family:Arial">[Image]</div></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr};text-align:${align}"><img src="${p.src}" alt="${esc(p.alt)}" style="${imgStyle}" /></td></tr>`;
     }
     case "button": {
       const btnPad = p.padding ? `${p.padding.top || 12}px ${p.padding.right || 28}px ${p.padding.bottom || 12}px ${p.padding.left || 28}px` : "12px 28px";
       const btnStyle = `display:inline-block;padding:${btnPad};background:${p.bgColor || "#6366f1"};color:${p.textColor || "#ffffff"};font-size:${p.fontSize || 14}px;font-weight:600;text-decoration:none;border-radius:${p.borderRadius || 6}px;font-family:Arial,sans-serif`;
-      return `<tr><td style="padding:16px 24px;text-align:${p.align || "center"}"><a href="${p.url || "#"}" style="${btnStyle}" target="_blank">${esc(p.label || "Click Here")}</a></td></tr>`;
+      return `<tr${bgAttr}><td style="padding:16px 24px;text-align:${p.align || "center"}"><a href="${p.url || "#"}" style="${btnStyle}" target="_blank">${esc(p.label || "Click Here")}</a></td></tr>`;
     }
     case "divider": {
       const hrStyle = `border:none;border-top:${p.thickness || 1}px solid ${p.color || "#e5e7eb"};margin:${p.marginTop || 0}px 0 ${p.marginBottom || 0}px 0`;
-      return `<tr><td style="padding:0 ${p.sidePadding || 24}px"><hr style="${hrStyle}" /></td></tr>`;
+      return `<tr${bgAttr}><td style="padding:0 ${p.sidePadding || 24}px"><hr style="${hrStyle}" /></td></tr>`;
     }
     case "spacer":
-      return `<tr><td style="height:${p.height || 32}px;line-height:${p.height || 32}px;font-size:1px">&nbsp;</td></tr>`;
+      return `<tr${bgAttr}><td style="height:${p.height || 32}px;line-height:${p.height || 32}px;font-size:1px">&nbsp;</td></tr>`;
     case "footer": {
       const style = `margin:0;font-size:${p.fontSize || 12}px;color:${p.color || "#9ca3af"};text-align:${p.align || "center"};line-height:1.6;font-family:Arial,sans-serif`;
       const content = (p.text || "").replace(/\n/g, "<br>");
-      return `<tr><td style="${padStr}"><p style="${style}">${content}</p></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><p style="${style}">${content}</p></td></tr>`;
     }
     case "columns": {
       const cellStyle = `font-size:${p.fontSize || 14}px;color:${p.color || "#374151"};font-family:Arial,sans-serif;line-height:1.6;vertical-align:top`;
       const left = (p.leftText || "").replace(/\n/g, "<br>");
       const right = (p.rightText || "").replace(/\n/g, "<br>");
-      return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="48%" style="${cellStyle};padding-right:12px">${left}</td><td width="4%" style="min-width:24px"></td><td width="48%" style="${cellStyle};padding-left:12px">${right}</td></tr></table></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="48%" style="${cellStyle};padding-right:12px">${left}</td><td width="4%" style="min-width:24px"></td><td width="48%" style="${cellStyle};padding-left:12px">${right}</td></tr></table></td></tr>`;
     }
     case "link": {
       const linkStyle = `color:${p.color||"#6366f1"};font-size:${p.fontSize||14}px;text-decoration:${p.underline!==false?"underline":"none"};font-family:Arial,sans-serif;font-weight:600`;
-      return `<tr><td style="${padStr};text-align:${p.align||"center"}"><a href="${p.url||"#"}" style="${linkStyle}" target="_blank">${esc(p.text||"Click here")}</a></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr};text-align:${p.align||"center"}"><a href="${p.url||"#"}" style="${linkStyle}" target="_blank">${esc(p.text||"Click here")}</a></td></tr>`;
+    }
+    case "social": {
+      const links = (p.links || []).filter(l => l.url);
+      if (!links.length) return "";
+      const size = p.iconSize || 36;
+      const icons = links.map(l => {
+        const pl = SOCIAL_PLATFORMS.find(pl => pl.id === l.platform) || { color: "#888", abbr: "?" };
+        const circleStyle = `display:inline-block;width:${size}px;height:${size}px;line-height:${size}px;border-radius:50%;background:${pl.color};text-align:center;color:#fff;font-size:${Math.round(size * 0.38)}px;font-weight:700;font-family:Arial,sans-serif;text-decoration:none`;
+        return `<td style="padding:0 6px"><a href="${l.url}" style="${circleStyle}" target="_blank">${pl.abbr}</a></td>`;
+      }).join("");
+      return `<tr${bgAttr}><td style="${padStr};text-align:${p.align||"center"}"><table cellpadding="0" cellspacing="0" border="0" style="display:inline-table"><tr>${icons}</tr></table></td></tr>`;
     }
     case "slider": {
       const href = p.buttonUrl || `{{INTERACT_URL_${block.id}}}`;
       const titleStyle = `margin:0 0 12px;font-size:16px;font-weight:700;color:#1e293b;text-align:center;font-family:Arial,sans-serif`;
       const btnStyle = `display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:10px;font-family:Arial,sans-serif`;
-      return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">${esc(p.title || "Rate your experience")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Rate Now")} →</a></td></tr></table></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">${esc(p.title || "Rate your experience")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Rate Now")} →</a></td></tr></table></td></tr>`;
     }
     case "quiz": {
       const href = p.buttonUrl || `{{INTERACT_URL_${block.id}}}`;
       const titleStyle = `margin:0 0 12px;font-size:16px;font-weight:700;color:#1e293b;text-align:center;font-family:Arial,sans-serif`;
       const btnStyle = `display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:10px;font-family:Arial,sans-serif`;
-      return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">${esc(p.question || "Quick question for you")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Answer Now")} →</a></td></tr></table></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">${esc(p.question || "Quick question for you")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Answer Now")} →</a></td></tr></table></td></tr>`;
     }
     case "spin_wheel": {
       const href = p.buttonUrl || `{{INTERACT_URL_${block.id}}}`;
       const titleStyle = `margin:0 0 12px;font-size:18px;font-weight:800;color:#1e293b;text-align:center;font-family:Arial,sans-serif`;
       const btnStyle = `display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;font-family:Arial,sans-serif`;
-      return `<tr><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">🎡 ${esc(p.title || "Spin to Win!")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Spin Now!")} →</a></td></tr></table></td></tr>`;
+      return `<tr${bgAttr}><td style="${padStr}"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center"><p style="${titleStyle}">🎡 ${esc(p.title || "Spin to Win!")}</p></td></tr><tr><td align="center"><a href="${href}" style="${btnStyle}">${esc(p.buttonText || "Spin Now!")} →</a></td></tr></table></td></tr>`;
     }
     default: return "";
   }
@@ -330,6 +355,24 @@ function MiniBlock({ block }) {
           <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 8 }}>⚡ Interactive — personalized per contact</div>
         </div>
       );
+    case "social": {
+      const size = p.iconSize || 36;
+      const links = p.links || [];
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, textAlign: p.align || "center" }}>
+          <div style={{ display: "inline-flex", gap: 8 }}>
+            {links.map((l, i) => {
+              const pl2 = SOCIAL_PLATFORMS.find(x => x.id === l.platform) || { color: "#888", abbr: "?" };
+              return (
+                <div key={i} style={{ width: size, height: size, borderRadius: "50%", background: pl2.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: Math.round(size * 0.38), fontWeight: 700, flexShrink: 0 }}>
+                  {pl2.abbr}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
     default:
       return null;
   }
@@ -740,6 +783,22 @@ function PadInput({ value = {}, onChange }) {
   );
 }
 
+// ─── Section background helper ────────────────────────────────────────────────
+function SectionBgRow({ value, onChange }) {
+  return (
+    <div style={{ marginBottom: 12, paddingTop: 8, borderTop: `1px solid ${C.borderSub}` }}>
+      <PropLabel>Section Background</PropLabel>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="color" value={value || "#ffffff"} onChange={e => onChange(e.target.value)}
+          style={{ width: 28, height: 28, border: `1px solid ${C.border}`, borderRadius: 4, padding: 2, cursor: "pointer", flexShrink: 0, background: "none" }} />
+        <input type="text" value={value || ""} onChange={e => onChange(e.target.value)} placeholder="transparent"
+          style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, padding: "7px 9px", fontSize: 12, color: C.text, outline: "none", fontFamily: "monospace" }} />
+        {value && <button onClick={() => onChange("")} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 12, padding: "0 2px" }} title="Clear">✕</button>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Block property editor ────────────────────────────────────────────────────
 function BlockEditor({ block, onChange, tab = "content" }) {
   const { type, props: p } = block;
@@ -756,6 +815,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#111827"} onChange={v => set("color", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "text":
@@ -766,6 +826,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "left"} onChange={v => set("align", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Line Height</PropLabel><NumInput value={p.lineHeight || 1.6} onChange={v => set("lineHeight", v)} min={1} max={3} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "image":
@@ -775,6 +836,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 0} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "button":
@@ -785,6 +847,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Border Radius</PropLabel><NumInput value={p.borderRadius || 6} onChange={v => set("borderRadius", v)} min={0} max={50} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "divider":
@@ -795,10 +858,16 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Top Spacing</PropLabel><NumInput value={p.marginTop || 8} onChange={v => set("marginTop", v)} min={0} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Bottom Spacing</PropLabel><NumInput value={p.marginBottom || 8} onChange={v => set("marginBottom", v)} min={0} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Side Padding</PropLabel><NumInput value={p.sidePadding || 24} onChange={v => set("sidePadding", v)} min={0} unit="px" /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "spacer":
-        return <div style={{ marginBottom: 12 }}><PropLabel>Height</PropLabel><NumInput value={p.height || 32} onChange={v => set("height", v)} min={4} max={200} unit="px" /></div>;
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Height</PropLabel><NumInput value={p.height || 32} onChange={v => set("height", v)} min={4} max={200} unit="px" /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
+          </>
+        );
       case "footer":
         return (
           <>
@@ -806,6 +875,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#9ca3af"} onChange={v => set("color", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "columns":
@@ -814,6 +884,7 @@ function BlockEditor({ block, onChange, tab = "content" }) {
             <div style={{ marginBottom: 12 }}><PropLabel>Font Size</PropLabel><NumInput value={p.fontSize || 14} onChange={v => set("fontSize", v)} min={10} max={24} unit="px" /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Color</PropLabel><ColInput value={p.color || "#374151"} onChange={v => set("color", v)} /></div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "link":
@@ -829,12 +900,27 @@ function BlockEditor({ block, onChange, tab = "content" }) {
               </label>
             </div>
             <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
+          </>
+        );
+      case "social":
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Icon Size</PropLabel><NumInput value={p.iconSize || 36} onChange={v => set("iconSize", v)} min={20} max={80} unit="px" /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Align</PropLabel><AlignBtns value={p.align || "center"} onChange={v => set("align", v)} /></div>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
           </>
         );
       case "slider":
       case "quiz":
       case "spin_wheel":
-        return <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>;
+        return (
+          <>
+            <div style={{ marginBottom: 12 }}><PropLabel>Padding</PropLabel><PadInput value={p.padding} onChange={setPad} /></div>
+            <SectionBgRow value={p.sectionBg} onChange={v => set("sectionBg", v)} />
+          </>
+        );
       default:
         return <div style={{ fontSize: 12, color: C.muted }}>No design properties.</div>;
     }
@@ -875,6 +961,57 @@ function BlockEditor({ block, onChange, tab = "content" }) {
           <div style={{ marginBottom: 12 }}><PropLabel>URL</PropLabel><TxtInput value={p.url || ""} onChange={v => set("url", v)} placeholder="https://..." /></div>
         </>
       );
+    case "social": {
+      const links = p.links || [];
+      const [showPicker, setShowPicker] = useState(false);
+      const updateLink = (i, field, val) => {
+        const next = links.map((l, idx) => idx === i ? { ...l, [field]: val } : l);
+        set("links", next);
+      };
+      const removeLink = i => set("links", links.filter((_, idx) => idx !== i));
+      const addLink = platform => {
+        set("links", [...links, { platform, url: "" }]);
+        setShowPicker(false);
+      };
+      return (
+        <div>
+          {links.map((link, i) => {
+            const plat = SOCIAL_PLATFORMS.find(x => x.id === link.platform) || { color: "#888", abbr: "?", label: link.platform };
+            return (
+              <div key={i} style={{ marginBottom: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: plat.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{plat.abbr}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.text, flex: 1 }}>{plat.label}</span>
+                  <button onClick={() => removeLink(i)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, padding: 2 }} title="Remove">✕</button>
+                </div>
+                <input value={link.url || ""} onChange={e => updateLink(i, "url", e.target.value)} placeholder="https://..."
+                  style={{ width: "100%", boxSizing: "border-box", background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "6px 8px", fontSize: 11, color: C.text, outline: "none", fontFamily: "inherit" }} />
+              </div>
+            );
+          })}
+          {showPicker ? (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: C.sub, marginBottom: 6, fontWeight: 600 }}>Select platform</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                {SOCIAL_PLATFORMS.filter(pl => !links.find(l => l.platform === pl.id)).map(pl => (
+                  <button key={pl.id} onClick={() => addLink(pl.id)}
+                    style={{ display: "flex", alignItems: "center", gap: 6, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 8px", cursor: "pointer", color: C.text, fontSize: 11 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: pl.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{pl.abbr}</div>
+                    {pl.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowPicker(false)} style={{ marginTop: 6, width: "100%", background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 0", cursor: "pointer", color: C.sub, fontSize: 11 }}>Cancel</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowPicker(true)}
+              style={{ width: "100%", background: C.bg, border: `1px dashed ${C.border}`, borderRadius: 7, padding: "7px 0", cursor: "pointer", color: C.accent, fontSize: 12, fontWeight: 600, marginTop: 4 }}>
+              + Add Platform
+            </button>
+          )}
+        </div>
+      );
+    }
     case "divider":
     case "spacer":
       return <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "12px 0" }}>Use the Design tab to style this block.</div>;
@@ -1137,11 +1274,21 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
   const [blockSearch,   setBlockSearch]   = useState("");
   const [settingsTab,   setSettingsTab]   = useState("style");
   const [blockEditorTab, setBlockEditorTab] = useState("content");
-  const fromRef = useRef(null);
+  const fromRef      = useRef(null);
+  const canvasRef    = useRef(null);
+  const savedScroll  = useRef(null);
 
   const selectedBlock = blocks.find(b => b.id === selectedId) || null;
 
   useEffect(() => { setBlockEditorTab("content"); }, [selectedId]);
+
+  // After DOM updates, restore the canvas scroll if addBlock saved a position
+  useLayoutEffect(() => {
+    if (savedScroll.current !== null && canvasRef.current) {
+      canvasRef.current.scrollTop = savedScroll.current;
+      savedScroll.current = null;
+    }
+  });
 
   useEffect(() => {
     if (templateId) {
@@ -1213,7 +1360,15 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
 
   function addBlock(type) {
     const nb = { id: generateId(), type, props: { ...BLOCK_DEFAULTS[type] } };
-    setBlocks(p => [...p, nb]);
+    // Snapshot the canvas scroll so useLayoutEffect can restore it
+    savedScroll.current = canvasRef.current?.scrollTop ?? null;
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === selectedId);
+      if (idx < 0) return [...prev, nb];   // nothing selected → append
+      const next = [...prev];
+      next.splice(idx + 1, 0, nb);          // insert right after selection
+      return next;
+    });
     setSelectedId(nb.id);
   }
 
@@ -1447,7 +1602,7 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
             </div>
           </div>
         ) : (
-        <div style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center" }}
+        <div ref={canvasRef} style={{ flex: 1, overflowY: "auto", background: "#1A1D2E", display: "flex", flexDirection: "column", alignItems: "center" }}
           onClick={() => setSelectedId(null)}>
           <div style={{ width: Math.min(settings.containerWidth + 80, 800), maxWidth: "100%", padding: "24px 40px" }}>
 

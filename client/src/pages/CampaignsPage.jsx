@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
-  Loader2, Copy, Check, Search, Trash2, MoreVertical, Megaphone, ChevronRight,
+  Loader2, Check, Search, Trash2, MoreVertical, Megaphone, ChevronRight,
 } from "lucide-react";
 import T from "../theme";
 import {
   getCampaigns, createCampaign, deleteCampaign,
-  getPublishedTemplates, getActivePool,
+  getPublishedTemplates, getActivePool, getClients,
 } from "../services/api";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -223,29 +223,6 @@ function Field({ label, value, onChange, placeholder, type = "text", required, o
   );
 }
 
-const MERGE_TAGS = [
-  "{{firstName}}", "{{lastName}}", "{{fullName}}", "{{email}}",
-  "{{phone}}", "{{company}}", "{{city}}", "{{title}}",
-];
-
-function MergeTagChip({ tag }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(tag).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      title="Click to copy"
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 4,
-        border: "1px solid " + (copied ? T.green + "60" : T.border),
-        background: copied ? T.green + "10" : T.surface,
-        color: copied ? T.green : T.dim,
-        fontSize: 10, fontFamily: "monospace", cursor: "pointer", transition: "all 0.15s",
-      }}
-    >
-      {copied ? <Check size={9} /> : <Copy size={9} />}{tag}
-    </button>
-  );
-}
 
 function TemplatePickerList({ tpls, selected, onSelect, accent, maxHeight = 220 }) {
   if (!tpls.length) return (
@@ -329,7 +306,7 @@ function WizardStep1({ form, setForm, onNext, onClose }) {
 
 // ── Wizard Step 2 ─────────────────────────────────────────────────────────────
 
-function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
+function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clientName }) {
   const [tpls, setTpls] = useState(templates);
   const [loading, setLoading] = useState(!templates.length);
 
@@ -338,6 +315,33 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
     setLoading(true);
     getPublishedTemplates().then(setTpls).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  // Pre-fill fromName with client name on mount (only if still blank)
+  useEffect(() => {
+    if (clientName) {
+      setForm(f => ({ ...f, fromName: f.fromName || clientName }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientName]);
+
+  // When a template is picked, auto-fill subject (if blank) from template.subject
+  const handleSelectTemplate = (id) => {
+    const tpl = tpls.find(t => t.id === id);
+    setForm(f => ({
+      ...f,
+      templateId: id,
+      subject: f.subject || tpl?.subject || '',
+    }));
+  };
+
+  const handleSelectTemplateB = (id) => {
+    const tpl = tpls.find(t => t.id === id);
+    setForm(f => ({
+      ...f,
+      templateIdB: id,
+      subjectB: f.subjectB || tpl?.subject || '',
+    }));
+  };
 
   const isAB = form.type === "ab_test";
   const canCreate = form.templateId && !saving;
@@ -351,14 +355,10 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
     </div>
   );
 
-  const mergeTagsRow = (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 7, letterSpacing: "0.03em" }}>
-        MERGE TAGS <span style={{ fontWeight: 400, color: T.muted, fontSize: 10 }}>(click to copy)</span>
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-        {MERGE_TAGS.map(t => <MergeTagChip key={t} tag={t} />)}
-      </div>
+  const fromRow = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <Field label="From Name"  value={form.fromName}  onChange={v => setForm(f => ({ ...f, fromName: v }))}  placeholder={clientName || "Company name"} />
+      <Field label="From Email" type="email" value={form.fromEmail} onChange={v => setForm(f => ({ ...f, fromEmail: v }))} placeholder="sales@yourdomain.com" />
     </div>
   );
 
@@ -382,7 +382,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
             <div style={{ flex: 1, border: "1px solid " + T.blue + "50", borderRadius: 10, padding: 14, background: T.blue + "04" }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: T.blue, marginBottom: 10, letterSpacing: "0.08em" }}>VARIANT A</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6 }}>Template</div>
-              <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={id => setForm(f => ({ ...f, templateId: id }))} accent={T.blue} maxHeight={160} />
+              <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.blue} maxHeight={160} />
               <div style={{ marginTop: 12 }}>
                 <Field label="Subject A" required value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Subject for Variant A" />
               </div>
@@ -396,7 +396,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
               {!sameTemplate && (
                 <>
                   <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6 }}>Template B</div>
-                  <TemplatePickerList tpls={tpls} selected={form.templateIdB} onSelect={id => setForm(f => ({ ...f, templateIdB: id }))} accent={T.orange} maxHeight={120} />
+                  <TemplatePickerList tpls={tpls} selected={form.templateIdB} onSelect={handleSelectTemplateB} accent={T.orange} maxHeight={120} />
                 </>
               )}
               <div style={{ marginTop: 12 }}>
@@ -404,11 +404,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
               </div>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="From Name"  value={form.fromName}  onChange={v => setForm(f => ({ ...f, fromName: v }))}  placeholder="Jane at Acme" />
-            <Field label="From Email" type="email" value={form.fromEmail} onChange={v => setForm(f => ({ ...f, fromEmail: v }))} placeholder="jane@acme.com" />
-          </div>
-          {mergeTagsRow}
+          {fromRow}
         </div>
         {footer}
       </div>
@@ -421,15 +417,11 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate }) {
       <div style={{ display: "flex", minHeight: 340 }}>
         <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid " + T.border, padding: "18px 16px", overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 10, letterSpacing: "0.04em" }}>SELECT TEMPLATE</div>
-          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={id => setForm(f => ({ ...f, templateId: id }))} accent={T.accent} maxHeight={260} />
+          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.accent} maxHeight={260} />
         </div>
         <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
           <Field label="Subject Line" required value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Your compelling subject line…" />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="From Name"  value={form.fromName}  onChange={v => setForm(f => ({ ...f, fromName: v }))}  placeholder="Jane at Acme" />
-            <Field label="From Email" type="email" value={form.fromEmail} onChange={v => setForm(f => ({ ...f, fromEmail: v }))} placeholder="jane@acme.com" />
-          </div>
-          {mergeTagsRow}
+          {fromRow}
         </div>
       </div>
       {footer}
@@ -444,11 +436,21 @@ function NewCampaignModal({ onClose, onCreated }) {
   const [step, setStep]         = useState(1);
   const [saving, setSaving]     = useState(false);
   const [templates, setTemplates] = useState([]);
+  const [clientName, setClientName] = useState("");
   const [form, setForm] = useState({
     type: "regular", name: "",
     templateId: null, templateIdB: null,
     subject: "", subjectB: "", fromName: "", fromEmail: "",
   });
+
+  // Fetch client name for auto-fill
+  useEffect(() => {
+    if (!poolClientId) return;
+    getClients().then(clients => {
+      const match = clients.find(c => c.id === poolClientId);
+      if (match?.name) setClientName(match.name);
+    }).catch(() => {});
+  }, [poolClientId]);
 
   const goStep2 = useCallback(() => {
     setStep(2);
@@ -480,7 +482,7 @@ function NewCampaignModal({ onClose, onCreated }) {
         </div>
         {step === 1
           ? <WizardStep1 form={form} setForm={setForm} onNext={goStep2} onClose={onClose} />
-          : <WizardStep2 form={form} setForm={setForm} templates={templates} saving={saving} onBack={() => setStep(1)} onCreate={handleCreate} />
+          : <WizardStep2 form={form} setForm={setForm} templates={templates} saving={saving} onBack={() => setStep(1)} onCreate={handleCreate} clientName={clientName} />
         }
       </div>
     </div>
