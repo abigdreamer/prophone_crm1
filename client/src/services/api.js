@@ -234,8 +234,7 @@ export async function removeCampaignRecipients(id) {
 }
 
 export async function previewCampaignRecipients(campaignId, filter) {
-  const { clientId } = getActivePool();
-  const params = new URLSearchParams({ filter, clientId: clientId || '' });
+  const params = new URLSearchParams({ filter });
   const r = await request('GET', `/api/campaigns/${campaignId}/recipients/preview?${params}`);
   return r.data ?? r;
 }

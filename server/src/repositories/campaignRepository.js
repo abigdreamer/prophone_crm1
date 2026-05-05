@@ -130,7 +130,10 @@ export async function getRecipientEvents(recipientId) {
 }
 
 export async function getContactsForFilter(clientId, filter) {
-  const where = { clientId };
+  const where = {};
+  // Strict client scoping: only contacts that belong to exactly this client.
+  // clientId = null → only prospect (unscoped) contacts.
+  where.clientId = clientId ?? null;
   if (filter && filter !== 'all') {
     where.lifecycleStage = filter;
   }
