@@ -219,7 +219,7 @@ model CampaignRecipientEvent {
   recipientId String   @map("recipient_id")
   campaignId  String   @map("campaign_id")
   event       String
-  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("occurred_at")
   metadata    String?
 
   recipient CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)

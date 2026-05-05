@@ -115,6 +115,82 @@ export async function assignVariants(campaignId) {
   }
 }
 
+// ── Send helpers ──────────────────────────────────────────────────────────────
+
+export async function findPendingRecipientsForSend(campaignId) {
+  return prisma.campaignRecipient.findMany({
+    where:   { campaignId, status: 'pending' },
+    include: {
+      contact: {
+        select: { id: true, firstName: true, lastName: true, email: true, company: true },
+      },
+    },
+  });
+}
+
+export async function markRecipientSent(id, messageId) {
+  return prisma.campaignRecipient.update({
+    where: { id },
+    data:  { status: 'sent', messageId: messageId || null, sentAt: new Date() },
+  });
+}
+
+// ── Webhook event helpers ─────────────────────────────────────────────────────
+
+export async function findRecipientByMessageId(messageId) {
+  return prisma.campaignRecipient.findFirst({
+    where:  { messageId },
+    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true },
+  });
+}
+
+const STATUS_RANK = { pending: 0, sent: 1, delivered: 2, opened: 3, clicked: 4 };
+
+export async function applyEmailEvent(messageId, event) {
+  const recipient = await findRecipientByMessageId(messageId);
+  if (!recipient) return;
+
+  const recipientData = {};
+  const campaignData  = {};
+  const now = new Date();
+
+  switch (event) {
+    case 'delivered':
+      if ((STATUS_RANK[recipient.status] ?? 0) >= STATUS_RANK.delivered) return;
+      recipientData.status = 'delivered';
+      campaignData.deliveredCount = { increment: 1 };
+      break;
+    case 'opened':
+      if (recipient.openedAt) return; // de-dupe multiple open events
+      recipientData.status   = 'opened';
+      recipientData.openedAt = now;
+      campaignData.openedCount = { increment: 1 };
+      break;
+    case 'clicked':
+      if (recipient.clickedAt) return; // de-dupe
+      recipientData.status    = 'clicked';
+      recipientData.clickedAt = now;
+      campaignData.clickedCount = { increment: 1 };
+      break;
+    case 'bounced':
+      recipientData.status    = 'bounced';
+      recipientData.bouncedAt = now;
+      campaignData.bouncedCount = { increment: 1 };
+      break;
+    case 'complained':
+      recipientData.status = 'unsubscribed';
+      campaignData.unsubscribedCount = { increment: 1 };
+      break;
+    default:
+      return;
+  }
+
+  await Promise.all([
+    prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
+    prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
+  ]);
+}
+
 export async function logEvent(recipientId, campaignId, event, metadata = null) {
   return prisma.campaignRecipientEvent.create({
     data: { recipientId, campaignId, event, metadata },

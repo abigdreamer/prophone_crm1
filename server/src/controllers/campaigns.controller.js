@@ -1,6 +1,9 @@
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
+import * as domainRepo from '../repositories/domainRepository.js';
+import { sendBatchEmails } from '../services/resendService.js';
+import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -175,33 +178,117 @@ export const removeRecipients = async (req, res) => {
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
+const SEND_BATCH_SIZE = 100;
+
 export const sendCampaign = async (req, res) => {
+  const campaignId = req.params.id;
   try {
-    const campaign = await repo.findById(req.params.id);
+    const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
-
-    if (campaign.status === 'sent') return sendError(res, 'Campaign already sent', 400);
+    if (campaign.status === 'sent')    return sendError(res, 'Campaign already sent', 400);
     if (campaign.status === 'sending') return sendError(res, 'Campaign is already sending', 400);
+    if (!campaign.templateId)          return sendError(res, 'Campaign has no template selected', 400);
 
-    const pendingCount = await repo.countPendingRecipients(req.params.id);
-    if (!pendingCount) return sendError(res, 'No pending recipients', 400);
+    // Fetch template(s)
+    const template = await templateRepo.findById(campaign.templateId);
+    if (!template) return sendError(res, 'Template not found — it may have been deleted', 404);
 
-    // Mark as sending immediately (idempotency guard)
-    await repo.updateCampaign(req.params.id, {
-      status: 'sending',
-      sentAt: new Date(),
-    });
+    const templateB = campaign.templateIdB
+      ? await templateRepo.findById(campaign.templateIdB)
+      : null;
 
-    // In a real system this would queue jobs. For now we mark sent immediately.
-    await repo.updateCampaign(req.params.id, {
-      status:   'sent',
-      sentCount: pendingCount,
+    // Resolve sender address: campaign field → verified client domain → env fallback
+    let fromEmail = campaign.fromEmail?.trim() || '';
+    if (!fromEmail) {
+      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
+      if (clientDomain) {
+        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      } else {
+        const anyDomain = await domainRepo.findAnyVerified();
+        fromEmail = anyDomain
+          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
+          : (process.env.RESEND_FROM_EMAIL || '');
+      }
+    }
+    if (!fromEmail) {
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+    }
+
+    // Load all pending recipients with contact data (no pagination — need all for send)
+    const recipients = await repo.findPendingRecipientsForSend(campaignId);
+    if (!recipients.length) return sendError(res, 'No pending recipients', 400);
+
+    // Idempotency: mark as sending before we start
+    await repo.updateCampaign(campaignId, { status: 'sending', sentAt: new Date() });
+
+    const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    let totalSent = 0;
+
+    for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
+      const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
+
+      // Build email payload — filter out contacts with no email address
+      const emails = batch
+        .filter(r => r.contact?.email?.includes('@'))
+        .map(r => {
+          const isB   = campaign.type === 'ab_test' && r.abVariant === 'B';
+          const tmpl  = isB && templateB ? templateB : template;
+          const subj  = (isB && campaign.subjectB) ? campaign.subjectB
+                        : (campaign.subject || tmpl.subject || '(No subject)');
+
+          const vars = {
+            firstName: r.contact.firstName || '',
+            lastName:  r.contact.lastName  || '',
+            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:     r.contact.email     || '',
+            company:   r.contact.company   || '',
+          };
+
+          // Prefer stored HTML snapshot; fall back to server-side render
+          let html = tmpl.htmlOutput
+            ? substituteIntoHtml(tmpl.htmlOutput, vars)
+            : renderTemplate(tmpl.body, vars);
+
+          if (trackingBase) {
+            html = applyTracking(html, campaignId, r.id, trackingBase);
+          }
+
+          return {
+            _recipientId: r.id,
+            to:           r.contact.email,
+            from:         fromEmail,
+            fromName:     campaign.fromName || '',
+            subject:      subj,
+            html,
+          };
+        });
+
+      if (!emails.length) continue;
+
+      try {
+        const results = await sendBatchEmails(emails);
+
+        await Promise.all(emails.map((e, j) =>
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+        ));
+
+        totalSent += emails.length;
+      } catch (batchErr) {
+        // Log but continue with remaining batches; partial sends still count
+        console.error(`[sendCampaign] batch ${Math.floor(i / SEND_BATCH_SIZE) + 1} error:`, batchErr.message);
+      }
+    }
+
+    await repo.updateCampaign(campaignId, {
+      status:      'sent',
+      sentCount:   totalSent,
       completedAt: new Date(),
     });
 
-    const updated = await repo.findById(req.params.id);
-    sendSuccess(res, updated);
+    sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
+    // Roll status back so user can retry
+    await repo.updateCampaign(campaignId, { status: 'draft' }).catch(() => {});
     sendServerError(res, err, 'sendCampaign');
   }
 };

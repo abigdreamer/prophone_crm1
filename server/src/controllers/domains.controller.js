@@ -5,12 +5,15 @@
  *
  * In Resend dashboard → Webhooks → Add endpoint:
  *   URL:    https://api.prophone.biz/webhooks/resend
- *   Events: domain.verified, domain.failed
+ *   Events: domain.verified, domain.failed,
+ *           email.delivered, email.opened, email.clicked,
+ *           email.bounced, email.complained
  */
 
 import crypto from 'crypto';
 import { Resend } from 'resend';
 import prisma from '../lib/prisma.js';
+import { applyEmailEvent } from '../repositories/campaignRepository.js';
 
 // ── Resend SDK helpers ────────────────────────────────────────────────────────
 
@@ -161,10 +164,27 @@ async function handleWebhook(req, res) {
 
   const resendDomainId = event?.data?.id;
 
+  // Domain lifecycle events
   if (event.type === 'domain.verified' && resendDomainId) {
     await prisma.domain.updateMany({ where: { resendDomainId }, data: { status: 'verified' } }).catch(() => {});
   } else if (event.type === 'domain.failed' && resendDomainId) {
     await prisma.domain.updateMany({ where: { resendDomainId }, data: { status: 'failed' } }).catch(() => {});
+  }
+
+  // Campaign email delivery events — keyed by the Resend message ID we stored on send
+  const EMAIL_EVENT_MAP = {
+    'email.delivered':  'delivered',
+    'email.opened':     'opened',
+    'email.clicked':    'clicked',
+    'email.bounced':    'bounced',
+    'email.complained': 'complained',
+  };
+  const emailEventType = EMAIL_EVENT_MAP[event.type];
+  const emailId = event?.data?.email_id;
+  if (emailEventType && emailId) {
+    await applyEmailEvent(emailId, emailEventType).catch(e =>
+      console.error('[webhook] email event error:', e.message),
+    );
   }
 
   res.json({ received: true });
