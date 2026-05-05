@@ -71,7 +71,6 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleSelect = useCallback((c) => {
     setSelected(c);
     setCharted(c);
-    if (c) setSearch("");
   }, []);
 
   const handleUpdate = useCallback((updated) => {
