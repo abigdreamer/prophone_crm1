@@ -130,7 +130,11 @@ export async function getRecipientEvents(recipientId) {
 }
 
 export async function getContactsForFilter(clientId, filter) {
-  const where = { clientId };
+  const where = {};
+  // Scope to the campaign's client when one is set; otherwise include all contacts
+  if (clientId) {
+    where.OR = [{ clientId }, { clientId: null }];
+  }
   if (filter && filter !== 'all') {
     where.lifecycleStage = filter;
   }

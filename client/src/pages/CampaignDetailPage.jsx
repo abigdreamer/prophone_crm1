@@ -9,7 +9,7 @@ import T from "../theme";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, getCampaignAnalytics,
-  updateCampaign, getActivePool,
+  previewCampaignRecipients, getActivePool,
 } from "../services/api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,51 +87,55 @@ function StatCard({ icon: Icon, label, value, sub, color, active, onClick }) {
 // Add Recipients Modal
 // ─────────────────────────────────────────────────────────────────────────────
 
-const FILTERS = [
-  { id: "all",       label: "All Leads",        desc: "Every contact in this account" },
-  { id: "new",       label: "New Leads",         desc: "Contacts in the 'New' stage" },
-  { id: "contacted", label: "Contacted Leads",   desc: "Contacts that have been reached" },
-  { id: "qualified", label: "Qualified Leads",   desc: "Leads that are qualified" },
-  { id: "converted", label: "Converted Leads",   desc: "Converted / won contacts" },
-  { id: "lost",      label: "Lost Leads",        desc: "Marked as lost" },
+const STAGE_FILTERS = [
+  { id: "all",            label: "All Contacts",    desc: "Every contact regardless of stage" },
+  { id: "new",            label: "New",             desc: "Contacts in the New stage" },
+  { id: "contacted",      label: "Contacted",       desc: "Contacts that have been reached" },
+  { id: "engaged",        label: "Engaged",         desc: "Engaged contacts" },
+  { id: "demo_scheduled", label: "Demo Scheduled",  desc: "Demo has been scheduled" },
+  { id: "demo_done",      label: "Demo Done",       desc: "Demo has been completed" },
+  { id: "proposal_sent",  label: "Proposal Sent",   desc: "Proposal has been sent" },
+  { id: "negotiating",    label: "Negotiating",     desc: "In negotiation" },
+  { id: "customer",       label: "Customer",        desc: "Converted to customer" },
+  { id: "not_qualified",  label: "Not Qualified",   desc: "Did not qualify" },
+  { id: "lost",           label: "Lost",            desc: "Marked as lost" },
+  { id: "churned",        label: "Churned",         desc: "Previously churned customers" },
 ];
 
 function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
-  const [step,     setStep]     = useState(1); // 1=filter, 2=preview, 3=confirm
-  const [filter,   setFilter]   = useState("all");
-  const [preview,  setPreview]  = useState(null);
-  const [loading,  setLoading]  = useState(false);
-  const [adding,   setAdding]   = useState(false);
+  const [step,    setStep]    = useState(1);
+  const [filter,  setFilter]  = useState("all");
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [adding,  setAdding]  = useState(false);
+  const [error,   setError]   = useState(null);
 
   const loadPreview = useCallback(async (f) => {
     setLoading(true);
+    setError(null);
     try {
-      const { clientId: poolClient } = getActivePool();
-      const res = await fetch(
-        `/api/campaigns/${campaignId}/recipients/preview?filter=${f}&clientId=${clientId || poolClient}`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem("prophone_token")}` } }
-      );
-      const json = await res.json();
-      setPreview(json.data ?? json);
+      const data = await previewCampaignRecipients(campaignId, f);
+      setPreview(data);
     } catch {
       setPreview({ count: 0, sample: [] });
     } finally {
       setLoading(false);
     }
-  }, [campaignId, clientId]);
+  }, [campaignId]);
 
   const handleNext = async () => {
-    await loadPreview(filter);
     setStep(2);
+    await loadPreview(filter);
   };
 
   const handleAdd = async () => {
     setAdding(true);
+    setError(null);
     try {
       const updated = await addCampaignRecipients(campaignId, { filter });
       onAdded(updated);
     } catch (err) {
-      console.error(err);
+      setError(err.message || "Failed to add recipients. Please try again.");
     } finally {
       setAdding(false);
     }
@@ -162,11 +166,11 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
         <div style={{ padding: "20px 24px" }}>
           {step === 1 && (
             <>
-              <div style={{ fontSize: 12, color: T.muted, marginBottom: 16 }}>
-                Choose which contacts to include in this campaign.
+              <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
+                Filter contacts by lifecycle stage to include in this campaign.
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {FILTERS.map(f => {
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+                {STAGE_FILTERS.map(f => {
                   const selected = filter === f.id;
                   return (
                     <div
@@ -174,18 +178,18 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                       onClick={() => setFilter(f.id)}
                       style={{
                         display: "flex", alignItems: "center", gap: 12,
-                        padding: "12px 14px", borderRadius: 8, cursor: "pointer",
+                        padding: "10px 14px", borderRadius: 8, cursor: "pointer",
                         border: "1px solid " + (selected ? T.accent : T.border),
                         background: selected ? T.accent + "10" : T.surface,
                       }}
                     >
                       <div style={{
-                        width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                        width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
                         border: "2px solid " + (selected ? T.accent : T.border),
                         background: selected ? T.accent : "transparent",
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
-                        {selected && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+                        {selected && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#fff" }} />}
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{f.label}</div>
@@ -217,7 +221,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                         {preview?.count ?? 0} contacts
                       </div>
                       <div style={{ fontSize: 11, color: T.muted }}>
-                        Match filter: {FILTERS.find(f => f.id === filter)?.label}
+                        Stage: {STAGE_FILTERS.find(f => f.id === filter)?.label}
                       </div>
                     </div>
                   </div>
@@ -269,6 +273,18 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           )}
         </div>
 
+        {/* Error banner */}
+        {error && (
+          <div style={{
+            margin: "0 24px 0",
+            padding: "10px 14px", borderRadius: 7,
+            background: T.red + "15", border: "1px solid " + T.red + "40",
+            color: T.red, fontSize: 12,
+          }}>
+            {error}
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -291,7 +307,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
             </>
           ) : (
             <>
-              <button onClick={() => setStep(1)} style={{
+              <button onClick={() => { setStep(1); setError(null); }} style={{
                 padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
                 background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
               }}>← Back</button>
