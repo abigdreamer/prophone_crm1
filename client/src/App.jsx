@@ -6,6 +6,7 @@ import { useTheme } from "./context/ThemeContext";
 import TopNav from "./components/TopNav";
 import PoolSwitcher from "./components/PoolSwitcher";
 import Sidebar from "./components/Sidebar";
+import MarketingSidebar from "./components/MarketingSidebar";
 import LifecycleChart from "./components/LifecycleChart";
 import UserChip from "./components/layout/UserChip";
 import ThemeSwitcher from "./components/layout/ThemeSwitcher";
@@ -56,17 +57,41 @@ function AppLayout({ currentUser, onSignOut }) {
   const [search,   setSearch]   = useState("");
   const searchRef = useRef(null);
 
+  // Marketing sidebar state
+  const [mktgCollapsed,   setMktgCollapsed]   = useState(
+    () => localStorage.getItem("mktg-sidebar-collapsed") === "true"
+  );
+  const [mktgMobileOpen,  setMktgMobileOpen]  = useState(false);
+
   const { contacts, setContacts, contactCounts, loading, firstLoad } =
     useContacts(currentUser);
 
   const page      = location.pathname.replace("/", "") || "dashboard";
-  const isContacts = page === "contacts";
+  const pageRoot  = page.split("/")[0];
+  const isContacts  = pageRoot === "contacts";
+  const isMarketing = ["domains", "templates", "campaigns", "sequences"].includes(pageRoot);
 
   const navigateTo = useCallback((p) => {
     setSelected(null);
     setCharted(null);
     navigate("/" + p);
   }, [navigate]);
+
+  const handleToggleMktgCollapse = useCallback(() => {
+    setMktgCollapsed(c => {
+      const next = !c;
+      localStorage.setItem("mktg-sidebar-collapsed", String(next));
+      return next;
+    });
+  }, []);
+
+  const handleMarketingClick = useCallback(() => {
+    if (!isMarketing) {
+      navigateTo("domains");
+    }
+    // On mobile: toggle drawer; on desktop this is a no-op (sidebar already visible)
+    setMktgMobileOpen(o => !o);
+  }, [isMarketing, navigateTo]);
 
   const handleSelect = useCallback((c) => {
     setSelected(c);
@@ -145,6 +170,7 @@ function AppLayout({ currentUser, onSignOut }) {
           viewMode={viewMode}
           setPage={navigateTo}
           setViewMode={setViewMode}
+          onMarketingClick={handleMarketingClick}
         />
 
         {/* Right side: search badge + theme switcher + user chip */}
@@ -178,6 +204,17 @@ function AppLayout({ currentUser, onSignOut }) {
             search={search} setSearch={setSearch} searchRef={searchRef}
             contacts={contacts} setContacts={setContacts}
             currentUser={currentUser}
+          />
+        )}
+
+        {isMarketing && (
+          <MarketingSidebar
+            page={pageRoot}
+            onNavigate={navigateTo}
+            collapsed={mktgCollapsed}
+            onToggleCollapse={handleToggleMktgCollapse}
+            mobileOpen={mktgMobileOpen}
+            onMobileClose={() => setMktgMobileOpen(false)}
           />
         )}
 

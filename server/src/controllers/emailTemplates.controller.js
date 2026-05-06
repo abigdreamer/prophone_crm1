@@ -1,8 +1,41 @@
+import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import { sendSingleEmail } from '../services/resendService.js';
 import { htmlToPlainText } from '../services/email.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
-import * as domainRepo from '../repositories/domainRepository.js';
+import * as domainRepo    from '../repositories/domainRepository.js';
+import * as linkRepo      from '../repositories/templateLinkRepository.js';
+import {
+  validateAndSyncLinks,
+  extractLinksFromHtml,
+} from '../services/templateLinkService.js';
+
+// ── Guard: assert client exists ───────────────────────────────────────────────
+
+async function assertClientOwnership(clientId, res) {
+  if (!clientId) {
+    sendError(res, 'clientId is required', 400);
+    return false;
+  }
+  const client = await prisma.client.findUnique({
+    where:  { id: clientId },
+    select: { id: true },
+  });
+  if (!client) {
+    sendError(res, 'Client not found', 404);
+    return false;
+  }
+  return true;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function resolveLinks(linksPayload, htmlOutput) {
+  if (Array.isArray(linksPayload)) return linksPayload;       // primary path
+  return extractLinksFromHtml(htmlOutput);                    // fallback
+}
+
+// ── Controllers ───────────────────────────────────────────────────────────────
 
 export const checkSchema = async (req, res) => {
   try {
@@ -15,7 +48,9 @@ export const checkSchema = async (req, res) => {
 
 export const listTemplates = async (req, res) => {
   try {
-    const rows = await templateRepo.findMany({});
+    const { clientId } = req.query;
+    const where = clientId ? { clientId } : {};
+    const rows = await templateRepo.findMany(where);
     sendSuccess(res, rows);
   } catch (err) {
     sendServerError(res, err, 'listTemplates');
@@ -26,7 +61,16 @@ export const getTemplate = async (req, res) => {
   try {
     const row = await templateRepo.findById(req.params.id);
     if (!row) return sendError(res, 'Template not found', 404);
-    sendSuccess(res, row);
+
+    // Client isolation: if caller supplies clientId, enforce it matches
+    const { clientId } = req.query;
+    if (clientId && row.clientId !== clientId) {
+      return sendError(res, 'Template not found', 404);
+    }
+
+    // Attach persisted links to the response
+    const links = await linkRepo.findByTemplate(row.id);
+    sendSuccess(res, { ...row, links });
   } catch (err) {
     sendServerError(res, err, 'getTemplate');
   }
@@ -34,27 +78,41 @@ export const getTemplate = async (req, res) => {
 
 export const createTemplate = async (req, res) => {
   const {
+    clientId,
     name,
-    subject,
+    subject    = '',
     body,
-    htmlOutput,
-    status = 'draft'
+    htmlOutput = '',
+    status     = 'draft',
+    links: linksPayload,
   } = req.body ?? {};
 
   if (!name) return sendError(res, 'name is required', 400);
 
+  const clientOk = await assertClientOwnership(clientId, res);
+  if (!clientOk) return;
+
   try {
     const row = await templateRepo.createTemplate({
+      clientId:    clientId ?? null,
       name,
-      subject: subject || '',
-      body: body ?? { version: 1, blocks: [] },
-      htmlOutput: htmlOutput || '',
+      subject,
+      body:        body ?? { version: 1, blocks: [] },
+      htmlOutput,
       trackedLinks: [],
       status,
     });
 
-    sendSuccess(res, row, 201);
+    // Sync links — use frontend payload or fall back to HTML extraction
+    const linkData = resolveLinks(linksPayload, htmlOutput);
+    let links = [];
+    if (linkData.length) {
+      links = await validateAndSyncLinks(row.id, row.clientId, linkData);
+    }
+
+    sendSuccess(res, { ...row, links }, 201);
   } catch (err) {
+    if (err.status) return sendError(res, err.message, err.status);
     sendServerError(res, err, 'createTemplate');
   }
 };
@@ -64,19 +122,38 @@ export const updateTemplate = async (req, res) => {
     const existing = await templateRepo.findById(req.params.id);
     if (!existing) return sendError(res, 'Template not found', 404);
 
+    // Enforce client isolation when clientId is supplied
+    const { clientId } = req.body ?? {};
+    if (clientId && existing.clientId !== clientId) {
+      return sendError(res, 'Template not found', 404);
+    }
+
     const updates = req.body ?? {};
     const data = {};
-
-    if (updates.name !== undefined)         data.name         = updates.name;
-    if (updates.subject !== undefined)      data.subject      = updates.subject;
-    if (updates.body !== undefined)         data.body         = updates.body;
-    if (updates.htmlOutput !== undefined)   data.htmlOutput   = updates.htmlOutput;
-    if (updates.status !== undefined)       data.status       = updates.status;
+    if (updates.name        !== undefined) data.name        = updates.name;
+    if (updates.subject     !== undefined) data.subject     = updates.subject;
+    if (updates.body        !== undefined) data.body        = updates.body;
+    if (updates.htmlOutput  !== undefined) data.htmlOutput  = updates.htmlOutput;
+    if (updates.status      !== undefined) data.status      = updates.status;
     if (updates.trackedLinks !== undefined) data.trackedLinks = updates.trackedLinks;
 
     const row = await templateRepo.updateTemplate(req.params.id, data);
-    sendSuccess(res, row);
+
+    // Re-sync links only when the caller supplies a links array
+    let links = await linkRepo.findByTemplate(row.id);
+    if (Array.isArray(updates.links)) {
+      links = await validateAndSyncLinks(row.id, row.clientId, updates.links);
+    } else if (updates.htmlOutput !== undefined && !Array.isArray(updates.links)) {
+      // htmlOutput changed but no links payload — extract from new HTML as fallback
+      const extracted = extractLinksFromHtml(updates.htmlOutput);
+      if (extracted.length) {
+        links = await validateAndSyncLinks(row.id, row.clientId, extracted);
+      }
+    }
+
+    sendSuccess(res, { ...row, links });
   } catch (err) {
+    if (err.status) return sendError(res, err.message, err.status);
     sendServerError(res, err, 'updateTemplate');
   }
 };
@@ -85,7 +162,7 @@ export const deleteTemplate = async (req, res) => {
   try {
     const existing = await templateRepo.findById(req.params.id);
     if (!existing) return sendError(res, 'Template not found', 404);
-
+    // TemplateLinks are cascade-deleted by the DB constraint
     await templateRepo.removeTemplate(req.params.id);
     sendSuccess(res, { ok: true });
   } catch (err) {
@@ -108,7 +185,18 @@ export const duplicateTemplate = async (req, res) => {
       clientId:     original.clientId,
     });
 
-    sendSuccess(res, copy, 201);
+    // Clone template links to the new template
+    const sourceLinks = await linkRepo.findByTemplate(original.id);
+    let links = [];
+    if (sourceLinks.length) {
+      links = await validateAndSyncLinks(
+        copy.id,
+        copy.clientId,
+        sourceLinks.map(l => ({ url: l.url, label: l.label, scoringRuleId: l.scoringRule?.id })),
+      );
+    }
+
+    sendSuccess(res, { ...copy, links }, 201);
   } catch (err) {
     sendServerError(res, err, 'duplicateTemplate');
   }
@@ -129,15 +217,9 @@ export const sendTestEmail = async (req, res) => {
       return sendError(res, 'Template has no HTML output. Open it in the builder and save it first.', 400);
     }
 
-    // Replace interactive placeholders with a visible test note
-    const html = template.htmlOutput.replace(
-      /\{\{INTERACT_URL_[^}]+\}\}/g,
-      '#test-preview'
-    );
+    const html = template.htmlOutput.replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview');
 
-    // Try client-scoped domain → any verified domain → RESEND_FROM_EMAIL env
     let fromEmail = null;
-
     const clientDomain = await domainRepo.findFirstVerified(template.clientId ?? null);
     if (clientDomain) {
       fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;

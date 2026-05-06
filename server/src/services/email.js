@@ -1,32 +1,33 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
 
-function secret() {
-  return process.env.UNSUB_SECRET || process.env.JWT_SECRET || 'change-me-in-env';
+// ── unsubscribe token ────────────────────────────────────────────────────────
+export function generateUnsubToken(recipientId, secret) {
+  return createHmac('sha256', secret)
+    .update(String(recipientId))
+    .digest('hex');
 }
 
-// ── Unsubscribe tokens ────────────────────────────────────────────────────────
-
-export function generateUnsubToken(recipientId) {
-  return createHmac('sha256', secret()).update(String(recipientId)).digest('hex');
-}
-
-export function verifyUnsubToken(recipientId, token) {
+export function verifyUnsubToken(recipientId, token, secret) {
   if (!token || typeof token !== 'string') return false;
-  const expected = generateUnsubToken(recipientId);
+
+  const expected = generateUnsubToken(recipientId, secret);
+
   try {
-    return timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'));
+    return timingSafeEqual(
+      Buffer.from(token, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
   } catch {
     return false;
   }
 }
 
-export function buildUnsubUrl(baseUrl, recipientId) {
-  const tok = generateUnsubToken(recipientId);
+export function buildUnsubUrl(baseUrl, recipientId, secret) {
+  const tok = generateUnsubToken(recipientId, secret);
   return `${baseUrl}/api/email/unsubscribe?rid=${recipientId}&tok=${tok}`;
 }
 
-// ── Plain-text extraction ─────────────────────────────────────────────────────
-
+// ── html → text ───────────────────────────────────────────────────────────────
 export function htmlToPlainText(html) {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -47,17 +48,16 @@ export function htmlToPlainText(html) {
     .trim();
 }
 
-// ── Footer injection ──────────────────────────────────────────────────────────
-
-export function injectUnsubscribeFooter(html, unsubUrl) {
+// ── footer ───────────────────────────────────────────────────────────────────
+export function injectUnsubscribeFooter(html, unsubUrl, companyAddress) {
   const footer = `
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td align="center" style="padding:20px 24px 24px;border-top:1px solid #e5e7eb;">
       <p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">
-        You received this email because you opted in to our mailing list.<br>
+        You are receiving this email because you subscribed to updates.<br>
         <a href="${unsubUrl}" style="color:#9ca3af;text-decoration:underline;">Unsubscribe</a>
-         &nbsp;|&nbsp; ${process.env.COMPANY_ADDRESS || ''}
+        ${companyAddress ? `&nbsp;|&nbsp;${companyAddress}` : ''}
       </p>
     </td>
   </tr>
@@ -68,12 +68,41 @@ export function injectUnsubscribeFooter(html, unsubUrl) {
     : html + footer;
 }
 
-// ── Headers ───────────────────────────────────────────────────────────────────
+// ── headers ──────────────────────────────────────────────────────────────────
+export function buildEmailHeaders(unsubUrl, mailingListId) {
+  const messageId = `<${randomUUID()}@mail>`;
 
-export function buildEmailHeaders(unsubUrl) {
   return {
-    'List-Unsubscribe':      `<${unsubUrl}>`,
+    'Message-ID': messageId,
+    'List-Unsubscribe': `<${unsubUrl}>`,
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    'Precedence':            'bulk',
+    'List-ID': mailingListId,
+    'Precedence': 'bulk',
+    'Auto-Submitted': 'auto-generated',
+    'X-Auto-Response-Suppress': 'All'
+  };
+}
+
+// ── email payload ────────────────────────────────────────────────────────────
+export function buildEmailPayload({
+  to,
+  from,
+  subject,
+  html,
+  text,
+  unsubUrl,
+  secret,
+  mailingListId,
+  companyAddress
+}) {
+  const finalHtml = injectUnsubscribeFooter(html, unsubUrl, companyAddress);
+
+  return {
+    to,
+    from,
+    subject,
+    html: finalHtml,
+    text: text || htmlToPlainText(finalHtml),
+    headers: buildEmailHeaders(unsubUrl, mailingListId)
   };
 }

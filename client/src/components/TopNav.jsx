@@ -5,27 +5,19 @@ import {
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
+// Marketing items kept here only for active-state detection (no dropdown rendered).
+const MARKETING_IDS = new Set(["domains", "templates", "campaigns", "sequences"]);
+
 const NAV = [
   { label: "Dashboard", id: "dashboard", Icon: LayoutDashboard },
-  { label: "Contacts",  id: "contacts",  Icon: Users            },
-  {
-    label: "Marketing", id: "marketing", Icon: Megaphone,
-    items: [
-      { group: "Setup" },
-      { id: "domains",   label: "Domain verification" },
-      { id: "templates", label: "Templates" },
-      { group: "Send" },
-      { id: "campaigns", label: "Campaigns" },
-      { group: "Automate" },
-      { id: "sequences", label: "Sequences", soon: true },
-    ],
-  },
-  { label: "Clients",  id: "clients",  Icon: FolderOpen },
-  { label: "Reports",  id: "reports",  Icon: BarChart2  },
-  { label: "Settings", id: "settings", Icon: Settings   },
+  { label: "Contacts",  id: "contacts",  Icon: Users },
+  { label: "Marketing", id: "marketing", Icon: Megaphone, isSidebar: true },
+  { label: "Clients",   id: "clients",   Icon: FolderOpen },
+  { label: "Reports",   id: "reports",   Icon: BarChart2 },
+  { label: "Settings",  id: "settings",  Icon: Settings },
 ];
 
-export default function TopNav({ page, viewMode, setPage, setViewMode }) {
+export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketingClick }) {
   const T = useTheme();
   const [open, setOpen] = useState(null);
   const ref = useRef(null);
@@ -36,6 +28,9 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // page may be "campaigns/uuid" — compare against root segment
+  const pageRoot = page.split("/")[0];
+
   return (
     <div ref={ref} style={{ display: "flex", alignItems: "stretch", height: "100%", gap: 0 }}>
       {NAV.map(g => {
@@ -44,18 +39,20 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
         const Icon = g.Icon;
 
         let active = false;
-        if (g.id === "dashboard") active = page === "dashboard";
-        else if (g.id === "contacts") active = page === "contacts";
-        else if (hasDropdown) active = allIds.includes(page);
-        else active = page === g.id;
+        if (g.id === "dashboard")  active = pageRoot === "dashboard";
+        else if (g.id === "contacts")  active = pageRoot === "contacts";
+        else if (g.id === "marketing") active = MARKETING_IDS.has(pageRoot);
+        else if (hasDropdown)          active = allIds.some(id => pageRoot === id);
+        else                           active = pageRoot === g.id;
 
         return (
           <div key={g.id} style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
             <button
               onClick={() => {
-                if (g.id === "contacts") { setPage("contacts"); setOpen(null); }
-                else if (hasDropdown)    setOpen(open === g.id ? null : g.id);
-                else                    { setPage(g.id); setOpen(null); }
+                if (g.id === "contacts")  { setPage("contacts"); setOpen(null); }
+                else if (g.isSidebar)     { onMarketingClick?.(); setOpen(null); }
+                else if (hasDropdown)     setOpen(open === g.id ? null : g.id);
+                else                      { setPage(g.id); setOpen(null); }
               }}
               style={{
                 display: "flex", alignItems: "center", gap: 6,
@@ -108,7 +105,7 @@ export default function TopNav({ page, viewMode, setPage, setViewMode }) {
                       </div>
                     );
                   }
-                  const a = item.id === page;
+                  const a = item.id === pageRoot;
                   return (
                     <button
                       key={item.id}
