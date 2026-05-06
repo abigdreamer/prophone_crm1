@@ -4,6 +4,12 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
+import {
+  htmlToPlainText,
+  injectUnsubscribeFooter,
+  buildEmailHeaders,
+  buildUnsubUrl,
+} from '../services/email.js';
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -215,8 +221,15 @@ export const sendCampaign = async (req, res) => {
     }
 
     // Load all pending recipients with contact data (no pagination — need all for send)
-    const recipients = await repo.findPendingRecipientsForSend(campaignId);
-    if (!recipients.length) return sendError(res, 'No pending recipients', 400);
+    const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
+    if (!allRecipients.length) return sendError(res, 'No pending recipients', 400);
+
+    // Suppress contacts that have previously bounced or unsubscribed
+    const contactIds = allRecipients.map(r => r.contactId).filter(Boolean);
+    const suppressedIds = await repo.findSuppressedContactIds(contactIds);
+    const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
+
+    if (!recipients.length) return sendError(res, 'All recipients are suppressed (previously bounced or unsubscribed)', 400);
 
     // Idempotency: mark as sending before we start
     await repo.updateCampaign(campaignId, { status: 'sending', sentAt: new Date() });
@@ -234,7 +247,7 @@ export const sendCampaign = async (req, res) => {
           const isB   = campaign.type === 'ab_test' && r.abVariant === 'B';
           const tmpl  = isB && templateB ? templateB : template;
           const subj  = (isB && campaign.subjectB) ? campaign.subjectB
-                        : (campaign.subject || tmpl.subject || '(No subject)');
+                        : (campaign.subject || tmpl.subject || tmpl.name);
 
           const vars = {
             firstName: r.contact.firstName || '',
@@ -253,6 +266,13 @@ export const sendCampaign = async (req, res) => {
             html = applyTracking(html, campaignId, r.id, trackingBase);
           }
 
+          // Unsubscribe URL (per recipient so token binds to this recipient)
+          const unsubUrl = trackingBase ? buildUnsubUrl(trackingBase, r.id) : null;
+          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+
+          const text = htmlToPlainText(html);
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+
           return {
             _recipientId: r.id,
             to:           r.contact.email,
@@ -260,6 +280,8 @@ export const sendCampaign = async (req, res) => {
             fromName:     campaign.fromName || '',
             subject:      subj,
             html,
+            text,
+            headers,
           };
         });
 

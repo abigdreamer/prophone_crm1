@@ -6,6 +6,7 @@ import {
   Type as TypeIcon, RefreshCw, ChevronLeft, ChevronUp,
   GripVertical, Info, AlignLeft, AlignCenter, AlignRight,
   Tag as TagIcon, Eye, Layers, LayoutGrid, List as ListIcon,
+  Code2,
 } from "lucide-react";
 import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
@@ -383,11 +384,37 @@ function MiniEmailPreview({ template }) {
     return () => ro.disconnect();
   }, []);
 
+  const isHtml  = template.body?.editorMode === "html";
   const blocks  = template.body?.blocks || [];
   const emailBg = template.body?.containerBg || "#ffffff";
   const pageBg  = template.body?.backgroundColor || "#f4f4f4";
   const scale   = w / EMAIL_W;
 
+  // HTML template with actual output — render a scaled snapshot
+  if (isHtml && template.htmlOutput) {
+    return (
+      <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", background: "#f4f4f4" }}>
+        <div
+          style={{ position: "absolute", top: 0, left: 0, width: EMAIL_W, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none" }}
+          dangerouslySetInnerHTML={{ __html: template.htmlOutput }}
+        />
+      </div>
+    );
+  }
+
+  // HTML template with no output yet
+  if (isHtml) {
+    return (
+      <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative" }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, background: C.card }}>
+          <Code2 size={22} color={C.muted} strokeWidth={1.5} />
+          <span style={{ fontSize: 11, color: C.muted }}>No content yet</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Visual template
   return (
     <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", background: pageBg }}>
       {blocks.length > 0 ? (
@@ -1261,8 +1288,247 @@ function InlinePreview({ body, name, onClose }) {
   );
 }
 
+// ─── Mode chooser ────────────────────────────────────────────────────────────
+function ChooseModeModal({ onChoose, onCancel }) {
+  const C = useContext(CCtx);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800, fontFamily: "inherit" }}>
+      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px 32px", maxWidth: 520, width: "90%", boxShadow: C.shadowLg, border: `1px solid ${C.border}` }}>
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>Choose how to create</h2>
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Start with the visual builder or write / import HTML directly</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <button
+            onClick={() => onChoose("visual")}
+            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: C.accentLo, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <LayoutGrid size={28} color={C.accent} />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 5 }}>Visual Builder</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Drag & drop blocks to design your email</div>
+            </div>
+          </button>
+          <button
+            onClick={() => onChoose("html")}
+            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: "#1a2236", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Code2 size={28} color="#e2e8f0" />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 5 }}>HTML Code</div>
+              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Import a .html file or write raw HTML</div>
+            </div>
+          </button>
+        </div>
+        {onCancel && (
+          <div style={{ textAlign: "center", marginTop: 22 }}>
+            <button onClick={onCancel} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── HTML editor content ──────────────────────────────────────────────────────
+const MERGE_TAGS = [
+  { label: "First Name",  value: "{{firstName}}" },
+  { label: "Last Name",   value: "{{lastName}}"  },
+  { label: "Full Name",   value: "{{fullName}}"  },
+  { label: "Email",       value: "{{email}}"     },
+  { label: "Company",     value: "{{company}}"   },
+];
+
+function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, from, onFromChange, domains, previewMode, previewDevice }) {
+  const C = useContext(CCtx);
+  const [fromOpen,  setFromOpen]  = useState(false);
+  const [tagsOpen,  setTagsOpen]  = useState(false);
+  const fromRef  = useRef(null);
+  const tagsRef  = useRef(null);
+  const taRef    = useRef(null);
+  const fileRef  = useRef(null);
+
+  useEffect(() => {
+    function h(e) {
+      if (fromRef.current && !fromRef.current.contains(e.target)) setFromOpen(false);
+      if (tagsRef.current && !tagsRef.current.contains(e.target)) setTagsOpen(false);
+    }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  function handleImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => onHtmlChange(ev.target.result || "");
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function insertAtCursor(text) {
+    const ta = taRef.current;
+    if (!ta) { onHtmlChange((htmlCode || "") + text); return; }
+    const s = ta.selectionStart, e2 = ta.selectionEnd;
+    const next = (htmlCode || "").slice(0, s) + text + (htmlCode || "").slice(e2);
+    onHtmlChange(next);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + text.length; ta.focus(); }, 0);
+  }
+
+  function insertButton() {
+    insertAtCursor(`<a href="#" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;font-family:Arial,sans-serif;">Click Here</a>`);
+  }
+
+  const lineCount = Math.max((htmlCode || "").split("\n").length, 30);
+
+  // Preview-only mode: full-width iframe
+  if (previewMode) {
+    return (
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "flex-start", background: C.bg, padding: "28px 20px", overflowY: "auto" }}>
+        <div style={{ width: previewDevice === "mobile" ? 390 : 600, maxWidth: "100%", background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: C.shadowLg }}>
+          {htmlCode ? (
+            <iframe srcDoc={htmlCode} sandbox="allow-same-origin" style={{ width: "100%", minHeight: 400, border: "none", display: "block" }} title="Email Preview" />
+          ) : (
+            <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No HTML content yet.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+      {/* Left: Code editor — always dark */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", overflow: "hidden" }}>
+        {/* Editor mini-header */}
+        <div style={{ height: 44, background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 14px", gap: 8, flexShrink: 0 }}>
+          <Code2 size={13} color="#8b949e" />
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
+          <div style={{ flex: 1 }} />
+
+          {/* Import .html */}
+          <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
+          <button onClick={() => fileRef.current?.click()}
+            style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+            ⬆ Import .html
+          </button>
+
+          {/* Tags */}
+          <div ref={tagsRef} style={{ position: "relative" }}>
+            <button onClick={() => setTagsOpen(p => !p)}
+              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+              🏷 Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+            </button>
+            {tagsOpen && (
+              <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
+                {MERGE_TAGS.map(tag => (
+                  <button key={tag.value} onClick={() => { insertAtCursor(tag.value); setTagsOpen(false); }}
+                    style={{ width: "100%", background: "transparent", border: "none", padding: "8px 14px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#21262d")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                    <span style={{ fontSize: 12, color: "#c9d1d9" }}>{tag.label}</span>
+                    <code style={{ fontSize: 10, color: "#8b949e", background: "#0d1117", padding: "1px 5px", borderRadius: 4 }}>{tag.value}</code>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Button */}
+          <button onClick={insertButton}
+            style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit" }}>
+            ⊡ Button
+          </button>
+        </div>
+
+        {/* Code area */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          {/* Line numbers */}
+          <div style={{ width: 44, background: "#0d1117", borderRight: "1px solid #21262d", color: "#484f58", fontSize: 11.5, fontFamily: "monospace", paddingTop: 16, textAlign: "right", paddingRight: 8, lineHeight: "20px", userSelect: "none", overflowY: "hidden", flexShrink: 0 }}>
+            {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
+          </div>
+          <textarea
+            ref={taRef}
+            value={htmlCode || ""}
+            onChange={e => onHtmlChange(e.target.value)}
+            placeholder={"<!-- Paste or write your HTML email here -->"}
+            spellCheck={false}
+            style={{ flex: 1, background: "#0d1117", color: "#c9d1d9", border: "none", outline: "none", resize: "none", fontSize: 12.5, fontFamily: "'Fira Code','Cascadia Code','Consolas','Courier New',monospace", padding: "16px 16px", lineHeight: "20px", overflowY: "auto", overflowX: "auto", whiteSpace: "pre", caretColor: "#58a6ff" }}
+          />
+        </div>
+      </div>
+
+      {/* Right: Live preview */}
+      <div style={{ width: 460, background: C.card, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        {/* Preview header */}
+        <div style={{ height: 44, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 7, flexShrink: 0 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Live Preview</span>
+        </div>
+
+        {/* FROM */}
+        <div ref={fromRef} style={{ position: "relative", borderBottom: `1px solid ${C.border}` }}>
+          <div onClick={() => domains.length > 0 && setFromOpen(p => !p)}
+            style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 42, cursor: domains.length > 0 ? "pointer" : "default" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>FROM</span>
+            <span style={{ flex: 1, fontSize: 13, color: from ? C.text : C.muted }}>{from || (domains.length === 0 ? "No verified domains" : "Select sending domain…")}</span>
+            {domains.length > 0 && <ChevronDown size={12} color={C.muted} style={{ transform: fromOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />}
+          </div>
+          {fromOpen && domains.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: C.card, border: `1px solid ${C.border}`, borderRadius: "0 0 10px 10px", zIndex: 300, boxShadow: C.shadowMd, overflow: "hidden" }}>
+              {domains.map(d => {
+                const email = d.defaultFromEmail || `noreply@${d.domainName}`;
+                const active = from === email;
+                return (
+                  <button key={d.id} onClick={() => { onFromChange(email); setFromOpen(false); }}
+                    style={{ width: "100%", background: active ? C.accentLo : "transparent", border: "none", padding: "10px 16px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderBottom: `1px solid ${C.border}` }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.bg; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: active ? C.accent : C.text }}>{email}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{d.domainName}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* SUBJECT */}
+        <div style={{ borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 42 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>SUBJECT</span>
+            <input value={subject} onChange={e => onSubjectChange(e.target.value)} placeholder="Enter subject line…"
+              style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, padding: "10px 0", fontFamily: "inherit" }} />
+          </div>
+        </div>
+
+        {/* Iframe preview */}
+        <div style={{ flex: 1, overflow: "hidden", background: "#f4f4f4" }}>
+          {htmlCode ? (
+            <iframe srcDoc={htmlCode} sandbox="allow-same-origin" style={{ width: "100%", height: "100%", border: "none" }} title="Live Preview" />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
+              <Code2 size={30} color={C.border} />
+              <span style={{ fontSize: 12 }}>Start writing HTML to see a live preview</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Email builder view ───────────────────────────────────────────────────────
-function EmailBuilder({ templateId, onBack, onSaved }) {
+function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
   const C = useContext(CCtx);
   const [name,       setName]       = useState("Untitled Template");
   const [subject,    setSubject]    = useState("");
@@ -1343,12 +1609,10 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
   }
 
  async function handleSave(extra = {}) {
-  // Block publish if no verified domain — show warning and stop
   if (extra.status === "published" && domains.length === 0) {
     toast.warning("No verified domain found. Go to Domains → verify a domain first.");
-    return; // ← just return, don't save as draft silently
+    return;
   }
-
   setSaving(true);
   const body = buildBody();
   const htmlOutput = bodyToHtml(body);
@@ -1460,6 +1724,16 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
         )}
 
         <div style={{ flex: 1 }} />
+
+        {/* Switch to HTML mode */}
+        {onSwitchToHtml && (
+          <button onClick={() => onSwitchToHtml(tid)}
+            style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
+            onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
+            <Code2 size={12} /> HTML
+          </button>
+        )}
 
         {/* Edit / Preview toggle */}
         <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
@@ -1830,6 +2104,315 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
         </div>
 
       </div>
+
+    </div>
+  );
+}
+
+// ─── HTML email builder ───────────────────────────────────────────────────────
+function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
+  const C = useContext(CCtx);
+  const [name,          setName]          = useState("Untitled Template");
+  const [subject,       setSubject]       = useState("");
+  const [htmlCode,      setHtmlCode]      = useState("");
+  const [from,          setFrom]          = useState("");
+  const [saving,        setSaving]        = useState(false);
+  const [loading,       setLoading]       = useState(!!templateId);
+  const [tid,           setTid]           = useState(templateId || null);
+  const [domains,       setDomains]       = useState([]);
+  const [editingName,   setEditingName]   = useState(false);
+  const [previewDevice, setPreviewDevice] = useState("desktop");
+  const [tagsOpen,      setTagsOpen]      = useState(false);
+  const [fromOpen,      setFromOpen]      = useState(false);
+  const fromRef  = useRef(null);
+  const tagsRef  = useRef(null);
+  const taRef    = useRef(null);
+  const fileRef  = useRef(null);
+  const toast    = useAppToast();
+
+  useEffect(() => {
+    if (templateId) {
+      setLoading(true);
+      store.getTemplateById(templateId).then(t => {
+        setName(t.name || "Untitled Template");
+        setSubject(t.subject || "");
+        const body = t.body || {};
+        setHtmlCode(body.htmlCode || t.htmlOutput || "");
+        setFrom(body.from || "");
+        setTid(templateId);
+      }).catch(() => {}).finally(() => setLoading(false));
+    }
+  }, [templateId]);
+
+  useEffect(() => {
+    store.getDomains().then(d => {
+      if (Array.isArray(d)) {
+        const verified = d.filter(x => x.status === "verified");
+        setDomains(verified);
+        if (!templateId && verified.length > 0 && !from) {
+          const first = verified[0];
+          setFrom(first.defaultFromEmail || `noreply@${first.domainName}`);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    function h(e) {
+      if (fromRef.current && !fromRef.current.contains(e.target)) setFromOpen(false);
+      if (tagsRef.current && !tagsRef.current.contains(e.target)) setTagsOpen(false);
+    }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  async function handleSave(extra = {}) {
+    if (extra.status === "published" && domains.length === 0) {
+      toast.warning("No verified domain found. Go to Domains → verify a domain first.");
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      name, subject,
+      body: { editorMode: "html", htmlCode, from },
+      htmlOutput: htmlCode,
+      ...extra,
+    };
+    try {
+      if (tid) {
+        await store.updateTemplate(tid, payload);
+      } else {
+        const created = await store.createTemplate(payload);
+        setTid(created.id);
+      }
+      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+      onSaved?.();
+    } catch {
+      toast.error("Failed to save template.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setHtmlCode(ev.target.result || "");
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
+  function insertAtCursor(text) {
+    const ta = taRef.current;
+    if (!ta) { setHtmlCode(prev => prev + text); return; }
+    const s = ta.selectionStart, e2 = ta.selectionEnd;
+    const next = htmlCode.slice(0, s) + text + htmlCode.slice(e2);
+    setHtmlCode(next);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + text.length; ta.focus(); }, 0);
+  }
+
+  function insertButtonHtml() {
+    insertAtCursor(`<a href="#" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;font-family:Arial,sans-serif;">Click Here</a>`);
+  }
+
+  const lineCount = Math.max((htmlCode || "").split("\n").length, 30);
+
+  if (loading) {
+    return (
+      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: "#0d1117", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500 }}>
+        <LoaderCircle size={28} color="#6366f1" style={{ animation: "_tspin 0.8s linear infinite" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", fontFamily: "'Inter','DM Sans',system-ui,sans-serif", zIndex: 500, overflow: "hidden" }}>
+      <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}input::placeholder{color:#94a3b8!important}textarea::placeholder{color:#484f58!important}`}</style>
+
+      {/* ── Header (matches EmailBuilder header style exactly) ── */}
+      <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0, zIndex: 10 }}>
+        <button onClick={onBack}
+          style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 13, padding: "5px 8px", borderRadius: 7, fontFamily: "inherit" }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
+          <ChevronLeft size={14} /> Templates
+        </button>
+        <div style={{ width: 1, height: 20, background: C.border }} />
+
+        {editingName ? (
+          <input autoFocus value={name} onChange={e => setName(e.target.value)}
+            onBlur={() => setEditingName(false)}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingName(false); }}
+            style={{ fontSize: 14, fontWeight: 700, color: C.text, background: "none", border: `1.5px solid ${C.accent}`, borderRadius: 7, padding: "3px 9px", outline: "none", fontFamily: "inherit", minWidth: 160 }} />
+        ) : (
+          <button onClick={() => setEditingName(true)}
+            style={{ fontSize: 14, fontWeight: 700, color: C.text, background: "none", border: "none", cursor: "pointer", padding: "3px 7px", borderRadius: 7, fontFamily: "inherit" }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
+            {name}
+          </button>
+        )}
+
+        {/* HTML mode badge */}
+        <div style={{ background: "#1a2236", border: "1px solid #2e3a50", borderRadius: 6, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}>
+          <Code2 size={11} color="#8b949e" />
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#8b949e" }}>HTML</span>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Switch to Visual */}
+        {onSwitchToVisual && (
+          <button onClick={() => onSwitchToVisual(tid)}
+            style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
+            onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
+            <LayoutGrid size={12} /> Visual
+          </button>
+        )}
+
+        {/* Device toggle */}
+        <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
+          {[["desktop", "🖥 Desktop"], ["mobile", "📱 Mobile"]].map(([d, label]) => (
+            <button key={d} onClick={() => setPreviewDevice(d)}
+              style={{ padding: "4px 11px", borderRadius: 6, border: "none", cursor: "pointer", background: previewDevice === d ? C.surface : "transparent", color: previewDevice === d ? C.text : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", outline: previewDevice === d ? `1px solid ${C.border}` : "none" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={() => handleSave({ status: "draft" })} disabled={saving}
+          style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "6px 14px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: saving ? 0.7 : 1 }}>
+          Save draft
+        </button>
+        <button onClick={() => handleSave({ status: "published" })} disabled={saving}
+          style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "6px 18px", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(99,102,241,0.28)", opacity: saving ? 0.7 : 1 }}>
+          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Saving…</> : <><Send size={13} /> Publish</>}
+        </button>
+      </div>
+
+      {/* ── Body: editor left 50% | preview right 50% ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* Left 50%: HTML code editor (always dark) */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", borderRight: "1px solid #21262d", overflow: "hidden" }}>
+          {/* Editor sub-header */}
+          <div style={{ height: 44, background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 14px", gap: 8, flexShrink: 0 }}>
+            <Code2 size={13} color="#8b949e" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
+            <div style={{ flex: 1 }} />
+
+            <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
+            <button onClick={() => fileRef.current?.click()}
+              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+              ⬆ Import .html
+            </button>
+
+            <div ref={tagsRef} style={{ position: "relative" }}>
+              <button onClick={() => setTagsOpen(p => !p)}
+                style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+                🏷 Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+              </button>
+              {tagsOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
+                  {MERGE_TAGS.map(tag => (
+                    <button key={tag.value} onClick={() => { insertAtCursor(tag.value); setTagsOpen(false); }}
+                      style={{ width: "100%", background: "transparent", border: "none", padding: "8px 14px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "#21262d")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                      <span style={{ fontSize: 12, color: "#c9d1d9" }}>{tag.label}</span>
+                      <code style={{ fontSize: 10, color: "#8b949e", background: "#0d1117", padding: "1px 5px", borderRadius: 4 }}>{tag.value}</code>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button onClick={insertButtonHtml}
+              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit" }}>
+              ⊡ Button
+            </button>
+          </div>
+
+          {/* Code area with line numbers */}
+          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+            <div style={{ width: 44, background: "#0d1117", borderRight: "1px solid #21262d", color: "#484f58", fontSize: 11.5, fontFamily: "monospace", paddingTop: 16, textAlign: "right", paddingRight: 8, lineHeight: "20px", userSelect: "none", overflowY: "hidden", flexShrink: 0, boxSizing: "border-box" }}>
+              {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
+            </div>
+            <textarea
+              ref={taRef}
+              value={htmlCode}
+              onChange={e => setHtmlCode(e.target.value)}
+              placeholder={"<!-- Paste or write your HTML email here -->"}
+              spellCheck={false}
+              style={{ flex: 1, background: "#0d1117", color: "#c9d1d9", border: "none", outline: "none", resize: "none", fontSize: 12.5, fontFamily: "'Fira Code','Cascadia Code','Consolas','Courier New',monospace", padding: "16px 16px", lineHeight: "20px", overflowY: "auto", overflowX: "auto", whiteSpace: "pre", caretColor: "#58a6ff" }}
+            />
+          </div>
+        </div>
+
+        {/* Right 50%: Live preview */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.card, overflow: "hidden" }}>
+          {/* Preview sub-header with FROM + SUBJECT */}
+          <div style={{ height: 44, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 7, flexShrink: 0 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Live Preview</span>
+          </div>
+
+          {/* FROM */}
+          <div ref={fromRef} style={{ position: "relative", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <div onClick={() => domains.length > 0 && setFromOpen(p => !p)}
+              style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 40, cursor: domains.length > 0 ? "pointer" : "default" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>FROM</span>
+              <span style={{ flex: 1, fontSize: 13, color: from ? C.text : C.muted }}>{from || (domains.length === 0 ? "No verified domains" : "Select sending domain…")}</span>
+              {domains.length > 0 && <ChevronDown size={12} color={C.muted} style={{ transform: fromOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />}
+            </div>
+            {fromOpen && domains.length > 0 && (
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: C.card, border: `1px solid ${C.border}`, borderRadius: "0 0 10px 10px", zIndex: 300, boxShadow: C.shadowMd, overflow: "hidden" }}>
+                {domains.map(d => {
+                  const email = d.defaultFromEmail || `noreply@${d.domainName}`;
+                  const active = from === email;
+                  return (
+                    <button key={d.id} onClick={() => { setFrom(email); setFromOpen(false); }}
+                      style={{ width: "100%", background: active ? C.accentLo : "transparent", border: "none", padding: "10px 16px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", borderBottom: `1px solid ${C.border}` }}
+                      onMouseEnter={e => { if (!active) e.currentTarget.style.background = C.bg; }}
+                      onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: active ? C.accent : C.text }}>{email}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{d.domainName}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* SUBJECT */}
+          <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 40 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>SUBJECT</span>
+              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Enter subject line…"
+                style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, padding: "10px 0", fontFamily: "inherit" }} />
+            </div>
+          </div>
+
+          {/* Iframe preview — fills remaining height */}
+          <div style={{ flex: 1, overflow: "hidden", background: "#f4f4f4" }}>
+            {htmlCode ? (
+              <iframe
+                srcDoc={htmlCode}
+                sandbox="allow-same-origin"
+                style={{ width: previewDevice === "mobile" ? "390px" : "100%", height: "100%", border: "none", display: "block", margin: previewDevice === "mobile" ? "0 auto" : undefined }}
+                title="Live Preview"
+              />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
+                <Code2 size={32} color={C.border} />
+                <span style={{ fontSize: 12 }}>Start writing HTML to see a live preview</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2057,7 +2640,7 @@ function TemplateList({ onOpenBuilder }) {
               template={t}
               menuOpenId={menuOpenId}
               onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
-              onEdit={() => onOpenBuilder(t.id)}
+              onEdit={() => onOpenBuilder(t.id, t.body?.editorMode)}
               onDuplicate={() => handleDuplicate(t.id)}
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
@@ -2083,7 +2666,7 @@ function TemplateList({ onOpenBuilder }) {
               isLast={idx === filtered.length - 1}
               menuOpenId={menuOpenId}
               onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
-              onEdit={() => onOpenBuilder(t.id)}
+              onEdit={() => onOpenBuilder(t.id, t.body?.editorMode)}
               onDuplicate={() => handleDuplicate(t.id)}
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
@@ -2100,7 +2683,7 @@ function TemplateList({ onOpenBuilder }) {
         <RenameModal template={renameTarget} onConfirm={n => handleRename(renameTarget, n)} onCancel={() => setRenameTarget(null)} />
       )}
       {detailsTarget && (
-        <DetailsModal template={detailsTarget} onClose={() => setDetailsTarget(null)} onEdit={() => { onOpenBuilder(detailsTarget.id); setDetailsTarget(null); }} />
+        <DetailsModal template={detailsTarget} onClose={() => setDetailsTarget(null)} onEdit={() => { onOpenBuilder(detailsTarget.id, detailsTarget.body?.editorMode); setDetailsTarget(null); }} />
       )}
       {sendTestTarget && (
         <SendTestModal template={sendTestTarget} onClose={() => setSendTestTarget(null)} />
@@ -2113,16 +2696,31 @@ function TemplateList({ onOpenBuilder }) {
 export default function TemplatesPage() {
   const T = useTheme();
   const C = makeC(T);
+  // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
 
-  if (view === "builder") {
+  if (view === "builder-visual") {
     return (
       <CCtx.Provider value={C}>
         <EmailBuilder
           templateId={editingId}
           onBack={() => setView("list")}
           onSaved={() => {}}
+          onSwitchToHtml={id => { setEditingId(id || null); setView("builder-html"); }}
+        />
+      </CCtx.Provider>
+    );
+  }
+
+  if (view === "builder-html") {
+    return (
+      <CCtx.Provider value={C}>
+        <HtmlEmailBuilder
+          templateId={editingId}
+          onBack={() => setView("list")}
+          onSaved={() => {}}
+          onSwitchToVisual={id => { setEditingId(id || null); setView("builder-visual"); }}
         />
       </CCtx.Provider>
     );
@@ -2131,8 +2729,22 @@ export default function TemplatesPage() {
   return (
     <CCtx.Provider value={C}>
       <TemplateList
-        onOpenBuilder={id => { setEditingId(id || null); setView("builder"); }}
+        onOpenBuilder={(id, editorMode) => {
+          if (id) {
+            setEditingId(id);
+            setView(editorMode === "html" ? "builder-html" : "builder-visual");
+          } else {
+            setEditingId(null);
+            setView("choose");
+          }
+        }}
       />
+      {view === "choose" && (
+        <ChooseModeModal
+          onChoose={m => setView(m === "html" ? "builder-html" : "builder-visual")}
+          onCancel={() => setView("list")}
+        />
+      )}
     </CCtx.Provider>
   );
 }
