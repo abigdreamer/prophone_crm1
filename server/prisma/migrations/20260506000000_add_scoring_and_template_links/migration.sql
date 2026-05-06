@@ -5,8 +5,9 @@ ALTER TABLE "activities" ADD COLUMN IF NOT EXISTS "points" INTEGER NOT NULL DEFA
 CREATE INDEX IF NOT EXISTS "activities_contact_id_ts_idx" ON "activities"("contact_id", "ts" DESC);
 
 -- ── scoring_rules ────────────────────────────────────────────────────────────
+-- id is TEXT to match the Prisma String @id pattern used throughout this schema
 CREATE TABLE "scoring_rules" (
-    "id"          UUID         NOT NULL DEFAULT gen_random_uuid(),
+    "id"          TEXT         NOT NULL,
     "name"        TEXT         NOT NULL,
     "description" TEXT         NOT NULL DEFAULT '',
     "points"      INTEGER      NOT NULL,
@@ -21,13 +22,14 @@ CREATE TABLE "scoring_rules" (
 CREATE INDEX "scoring_rules_is_active_idx" ON "scoring_rules"("is_active");
 
 -- ── template_links ───────────────────────────────────────────────────────────
+-- All FK columns are TEXT to match the referencing tables' TEXT primary keys
 CREATE TABLE "template_links" (
-    "id"              UUID        NOT NULL DEFAULT gen_random_uuid(),
-    "template_id"     UUID        NOT NULL,
-    "client_id"       UUID,
+    "id"              TEXT        NOT NULL,
+    "template_id"     TEXT        NOT NULL,
+    "client_id"       TEXT,
     "url"             TEXT        NOT NULL,
     "label"           TEXT        NOT NULL DEFAULT '',
-    "scoring_rule_id" UUID,
+    "scoring_rule_id" TEXT,
     "click_count"     INTEGER     NOT NULL DEFAULT 0,
     "created_at"      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
