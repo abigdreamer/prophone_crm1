@@ -260,8 +260,10 @@ export function applyTracking(html, campaignId, recipientId, trackingBaseUrl) {
     },
   );
 
-  // 2. Inject open-tracking pixel before </body> or at end
-  const pixel = `<img src="${trackingBaseUrl}/api/email/track/open?recipientId=${recipientId}" width="1" height="1" style="display:none;" alt="" />`;
+  // 2. Inject open-tracking pixel before </body> or at end.
+  // Do NOT use display:none — many clients refuse to load hidden images.
+  // Use a 1×1 transparent cell with overflow:hidden so it takes no visual space.
+  const pixel = `<img src="${trackingBaseUrl}/api/email/track/open?recipientId=${recipientId}" width="1" height="1" border="0" alt="" style="height:1px!important;min-height:1px;max-height:1px;width:1px!important;min-width:1px;max-width:1px;overflow:hidden;mso-hide:all;" />`;
 
   if (rewritten.includes('</body>')) {
     return rewritten.replace('</body>', `${pixel}</body>`);

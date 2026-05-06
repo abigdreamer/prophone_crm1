@@ -324,6 +324,18 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <span style={{ fontSize: 11, fontWeight: 600, color: T.text }}>{def.label}</span>
                         <Pill color={def.color} small>{def.cat}</Pill>
+                        {act.points > 0 && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700,
+                            color: T.amber,
+                            background: T.amber + "1a",
+                            border: "1px solid " + T.amber + "40",
+                            borderRadius: 4, padding: "1px 5px",
+                            letterSpacing: "0.04em", flexShrink: 0,
+                          }}>
+                            +{act.points} pts
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{act.note}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
