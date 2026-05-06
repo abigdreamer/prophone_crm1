@@ -205,35 +205,78 @@ export async function getRecipientEvents(recipientId) {
   });
 }
 
-// Apply open/click event directly by recipientId (used by pixel/redirect tracking)
+// Points awarded per event — small but meaningful engagement signals
+const TRACKING_POINTS = { opened: 1, clicked: 3 };
+
+/**
+ * Apply an open/click tracking event:
+ *   1. De-duplicate (skip if already recorded).
+ *   2. Update CampaignRecipient status + timestamp.
+ *   3. Increment Campaign aggregate counter.
+ *   4. Create an Activity row so the event appears in the lead timeline.
+ *   5. Increment Contact engagement counters and leadScore.
+ */
 export async function applyTrackingEvent(recipientId, event) {
+  if (event !== 'opened' && event !== 'clicked') return;
+
   const recipient = await prisma.campaignRecipient.findUnique({
     where:  { id: recipientId },
-    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true },
+    select: {
+      id: true, campaignId: true, contactId: true,
+      status: true, openedAt: true, clickedAt: true,
+    },
   });
-  if (!recipient) return;
+  if (!recipient || !recipient.contactId) return;
 
-  const recipientData = {};
-  const campaignData  = {};
   const now = new Date();
 
-  if (event === 'opened') {
-    if (recipient.openedAt) return;
-    recipientData.status   = 'opened';
-    recipientData.openedAt = now;
-    campaignData.openedCount = { increment: 1 };
-  } else if (event === 'clicked') {
-    if (recipient.clickedAt) return;
-    recipientData.status    = 'clicked';
-    recipientData.clickedAt = now;
-    campaignData.clickedCount = { increment: 1 };
-  } else {
-    return;
-  }
+  // ── de-duplicate ──────────────────────────────────────────────────────────
+  if (event === 'opened'  && recipient.openedAt)  return;
+  if (event === 'clicked' && recipient.clickedAt) return;
 
-  await Promise.all([
-    prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
-    prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
+  const points = TRACKING_POINTS[event] ?? 0;
+  const isOpen = event === 'opened';
+
+  // ── single transaction: all-or-nothing ───────────────────────────────────
+  await prisma.$transaction([
+    // 1. Mark recipient
+    prisma.campaignRecipient.update({
+      where: { id: recipient.id },
+      data: isOpen
+        ? { status: 'opened',  openedAt:  now }
+        : { status: 'clicked', clickedAt: now },
+    }),
+
+    // 2. Increment campaign aggregate
+    prisma.campaign.update({
+      where: { id: recipient.campaignId },
+      data:  isOpen
+        ? { openedCount:  { increment: 1 } }
+        : { clickedCount: { increment: 1 } },
+    }),
+
+    // 3. Activity row — visible in lead detail timeline
+    prisma.activity.create({
+      data: {
+        contactId: recipient.contactId,
+        type:      isOpen ? 'email_opened' : 'email_clicked',
+        note:      isOpen ? 'Opened a campaign email' : 'Clicked a link in a campaign email',
+        by:        'System',
+        points,
+      },
+    }),
+
+    // 4. Contact engagement counters + score
+    prisma.contact.update({
+      where: { id: recipient.contactId },
+      data: {
+        ...(isOpen
+          ? { emailsOpened: { increment: 1 } }
+          : { emailsClicked: { increment: 1 } }),
+        leadScore:      { increment: points },
+        lastActivityAt: now,
+      },
+    }),
   ]);
 }
 

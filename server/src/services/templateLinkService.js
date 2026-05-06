@@ -130,8 +130,9 @@ export async function applyLinkScore(link, contactId) {
     prisma.activity.create({
       data: {
         contactId,
-        type:   'link_click',
-        note:   `Clicked: ${link.label || link.url}`,
+        type:   'email_clicked',
+        note:   `Clicked tracked link: ${link.label || link.url}`,
+        by:     'System',
         points,
       },
     }),

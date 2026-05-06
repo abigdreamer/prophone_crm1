@@ -2,6 +2,8 @@ import prisma from '../lib/prisma.js';
 import { verifyUnsubToken } from '../services/email.js';
 import * as repo from '../repositories/campaignRepository.js';
 
+const UNSUB_SECRET = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
+
 // 1×1 transparent GIF
 const PIXEL = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
@@ -37,7 +39,7 @@ export async function trackClick(req, res) {
 export async function handleUnsubscribe(req, res) {
   const { rid, tok } = req.query;
 
-  if (!rid || !tok || !verifyUnsubToken(rid, tok)) {
+  if (!rid || !tok || !verifyUnsubToken(rid, tok, UNSUB_SECRET)) {
     return res.status(400).send(unsubPage('Invalid or expired unsubscribe link.', false));
   }
 
@@ -73,7 +75,7 @@ export async function handleUnsubscribe(req, res) {
 // One-click POST handler (RFC 8058 List-Unsubscribe-Post)
 export async function handleUnsubscribePost(req, res) {
   const { rid, tok } = req.query;
-  if (!rid || !tok || !verifyUnsubToken(rid, tok)) {
+  if (!rid || !tok || !verifyUnsubToken(rid, tok, UNSUB_SECRET)) {
     return res.status(400).json({ error: 'invalid token' });
   }
   try {

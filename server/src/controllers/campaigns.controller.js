@@ -234,8 +234,13 @@ export const sendCampaign = async (req, res) => {
     // Idempotency: mark as sending before we start
     await repo.updateCampaign(campaignId, { status: 'sending', sentAt: new Date() });
 
-    const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const trackingBase  = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const unsubSecret   = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
     let totalSent = 0;
+
+    if (!trackingBase) {
+      console.warn('[sendCampaign] APP_BASE_URL not set — open/click tracking disabled');
+    }
 
     for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
       const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
@@ -266,11 +271,13 @@ export const sendCampaign = async (req, res) => {
             html = applyTracking(html, campaignId, r.id, trackingBase);
           }
 
-          // Unsubscribe URL (per recipient so token binds to this recipient)
-          const unsubUrl = trackingBase ? buildUnsubUrl(trackingBase, r.id) : null;
+          // Unsubscribe URL (per-recipient HMAC token — requires secret)
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
           if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
 
-          const text = htmlToPlainText(html);
+          const text    = htmlToPlainText(html);
           const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
 
           return {
