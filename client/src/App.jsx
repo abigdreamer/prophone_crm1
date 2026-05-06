@@ -25,6 +25,7 @@ import ContactDetailPanel from "./components/ContactDetailPanel";
 import { useAuth } from "./hooks/useAuth";
 import { useContacts } from "./hooks/useContacts";
 import { PageLoader, ContentLoader } from "./components/ui/Loader";
+import * as db from "./services/api";
 
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
@@ -66,6 +67,13 @@ function AppLayout({ currentUser, onSignOut }) {
   const { contacts, setContacts, contactCounts, loading, firstLoad } =
     useContacts(currentUser);
 
+  const [canceledContacts, setCanceledContacts] = useState([]);
+
+  useEffect(() => {
+    if (viewMode !== "canceled" || !currentUser) return;
+    db.getCanceledContacts().then(setCanceledContacts).catch(() => {});
+  }, [viewMode, pool, clientId, currentUser]);
+
   const page      = location.pathname.replace("/", "") || "dashboard";
   const pageRoot  = page.split("/")[0];
   const isContacts  = pageRoot === "contacts";
@@ -99,9 +107,24 @@ function AppLayout({ currentUser, onSignOut }) {
   }, []);
 
   const handleUpdate = useCallback((updated) => {
-    setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
-    setSelected(updated);
-    setCharted(updated);
+    if (updated.isCanceled) {
+      setContacts(prev => prev.filter(c => c.id !== updated.id));
+      setSelected(null);
+      setCharted(null);
+    } else {
+      setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+      setCanceledContacts(prev => prev.filter(c => c.id !== updated.id));
+      setSelected(updated);
+      setCharted(updated);
+    }
+  }, [setContacts]);
+
+  const handleRestoreContact = useCallback(async (contactId) => {
+    setCanceledContacts(prev => prev.filter(c => c.id !== contactId));
+    try {
+      const fresh = await db.getContacts();
+      setContacts(fresh);
+    } catch {}
   }, [setContacts]);
 
   const handlePoolSwitch = useCallback((p) => {
@@ -232,6 +255,7 @@ function AppLayout({ currentUser, onSignOut }) {
                 ["leads",     "Leads",     T.blue ],
                 ["customers", "Customers", T.green],
                 ["lost",      "Lost",      T.red  ],
+                ["canceled",  "Canceled",  T.muted],
               ].map(([mode, label, c]) => (
                 <button
                   key={mode}
@@ -287,8 +311,10 @@ function AppLayout({ currentUser, onSignOut }) {
                     onSelect={handleSelect}
                     selected={selected}
                     search={search}
-                    contacts={contacts} setContacts={setContacts}
+                    contacts={viewMode === "canceled" ? canceledContacts : contacts}
+                    setContacts={viewMode === "canceled" ? setCanceledContacts : setContacts}
                     currentUser={currentUser}
+                    onRestoreContact={handleRestoreContact}
                   />
                 } />
                 <Route path="/domains"        element={<DomainsPage />} />

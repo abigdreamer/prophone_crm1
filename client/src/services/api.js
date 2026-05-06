@@ -94,6 +94,24 @@ export async function importContacts({ rows, clientId, pool = 'client', duplicat
   return request('POST', '/api/contacts/import', { rows, clientId, pool, duplicateAction });
 }
 
+export async function cancelContact(id, cancelReason = '') {
+  return request('POST', `/api/contacts/${id}/cancel`, { cancelReason });
+}
+
+export async function restoreContact(id) {
+  return request('POST', `/api/contacts/${id}/restore`);
+}
+
+export async function getCanceledContacts() {
+  const { pool, clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (pool === 'client' && clientId) {
+    params.set('pool', 'client');
+    params.set('clientId', clientId);
+  }
+  return request('GET', `/api/contacts/canceled?${params}`);
+}
+
 // ── Activities ────────────────────────────────────────────────────────────────
 
 export async function addActivity(contactId, activity) {
