@@ -1,8 +1,24 @@
 import prisma from '../lib/prisma.js';
 import { verifyUnsubToken } from '../services/email.js';
 import * as repo from '../repositories/campaignRepository.js';
+import { tracking } from '../config/tracking.js';
 
 const UNSUB_SECRET = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
+
+async function withRetry(fn, maxRetries = tracking.maxRetries, delayMs = tracking.retryDelayMs) {
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, delayMs * 2 ** attempt));
+      }
+    }
+  }
+  throw lastErr;
+}
 
 // 1×1 transparent GIF
 const PIXEL = Buffer.from(
@@ -12,18 +28,20 @@ const PIXEL = Buffer.from(
 
 export async function trackOpen(req, res) {
   const { recipientId } = req.query;
-  if (recipientId) {
-    repo.applyTrackingEvent(recipientId, 'opened').catch(() => {});
-  }
   res.set('Content-Type', 'image/gif');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.send(PIXEL);
+  if (recipientId) {
+    withRetry(() => repo.applyTrackingEvent(recipientId, 'opened'))
+      .catch(err => console.error('[trackOpen] failed after retries:', err.message));
+  }
 }
 
 export async function trackClick(req, res) {
   const { recipientId, url } = req.query;
   if (recipientId) {
-    repo.applyTrackingEvent(recipientId, 'clicked').catch(() => {});
+    withRetry(() => repo.applyTrackingEvent(recipientId, 'clicked'))
+      .catch(err => console.error('[trackClick] failed after retries:', err.message));
   }
   const destination = url ? decodeURIComponent(url) : '/';
   // Validate destination is a real URL before redirecting
