@@ -205,6 +205,48 @@ export async function getRecipientEvents(recipientId) {
   });
 }
 
+// Apply open/click event directly by recipientId (used by pixel/redirect tracking)
+export async function applyTrackingEvent(recipientId, event) {
+  const recipient = await prisma.campaignRecipient.findUnique({
+    where:  { id: recipientId },
+    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true },
+  });
+  if (!recipient) return;
+
+  const recipientData = {};
+  const campaignData  = {};
+  const now = new Date();
+
+  if (event === 'opened') {
+    if (recipient.openedAt) return;
+    recipientData.status   = 'opened';
+    recipientData.openedAt = now;
+    campaignData.openedCount = { increment: 1 };
+  } else if (event === 'clicked') {
+    if (recipient.clickedAt) return;
+    recipientData.status    = 'clicked';
+    recipientData.clickedAt = now;
+    campaignData.clickedCount = { increment: 1 };
+  } else {
+    return;
+  }
+
+  await Promise.all([
+    prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
+    prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
+  ]);
+}
+
+// Return set of contactIds that have ever bounced or unsubscribed
+export async function findSuppressedContactIds(contactIds) {
+  const rows = await prisma.campaignRecipient.findMany({
+    where:  { contactId: { in: contactIds }, status: { in: ['bounced', 'unsubscribed'] } },
+    select: { contactId: true },
+    distinct: ['contactId'],
+  });
+  return new Set(rows.map(r => r.contactId));
+}
+
 export async function getContactsForFilter(clientId, filter) {
   const where = {};
   // Strict client scoping: only contacts that belong to exactly this client.

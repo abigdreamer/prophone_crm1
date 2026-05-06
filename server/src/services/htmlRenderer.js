@@ -255,13 +255,13 @@ export function applyTracking(html, campaignId, recipientId, trackingBaseUrl) {
       if (SKIP_RE.test(trimmed))                    return match; // non-navigable
       if (!trimmed.startsWith('http'))               return match; // relative — skip
       if (trimmed.startsWith(trackingBaseUrl))       return match; // already wrapped
-      const clickUrl = `${trackingBaseUrl}/api/email/track/click?campaignId=${campaignId}&recipientId=${recipientId}&url=${encodeURIComponent(trimmed)}`;
+      const clickUrl = `${trackingBaseUrl}/api/email/track/click?recipientId=${recipientId}&url=${encodeURIComponent(trimmed)}`;
       return `href="${clickUrl}"`;
     },
   );
 
   // 2. Inject open-tracking pixel before </body> or at end
-  const pixel = `<img src="${trackingBaseUrl}/api/email/track/open?campaignId=${campaignId}&recipientId=${recipientId}" width="1" height="1" style="display:none;" alt="" />`;
+  const pixel = `<img src="${trackingBaseUrl}/api/email/track/open?recipientId=${recipientId}" width="1" height="1" style="display:none;" alt="" />`;
 
   if (rewritten.includes('</body>')) {
     return rewritten.replace('</body>', `${pixel}</body>`);

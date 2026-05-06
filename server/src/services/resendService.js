@@ -23,14 +23,19 @@ function buildFrom(fromEmail, fromName) {
  * Send a single email via Resend.
  * Returns { id } on success, throws on failure.
  */
-export async function sendSingleEmail({ to, from, fromName, subject, html }) {
+export async function sendSingleEmail({ to, from, fromName, subject, html, text, replyTo, headers }) {
   const client = getClient();
-  const { data, error } = await client.emails.send({
-    from: buildFrom(from, fromName),
-    to:   Array.isArray(to) ? to : [to],
+  const payload = {
+    from:    buildFrom(from, fromName),
+    to:      Array.isArray(to) ? to : [to],
     subject,
     html,
-  });
+  };
+  if (text)    payload.text    = text;
+  if (replyTo) payload.reply_to = replyTo;
+  if (headers) payload.headers  = headers;
+
+  const { data, error } = await client.emails.send(payload);
 
   if (error) {
     throw new Error(`Resend error: ${error.message || JSON.stringify(error)}`);
@@ -40,19 +45,25 @@ export async function sendSingleEmail({ to, from, fromName, subject, html }) {
 
 /**
  * Send a batch of emails via Resend (up to 100 per call).
- * emails: [{ to, from, fromName, subject, html }]
+ * emails: [{ to, from, fromName, subject, html, text, replyTo, headers }]
  * Returns array of { id } in same order as input.
  * Throws if the batch API call itself fails.
  */
 export async function sendBatchEmails(emails) {
   const client = getClient();
 
-  const payload = emails.map(e => ({
-    from:    buildFrom(e.from, e.fromName),
-    to:      Array.isArray(e.to) ? e.to : [e.to],
-    subject: e.subject,
-    html:    e.html,
-  }));
+  const payload = emails.map(e => {
+    const msg = {
+      from:    buildFrom(e.from, e.fromName),
+      to:      Array.isArray(e.to) ? e.to : [e.to],
+      subject: e.subject,
+      html:    e.html,
+    };
+    if (e.text)    msg.text     = e.text;
+    if (e.replyTo) msg.reply_to = e.replyTo;
+    if (e.headers) msg.headers  = e.headers;
+    return msg;
+  });
 
   const { data, error } = await client.batch.send(payload);
 
