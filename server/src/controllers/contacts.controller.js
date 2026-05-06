@@ -37,6 +37,12 @@ function formatContact(c) {
     notes:          c.notes,
     ownedBy:        c.ownedBy,
     addedBy:        c.addedBy,
+    isCanceled:     c.isCanceled,
+    canceledAt:     c.canceledAt,
+    canceledBy:     c.canceledBy,
+    cancelReason:   c.cancelReason,
+    restoredAt:     c.restoredAt,
+    restoredBy:     c.restoredBy,
     createdAt:      c.createdAt,
     activities: (c.activities || [])
       .sort((a, b) => new Date(a.ts) - new Date(b.ts))
@@ -48,7 +54,7 @@ async function listContacts(req, res) {
   const { pool, clientId } = req.query;
   if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
 
-  const where = {};
+  const where = { isCanceled: false };
   if (pool) where.pool = pool;
   if (pool === 'client' && clientId) where.clientId = clientId;
 
@@ -309,4 +315,72 @@ async function importContacts(req, res) {
   });
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts };
+async function listCanceledContacts(req, res) {
+  const { pool, clientId } = req.query;
+  if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
+
+  const where = { isCanceled: true };
+  if (pool) where.pool = pool;
+  if (pool === 'client' && clientId) where.clientId = clientId;
+
+  const contacts = await prisma.contact.findMany({
+    where,
+    include: { activities: true },
+    orderBy: { canceledAt: 'desc' },
+  });
+
+  res.json(contacts.map(formatContact));
+}
+
+async function cancelContact(req, res) {
+  const { id } = req.params;
+  const existing = await prisma.contact.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Contact not found' });
+  if (existing.isCanceled) return res.status(400).json({ error: 'Contact is already canceled' });
+
+  const by = req.user?.name || req.user?.email || 'system';
+  const cancelReason = (req.body?.cancelReason || '').trim();
+
+  const [updated] = await prisma.$transaction([
+    prisma.contact.update({
+      where: { id },
+      data: { isCanceled: true, status: 'canceled', canceledAt: new Date(), canceledBy: by, cancelReason },
+      include: { activities: true },
+    }),
+    prisma.activity.create({
+      data: {
+        contactId: id,
+        type: 'CANCEL_CONTACT',
+        note: cancelReason ? `Contact canceled — ${cancelReason}` : 'Contact canceled',
+        by,
+        ts: new Date(),
+      },
+    }),
+  ]);
+
+  res.json(formatContact(updated));
+}
+
+async function restoreContact(req, res) {
+  const { id } = req.params;
+  const existing = await prisma.contact.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Contact not found' });
+  if (!existing.isCanceled) return res.status(400).json({ error: 'Contact is not canceled' });
+
+  const by = req.user?.name || req.user?.email || 'system';
+
+  const [updated] = await prisma.$transaction([
+    prisma.contact.update({
+      where: { id },
+      data: { isCanceled: false, status: 'active', restoredAt: new Date(), restoredBy: by },
+      include: { activities: true },
+    }),
+    prisma.activity.create({
+      data: { contactId: id, type: 'UNCANCEL_CONTACT', note: 'Contact restored', by, ts: new Date() },
+    }),
+  ]);
+
+  res.json(formatContact(updated));
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact };

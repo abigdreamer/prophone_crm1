@@ -4,6 +4,7 @@ import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
 import ContactModal from "./modals/ContactModal";
+import CancelModal from "./modals/CancelModal";
 import { useTheme } from "../context/ThemeContext";
 import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
@@ -61,6 +62,23 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     }
   }
 
+  async function handleCancel(reason) {
+    const refreshed = await db.cancelContact(contact.id, reason);
+    onUpdate(refreshed);
+    setModal(null);
+    toast.success("Contact canceled.");
+  }
+
+  async function handleRestore() {
+    try {
+      const refreshed = await db.restoreContact(contact.id);
+      onUpdate(refreshed);
+      toast.success("Contact restored.");
+    } catch {
+      toast.error("Failed to restore contact.");
+    }
+  }
+
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
 
@@ -74,6 +92,13 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         <ContactModal
           contact={contact} onSave={handleEdit} onClose={() => setModal(null)}
           pool={contact.pool} clientId={contact.clientId} currentUser={currentUser}
+        />
+      )}
+      {modal === "cancel" && (
+        <CancelModal
+          contact={contact}
+          onSave={handleCancel}
+          onClose={() => setModal(null)}
         />
       )}
 
@@ -104,21 +129,36 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           )}
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
             <StagePill stage={contact.lifecycleStage} />
+            {contact.isCanceled && (
+              <Pill color={T.red} small>CANCELED</Pill>
+            )}
             {contact.trucks > 0 && <Pill color={T.orange} small>🚛 {contact.trucks} trucks</Pill>}
             {contact.city && <span style={{ fontSize: 11, color: T.muted }}>📍 {contact.city}</span>}
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <Btn onClick={() => setModal("log")} style={{ fontSize: 11, padding: "7px 14px" }}>
-            + Log Activity
-          </Btn>
-          <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
-            ⇢ Stage
-          </Btn>
-          <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
-            ✎ Edit
-          </Btn>
+          {!contact.isCanceled && (
+            <>
+              <Btn onClick={() => setModal("log")} style={{ fontSize: 11, padding: "7px 14px" }}>
+                + Log Activity
+              </Btn>
+              <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
+                ⇢ Stage
+              </Btn>
+              <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
+                ✎ Edit
+              </Btn>
+              <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.red, color: T.red }}>
+                ✕ Cancel
+              </Btn>
+            </>
+          )}
+          {contact.isCanceled && (
+            <Btn onClick={handleRestore} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
+              ↩ Restore
+            </Btn>
+          )}
         </div>
       </div>
 
@@ -200,6 +240,34 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           </div>
         ))}
       </div>
+
+      {/* Cancellation info */}
+      {contact.isCanceled && (
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0,
+          background: T.red + "08", border: "1px solid " + T.red + "30",
+          borderRadius: 8, marginBottom: 12, overflow: "hidden",
+        }}>
+          {[
+            ["Canceled By", contact.canceledBy  || "—"],
+            ["Canceled At", fmt.date(contact.canceledAt)],
+            ["Reason",      contact.cancelReason || "—"],
+          ].map(([label, value], i, arr) => (
+            <div
+              key={label}
+              style={{
+                padding: "10px 16px",
+                borderRight: i < arr.length - 1 ? "1px solid " + T.red + "25" : "none",
+              }}
+            >
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.red + "aa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 12, color: T.dim, fontWeight: 500 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Notes */}
       <Section title="Notes" style={{ marginBottom: 12 }}>

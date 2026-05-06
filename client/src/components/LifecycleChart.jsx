@@ -6,6 +6,7 @@ import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
 import ContactModal from "./modals/ContactModal";
+import CancelModal from "./modals/CancelModal";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { STAGE_DEF, LOST_STAGES } from "../data/stages";
@@ -106,6 +107,22 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           currentUser={currentUser}
         />
       )}
+      {modal === "cancel" && (
+        <CancelModal
+          contact={contact}
+          onSave={async reason => {
+            try {
+              const refreshed = await db.cancelContact(contact.id, reason);
+              onUpdate(refreshed);
+              setModal(null);
+              toast.success("Contact canceled.");
+            } catch {
+              toast.error("Failed to cancel contact.");
+            }
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
 
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
 
@@ -135,7 +152,8 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
             </div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <StagePill stage={contact.lifecycleStage} />
-              {contact.trucks && <Pill color={T.orange} small>🚛 {contact.trucks}</Pill>}
+              {contact.isCanceled && <Pill color={T.red} small>CANCELED</Pill>}
+              {contact.trucks > 0 && <Pill color={T.orange} small>🚛 {contact.trucks}</Pill>}
             </div>
           </div>
 
@@ -161,11 +179,32 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
         </div>
 
         {/* Action buttons */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 14 }}>
-          <Btn onClick={() => setModal("log")}   style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
-          <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
-          <Btn onClick={() => setModal("edit")}  variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
-        </div>
+        {contact.isCanceled ? (
+          <div style={{ marginBottom: 14 }}>
+            <Btn
+              onClick={async () => {
+                try {
+                  const refreshed = await db.restoreContact(contact.id);
+                  onUpdate(refreshed);
+                  toast.success("Contact restored.");
+                } catch {
+                  toast.error("Failed to restore contact.");
+                }
+              }}
+              variant="secondary"
+              style={{ width: "100%", fontSize: 10, padding: "6px 8px", borderColor: T.green, color: T.green }}
+            >
+              ↩ Restore Contact
+            </Btn>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
+            <Btn onClick={() => setModal("log")}    style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
+            <Btn onClick={() => setModal("stage")}  variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
+            <Btn onClick={() => setModal("edit")}   variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
+            <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px", borderColor: T.red, color: T.red }}>✕ Cancel</Btn>
+          </div>
+        )}
 
         {/* Journey stepper */}
         <Card style={{ padding: "14px 16px", marginBottom: 14 }}>

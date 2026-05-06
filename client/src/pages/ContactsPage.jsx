@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { useAppToast } from "../context/ToastContext";
 import Card from "../components/ui/Card";
 import { StagePill } from "../components/ui/Pill";
@@ -17,13 +18,14 @@ import fmt from "../utils/format";
 import * as db from "../services/api";
 
 // ─── Full contacts table page ──────────────────────────────────────────────────
-export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser }) {
+export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser, onRestoreContact }) {
   const T = useTheme();
   const [stageF,       setStageF]       = useState("all");
   const [sortBy,       setSortBy]       = useState("lastActivityAt");
   const [addModal,     setAddModal]     = useState(false);
   const [importModal,  setImportModal]  = useState(false);
   const [editC,        setEditC]        = useState(null);
+  const [refreshing,   setRefreshing]   = useState(false);
   const toast = useAppToast();
 
   const client   = CLIENTS.find(c => c.id === clientId);
@@ -34,6 +36,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
     if (viewMode === "leads")     return LEAD_STAGES.includes(c.lifecycleStage);
     if (viewMode === "customers") return c.lifecycleStage === "customer";
     if (viewMode === "lost")      return LOST_STAGES.includes(c.lifecycleStage);
+    if (viewMode === "canceled")  return true;
     return true;
   });
 
@@ -60,7 +63,8 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
   const modeLabel =
     viewMode === "customers" ? "Customers" :
     viewMode === "leads"     ? "Leads"     :
-    viewMode === "lost"      ? "Lost/Churned" : "All Contacts";
+    viewMode === "lost"      ? "Lost/Churned" :
+    viewMode === "canceled"  ? "Canceled Contacts" : "All Contacts";
 
   const stageOpts =
     viewMode === "leads"     ? LEAD_STAGES     :
@@ -88,6 +92,30 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
     } catch (err) {
       console.error("Failed to update contact:", err);
       toast.error("Failed to update contact.");
+    }
+  }
+
+  async function handleRestore(c) {
+    try {
+      await db.restoreContact(c.id);
+      if (onRestoreContact) await onRestoreContact(c.id);
+      toast.success("Contact restored.");
+    } catch {
+      toast.error("Failed to restore contact.");
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      const fresh = viewMode === "canceled"
+        ? await db.getCanceledContacts()
+        : await db.getContacts();
+      setContacts(fresh);
+    } catch {
+      toast.error("Failed to refresh contacts.");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -126,6 +154,21 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
         </div>
 
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 13px", background: T.card,
+              border: "1px solid " + T.border, borderRadius: 7,
+              color: T.dim, fontSize: 12, cursor: refreshing ? "wait" : "pointer",
+              fontFamily: "inherit", opacity: refreshing ? 0.7 : 1,
+            }}
+          >
+            <RefreshCw size={12} style={{ animation: refreshing ? "crm-spin 0.8s linear infinite" : "none" }} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+
           <select
             value={stageF}
             onChange={e => setStageF(e.target.value)}
@@ -147,8 +190,13 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
             <option value="name">Name A-Z</option>
           </select>
 
-          <Btn variant="secondary" onClick={() => setImportModal(true)}>↑ Import Contact</Btn>
-          <Btn onClick={() => setAddModal(true)}>+ Add Contact</Btn>
+        
+          {viewMode !== "canceled" && (
+            <>
+              <Btn variant="secondary" onClick={() => setImportModal(true)}>↑ Import Contact</Btn>
+              <Btn onClick={() => setAddModal(true)}>+ Add Contact</Btn>
+            </>
+          )}
         </div>
       </div>
 
@@ -158,7 +206,10 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: T.surface }}>
-                {["Name & Email","Company","City","Stage","Score","Last Activity","Actions","Value","Owner",""].map((h, i) => (
+                {(viewMode === "canceled"
+                ? ["Name & Email","Company","City","Canceled","Canceled By","Last Activity","Actions","Value","Owner",""]
+                : ["Name & Email","Company","City","Stage","Score","Last Activity","Actions","Value","Owner",""]
+              ).map((h, i) => (
                   <th
                     key={i}
                     style={{
@@ -219,10 +270,21 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
                         <Hi text={c.city || "—"} q={q} />
                       </td>
                       <td style={{ padding: "8px 11px", verticalAlign: "middle" }}>
-                        <StagePill stage={c.lifecycleStage} />
+                        {viewMode === "canceled" ? (
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: T.red }}>CANCELED</div>
+                            <div style={{ fontSize: 9, color: T.muted }}>{fmt.date(c.canceledAt)}</div>
+                          </div>
+                        ) : (
+                          <StagePill stage={c.lifecycleStage} />
+                        )}
                       </td>
                       <td style={{ padding: "8px 11px", verticalAlign: "middle" }}>
-                        <ScoreBar score={c.leadScore} />
+                        {viewMode === "canceled" ? (
+                          <span style={{ fontSize: 11, color: T.muted }}>{c.canceledBy || "—"}</span>
+                        ) : (
+                          <ScoreBar score={c.leadScore} />
+                        )}
                       </td>
                       <td style={{ padding: "8px 11px", verticalAlign: "middle" }}>
                         <div style={{ fontSize: 11, color: T.dim }}>{fmt.ago(c.lastActivityAt)}</div>
@@ -251,16 +313,29 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
                         <Avatar user={ownUser} size={22} />
                       </td>
                       <td style={{ padding: "8px 11px", verticalAlign: "middle" }}>
-                        <button
-                          onClick={e => { e.stopPropagation(); setEditC(c); }}
-                          style={{
-                            background: T.surface, border: "1px solid " + T.border,
-                            borderRadius: 4, color: T.dim, fontSize: 10,
-                            cursor: "pointer", padding: "3px 7px", fontFamily: "inherit",
-                          }}
-                        >
-                          ✎
-                        </button>
+                        {viewMode === "canceled" ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleRestore(c); }}
+                            style={{
+                              background: T.surface, border: "1px solid " + T.green + "60",
+                              borderRadius: 4, color: T.green, fontSize: 10,
+                              cursor: "pointer", padding: "3px 7px", fontFamily: "inherit",
+                            }}
+                          >
+                            ↩ Restore
+                          </button>
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditC(c); }}
+                            style={{
+                              background: T.surface, border: "1px solid " + T.border,
+                              borderRadius: 4, color: T.dim, fontSize: 10,
+                              cursor: "pointer", padding: "3px 7px", fontFamily: "inherit",
+                            }}
+                          >
+                            ✎
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

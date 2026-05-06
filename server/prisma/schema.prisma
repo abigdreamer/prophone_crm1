@@ -84,6 +84,12 @@ model Contact {
   notes          String     @default("")
   ownedBy        String     @default("") @map("owned_by")
   addedBy        String     @default("") @map("added_by")
+  isCanceled     Boolean    @default(false) @map("is_canceled")
+  canceledAt     DateTime?  @map("canceled_at")
+  canceledBy     String     @default("") @map("canceled_by")
+  cancelReason   String     @default("") @map("cancel_reason")
+  restoredAt     DateTime?  @map("restored_at")
+  restoredBy     String     @default("") @map("restored_by")
   createdAt      DateTime   @default(now()) @map("created_at")
   client         Client?    @relation(fields: [clientId], references: [id])
   activities     Activity[]
