@@ -215,6 +215,73 @@ function escapeHtmlValue(str) {
 }
 
 /**
+ * Convert HTML to a readable plain-text version.
+ * Strips tags, decodes common entities, formats links, collapses whitespace.
+ */
+export function htmlToPlainText(html) {
+  if (!html) return '';
+
+  let text = html;
+
+  // Remove style and script blocks entirely
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+
+  // Convert <br> and block-level tags to newlines
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/(p|div|tr|h[1-6]|li|blockquote)>/gi, '\n');
+  text = text.replace(/<(hr)\s*\/?>/gi, '\n---\n');
+
+  // Extract link text: <a href="url">text</a> → text (url)
+  text = text.replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, url, label) => {
+    const cleanLabel = label.replace(/<[^>]+>/g, '').trim();
+    if (!cleanLabel || cleanLabel === url) return url;
+    return `${cleanLabel} (${url})`;
+  });
+
+  // Strip remaining tags
+  text = text.replace(/<[^>]+>/g, '');
+
+  // Decode common HTML entities
+  text = text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+
+  // Collapse multiple spaces (not newlines) into one
+  text = text.replace(/[^\S\n]+/g, ' ');
+
+  // Collapse 3+ newlines into 2
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
+}
+
+/**
+ * Inject an unsubscribe footer link into HTML before </body>.
+ * If no </body> found, appends at the end.
+ */
+export function injectUnsubscribeFooter(html, unsubUrl) {
+  if (!unsubUrl) return html;
+
+  const footer = `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;">
+  <tr>
+    <td align="center" style="padding:20px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#9ca3af;line-height:1.5;">
+      <a href="${unsubUrl}" style="color:#9ca3af;text-decoration:underline;" target="_blank">Unsubscribe</a> from future emails
+    </td>
+  </tr>
+</table>`;
+
+  if (html.includes('</body>')) {
+    return html.replace('</body>', `${footer}</body>`);
+  }
+  return html + footer;
+}
+
+/**
  * Substitute {{variable}} placeholders in rendered HTML.
  * - {{firstName}} and {{fullName}} fall back to "there" if empty/missing.
  * - All other variables fall back to "" (tag removed) if empty/missing.

@@ -88,6 +88,8 @@ model Contact {
   activities     Activity[]
   campaignRecipients CampaignRecipient[]
 
+  isUnsubscribed Boolean  @default(false) @map("is_unsubscribed")
+
   contactGroupId String? @map("contact_group_id")
   contactGroup   ContactGroup? @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
 

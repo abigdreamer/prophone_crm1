@@ -1,5 +1,6 @@
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import { sendSingleEmail } from '../services/resendService.js';
+import { htmlToPlainText } from '../services/htmlRenderer.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 
@@ -152,10 +153,12 @@ export const sendTestEmail = async (req, res) => {
     }
 
     const result = await sendSingleEmail({
-      to:      email,
-      from:    fromEmail,
-      subject: `[TEST] ${template.subject || template.name}`,
+      to:       email,
+      from:     fromEmail,
+      subject:  `[TEST] ${template.subject || template.name}`,
       html,
+      text:     htmlToPlainText(html),
+      reply_to: fromEmail,
     });
 
     sendSuccess(res, { ok: true, messageId: result?.id });

@@ -122,7 +122,7 @@ export async function findPendingRecipientsForSend(campaignId) {
     where:   { campaignId, status: 'pending' },
     include: {
       contact: {
-        select: { id: true, firstName: true, lastName: true, email: true, company: true },
+        select: { id: true, firstName: true, lastName: true, email: true, company: true, isUnsubscribed: true },
       },
     },
   });

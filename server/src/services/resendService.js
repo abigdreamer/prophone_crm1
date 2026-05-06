@@ -23,14 +23,19 @@ function buildFrom(fromEmail, fromName) {
  * Send a single email via Resend.
  * Returns { id } on success, throws on failure.
  */
-export async function sendSingleEmail({ to, from, fromName, subject, html }) {
+export async function sendSingleEmail({ to, from, fromName, subject, html, text, headers, reply_to }) {
   const client = getClient();
-  const { data, error } = await client.emails.send({
+  const payload = {
     from: buildFrom(from, fromName),
     to:   Array.isArray(to) ? to : [to],
     subject,
     html,
-  });
+  };
+  if (text)     payload.text     = text;
+  if (headers)  payload.headers  = headers;
+  if (reply_to) payload.reply_to = reply_to;
+
+  const { data, error } = await client.emails.send(payload);
 
   if (error) {
     throw new Error(`Resend error: ${error.message || JSON.stringify(error)}`);
@@ -47,12 +52,18 @@ export async function sendSingleEmail({ to, from, fromName, subject, html }) {
 export async function sendBatchEmails(emails) {
   const client = getClient();
 
-  const payload = emails.map(e => ({
-    from:    buildFrom(e.from, e.fromName),
-    to:      Array.isArray(e.to) ? e.to : [e.to],
-    subject: e.subject,
-    html:    e.html,
-  }));
+  const payload = emails.map(e => {
+    const item = {
+      from:    buildFrom(e.from, e.fromName),
+      to:      Array.isArray(e.to) ? e.to : [e.to],
+      subject: e.subject,
+      html:    e.html,
+    };
+    if (e.text)     item.text     = e.text;
+    if (e.headers)  item.headers  = e.headers;
+    if (e.reply_to) item.reply_to = e.reply_to;
+    return item;
+  });
 
   const { data, error } = await client.batch.send(payload);
 

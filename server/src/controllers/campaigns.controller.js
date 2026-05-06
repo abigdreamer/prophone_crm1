@@ -3,7 +3,7 @@ import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { sendBatchEmails } from '../services/resendService.js';
-import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
+import { substituteIntoHtml, renderTemplate, applyTracking, htmlToPlainText, injectUnsubscribeFooter } from '../services/htmlRenderer.js';
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -215,8 +215,10 @@ export const sendCampaign = async (req, res) => {
     }
 
     // Load all pending recipients with contact data (no pagination — need all for send)
-    const recipients = await repo.findPendingRecipientsForSend(campaignId);
-    if (!recipients.length) return sendError(res, 'No pending recipients', 400);
+    const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
+    // Filter out unsubscribed contacts
+    const recipients = allRecipients.filter(r => !r.contact?.isUnsubscribed);
+    if (!recipients.length) return sendError(res, 'No pending recipients (all may be unsubscribed)', 400);
 
     // Idempotency: mark as sending before we start
     await repo.updateCampaign(campaignId, { status: 'sending', sentAt: new Date() });
@@ -249,8 +251,28 @@ export const sendCampaign = async (req, res) => {
             ? substituteIntoHtml(tmpl.htmlOutput, vars)
             : renderTemplate(tmpl.body, vars);
 
+          // Build per-recipient unsubscribe URL
+          const unsubUrl = trackingBase
+            ? `${trackingBase}/api/email/unsubscribe?campaignId=${campaignId}&recipientId=${r.id}`
+            : null;
+
+          // Inject unsubscribe footer into HTML
+          if (unsubUrl) {
+            html = injectUnsubscribeFooter(html, unsubUrl);
+          }
+
           if (trackingBase) {
             html = applyTracking(html, campaignId, r.id, trackingBase);
+          }
+
+          // Generate plain text alternative
+          const text = htmlToPlainText(html);
+
+          // Anti-spam headers
+          const headers = {};
+          if (unsubUrl) {
+            headers['List-Unsubscribe'] = `<${unsubUrl}>`;
+            headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
           }
 
           return {
@@ -260,6 +282,9 @@ export const sendCampaign = async (req, res) => {
             fromName:     campaign.fromName || '',
             subject:      subj,
             html,
+            text,
+            headers: Object.keys(headers).length ? headers : undefined,
+            reply_to: fromEmail,
           };
         });
 

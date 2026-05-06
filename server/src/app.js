@@ -13,6 +13,7 @@ import domainsRoutes       from './routes/domains.routes.js';
 import emailTemplateRoutes from './routes/emailTemplates.routes.js';
 import interactiveRoutes   from './routes/interactive.routes.js';
 import campaignRoutes      from './routes/campaigns.routes.js';
+import emailTrackingRoutes from './routes/emailTracking.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -31,6 +32,9 @@ app.use(cors({
 app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHandler(handleWebhook));
 
 app.use(express.json());
+
+// Public email tracking endpoints — no auth, no JSON body parsing needed
+app.use('/api/email', emailTrackingRoutes);
 
 // Public interactive pages — no auth, served as HTML
 app.get('/i/:token',          asyncHandler(servePage));
