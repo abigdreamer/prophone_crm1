@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StagePill, Pill } from "./ui/Pill";
 import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
@@ -11,10 +11,25 @@ import fmt from "../utils/format";
 import * as db from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 
+const ACTION_CFG = {
+  CREATE:  { label: "Created",  color: "#22c55e", icon: "✦" },
+  UPDATE:  { label: "Updated",  color: "#6366f1", icon: "✎" },
+  CANCEL:  { label: "Canceled", color: "#ef4444", icon: "✕" },
+  RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
+};
+
 export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   const T = useTheme();
-  const [modal, setModal] = useState(null);
+  const [modal,      setModal]      = useState(null);
+  const [auditLog,   setAuditLog]   = useState([]);
+  const [auditOpen,  setAuditOpen]  = useState(false);
   const toast = useAppToast();
+
+  useEffect(() => {
+    if (!contact?.id) return;
+    setAuditLog([]);
+    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
+  }, [contact?.id]);
 
   if (!contact) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: T.muted, fontSize: 13 }}>
@@ -284,7 +299,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
 
       {/* Tags */}
       {tags.length > 0 && (
-        <Section title="Tags">
+        <Section title="Tags" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
             {tags.map(tag => (
               <span
@@ -301,6 +316,105 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           </div>
         </Section>
       )}
+
+      {/* Audit Log */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
+        <button
+          onClick={() => setAuditOpen(o => !o)}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Audit Log <span style={{ color: T.dim, fontWeight: 500 }}>({auditLog.length})</span>
+          </span>
+          <span style={{ fontSize: 12, color: T.muted, transform: auditOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▾</span>
+        </button>
+
+        {auditOpen && (
+          <div style={{ borderTop: "1px solid " + T.border }}>
+            {auditLog.length === 0 ? (
+              <div style={{ padding: "14px 16px", fontSize: 12, color: T.muted, fontStyle: "italic" }}>
+                No audit events yet.
+              </div>
+            ) : (
+              auditLog.map((entry, i) => {
+                const cfg = ACTION_CFG[entry.action] || { label: entry.action, color: T.muted, icon: "·" };
+                const meta = entry.metadata || {};
+                return (
+                  <div
+                    key={entry.id}
+                    style={{
+                      display: "flex", gap: 11, padding: "10px 16px",
+                      borderBottom: i < auditLog.length - 1 ? "1px solid " + T.border + "66" : "none",
+                    }}
+                  >
+                    {/* Icon */}
+                    <div style={{
+                      width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                      background: cfg.color + "18", border: "1px solid " + cfg.color + "40",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, color: cfg.color, marginTop: 1,
+                    }}>
+                      {cfg.icon}
+                    </div>
+
+                    {/* Body */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+                          padding: "1px 6px", borderRadius: 4,
+                          background: cfg.color + "18", color: cfg.color,
+                          border: "1px solid " + cfg.color + "35",
+                        }}>
+                          {cfg.label}
+                        </span>
+                        <span style={{ fontSize: 10, color: T.muted }}>
+                          by {entry.performedBy || "system"} · {fmt.date(entry.ts)}
+                        </span>
+                      </div>
+
+                      {/* Metadata detail */}
+                      {entry.action === "CREATE" && (
+                        <div style={{ fontSize: 11, color: T.dim }}>
+                          {meta.name}{meta.company ? ` · ${meta.company}` : ""}
+                          {meta.email ? <span style={{ color: T.muted }}> · {meta.email}</span> : null}
+                        </div>
+                      )}
+                      {entry.action === "UPDATE" && meta.changes && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                          {Object.entries(meta.changes).map(([field, { from, to }]) => (
+                            <span key={field} style={{
+                              fontSize: 10, padding: "1px 6px", borderRadius: 4,
+                              background: T.accent + "12", color: T.dim,
+                              border: "1px solid " + T.border,
+                            }}>
+                              {field}: <span style={{ color: T.muted, textDecoration: "line-through" }}>{String(from)}</span>
+                              {" → "}
+                              <span style={{ color: T.text, fontWeight: 600 }}>{String(to)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {entry.action === "CANCEL" && meta.reason && (
+                        <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>"{meta.reason}"</div>
+                      )}
+                      {entry.action === "RESTORE" && meta.previousReason && (
+                        <div style={{ fontSize: 11, color: T.muted }}>
+                          Previously canceled: <span style={{ fontStyle: "italic" }}>"{meta.previousReason}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

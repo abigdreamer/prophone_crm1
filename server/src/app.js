@@ -33,7 +33,7 @@ app.use(cors({
 // Webhook must receive raw body for signature verification — mount BEFORE express.json()
 app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHandler(handleWebhook));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Public interactive pages — no auth, served as HTML
 app.get('/i/:token',          asyncHandler(servePage));

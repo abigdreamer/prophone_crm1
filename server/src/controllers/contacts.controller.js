@@ -6,6 +6,121 @@ const VALID_STAGES         = ['new','contacted','engaged','demo_scheduled','demo
 const VALID_STATUSES       = ['active', 'inactive', 'pending'];
 const VALID_ACCOUNT_SIZES  = ['1-5', '6-15', '16-50', '51-200', '200+'];
 
+// Best-effort: extract city from a comma-separated address string.
+// Prioritizes well-known US cities for better accuracy.
+// Returns empty string if city cannot be determined with confidence.
+
+function extractCity(address) {
+  if (!address) return '';
+
+  const parts = address
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  // Common well-known US cities
+  const knownCities = new Set([
+    'New York',
+    'Los Angeles',
+    'Chicago',
+    'Houston',
+    'Phoenix',
+    'Philadelphia',
+    'San Antonio',
+    'San Diego',
+    'Dallas',
+    'San Jose',
+    'Austin',
+    'Jacksonville',
+    'Fort Worth',
+    'Columbus',
+    'Charlotte',
+    'San Francisco',
+    'Indianapolis',
+    'Seattle',
+    'Denver',
+    'Washington',
+    'Boston',
+    'El Paso',
+    'Nashville',
+    'Detroit',
+    'Oklahoma City',
+    'Portland',
+    'Las Vegas',
+    'Memphis',
+    'Louisville',
+    'Baltimore',
+    'Milwaukee',
+    'Albuquerque',
+    'Tucson',
+    'Fresno',
+    'Sacramento',
+    'Mesa',
+    'Atlanta',
+    'Kansas City',
+    'Colorado Springs',
+    'Miami',
+    'Raleigh',
+    'Omaha',
+    'Long Beach',
+    'Virginia Beach',
+    'Oakland',
+    'Minneapolis',
+    'Tulsa',
+    'Arlington',
+    'Tampa',
+    'New Orleans',
+    'Cleveland',
+    'Honolulu',
+    'Anaheim',
+    'Lexington',
+    'Stockton',
+    'Corpus Christi',
+    'Henderson',
+    'Riverside',
+    'Newark',
+    'St. Louis',
+    'Pittsburgh',
+    'Cincinnati',
+    'Anchorage',
+    'Orlando',
+    'Buffalo',
+    'Plano',
+    'Irvine'
+  ]);
+
+  const skip = [
+    /^\d/, // street numbers / unit numbers
+    /^(suite|ste|apt|unit|#|floor|fl|bldg|po\s*box)\b/i,
+    /^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/, // state code ± zip
+    /^\d{5}(-\d{4})?$/, // zip code only
+    /^USA$/i,
+    /^United States$/i,
+  ];
+
+  // First: prioritize known cities
+  for (const part of parts) {
+    if (knownCities.has(part)) {
+      return part;
+    }
+  }
+
+  // Fallback: first valid non-skipped part
+  for (const part of parts) {
+    if (!skip.some(re => re.test(part))) {
+      return part;
+    }
+  }
+
+  return '';
+}
+
+function logClientActivity(entityId, action, performedBy, metadata = {}) {
+  return prisma.clientActivity.create({
+    data: { entityId, action, performedBy, metadata, ts: new Date() },
+  });
+}
+
 function formatContact(c) {
   return {
     id:             c.id,
@@ -18,6 +133,7 @@ function formatContact(c) {
     company:        c.company,
     title:          c.title,
     website:        c.website,
+    address:        c.address,
     city:           c.city,
     trucks:         c.trucks,
     lifecycleStage: c.lifecycleStage,
@@ -95,7 +211,8 @@ async function createContact(req, res) {
       company:        b.company        || '',
       title:          b.title          || '',
       website:        b.website        || '',
-      city:           b.city           || '',
+      address:        (b.address       || '').trim(),
+      city:           (b.city          || '').trim() || extractCity((b.address || '').trim()),
       trucks:         parseInt(b.trucks)        || 0,
       lifecycleStage: b.lifecycleStage || 'new',
       leadScore:      b.leadScore      || 10,
@@ -128,6 +245,15 @@ async function createContact(req, res) {
     where: { id: contact.id },
     include: { activities: true },
   });
+
+  const by = req.user?.name || req.user?.email || 'system';
+  logClientActivity(contact.id, 'CREATE', by, {
+    name:    `${contact.firstName} ${contact.lastName}`.trim(),
+    email:   contact.email,
+    company: contact.company,
+    pool:    contact.pool,
+  }).catch(() => {});
+
   res.status(201).json(formatContact(full));
 }
 
@@ -153,7 +279,12 @@ async function updateContact(req, res) {
       company:        b.company        ?? existing.company,
       title:          b.title          ?? existing.title,
       website:        b.website        ?? existing.website,
-      city:           b.city           ?? existing.city,
+      address:        b.address !== undefined ? b.address.trim() : existing.address,
+      city:           b.city !== undefined
+                        ? b.city
+                        : (b.address !== undefined && !existing.city)
+                            ? extractCity(b.address.trim())
+                            : existing.city,
       trucks:         b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
       lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
       leadScore:      b.leadScore      ?? existing.leadScore,
@@ -169,6 +300,19 @@ async function updateContact(req, res) {
     },
     include: { activities: true },
   });
+
+  // Diff tracked fields and log if anything changed
+  const changes = {};
+  for (const field of TRACKED_FIELDS) {
+    if (b[field] === undefined) continue;
+    const oldVal = String(existing[field] ?? '');
+    const newVal = String(b[field] ?? '');
+    if (oldVal !== newVal) changes[field] = { from: existing[field], to: b[field] };
+  }
+  if (Object.keys(changes).length > 0) {
+    const by = req.user?.name || req.user?.email || 'system';
+    logClientActivity(id, 'UPDATE', by, { changes }).catch(() => {});
+  }
 
   res.json(formatContact(updated));
 }
@@ -200,7 +344,7 @@ async function getContactCounts(req, res) {
 }
 
 // ── Bulk import ───────────────────────────────────────────────────────────────
-const CHUNK = 50;
+const CHUNK = 500;
 
 async function importContacts(req, res) {
   const { rows, clientId, pool = 'client', duplicateAction = 'ignore' } = req.body;
@@ -229,8 +373,12 @@ async function importContacts(req, res) {
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const email = (r.email || '').trim();
-    const phone = (r.phone || '').trim();
+    // Coerce every cell to string first — Excel can produce numbers for
+    // cells that look numeric (zip codes, company IDs, phone numbers, etc.)
+    const s = f => String(r[f] ?? '').trim();
+
+    const email = s('email');
+    const phone = s('phone');
 
     if (!email && !phone) {
       invalid.push(i);
@@ -238,33 +386,51 @@ async function importContacts(req, res) {
       continue;
     }
 
-    const firstName = (r.firstName || r.first_name || '').trim();
+    let firstName = s('firstName') || s('first_name');
+    let lastName  = s('lastName')  || s('last_name');
+
+    // Split "Full Name" into first + last if firstName is missing
+    if (!firstName && (s('fullName'))) {
+      const full  = s('fullName');
+      const space = full.indexOf(' ');
+      if (space !== -1) {
+        firstName = full.slice(0, space);
+        lastName  = lastName || full.slice(space + 1);
+      } else {
+        firstName = full;
+      }
+    }
+
     if (!firstName) {
       invalid.push(i);
       errors.push({ row: i + 1, reason: 'Missing first name' });
       continue;
     }
 
+    const address = s('address');
+    const city    = s('city') || extractCity(address);
+
     const data = {
       pool,
       clientId,
       firstName,
-      lastName:       (r.lastName  || r.last_name  || '').trim(),
+      lastName,
       email,
       phone,
-      company:        (r.company   || '').trim(),
-      title:          (r.title     || '').trim(),
-      website:        (r.website   || '').trim(),
-      city:           (r.city      || '').trim(),
+      company:        s('company'),
+      title:          s('title'),
+      website:        s('website'),
+      address,
+      city,
       trucks:         parseInt(r.trucks)        || 0,
       contractValue:  parseInt(r.contractValue) || 0,
       lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : 'new',
       leadScore:      10,
       status:         'active',
-      source:         (r.source || '').trim(),
-      notes:          (r.notes  || '').trim(),
-      ownedBy:        (r.ownedBy  || '').trim() || currentUserName,
-      addedBy:        (r.addedBy  || '').trim() || currentUserName,
+      source:         s('source'),
+      notes:          s('notes'),
+      ownedBy:        s('ownedBy')  || currentUserName,
+      addedBy:        s('addedBy')  || currentUserName,
       tags:           [],
       lastActivityAt: new Date(),
     };
@@ -315,6 +481,14 @@ async function importContacts(req, res) {
   });
 }
 
+async function getContactClientActivities(req, res) {
+  const activities = await prisma.clientActivity.findMany({
+    where: { entityId: req.params.id },
+    orderBy: { ts: 'desc' },
+  });
+  res.json(activities);
+}
+
 async function listCanceledContacts(req, res) {
   const { pool, clientId } = req.query;
   if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
@@ -356,6 +530,9 @@ async function cancelContact(req, res) {
         ts: new Date(),
       },
     }),
+    prisma.clientActivity.create({
+      data: { entityId: id, action: 'CANCEL', performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
+    }),
   ]);
 
   res.json(formatContact(updated));
@@ -378,9 +555,12 @@ async function restoreContact(req, res) {
     prisma.activity.create({
       data: { contactId: id, type: 'UNCANCEL_CONTACT', note: 'Contact restored', by, ts: new Date() },
     }),
+    prisma.clientActivity.create({
+      data: { entityId: id, action: 'RESTORE', performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
+    }),
   ]);
 
   res.json(formatContact(updated));
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact };
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities };

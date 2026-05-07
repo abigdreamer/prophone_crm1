@@ -98,6 +98,10 @@ export async function cancelContact(id, cancelReason = '') {
   return request('POST', `/api/contacts/${id}/cancel`, { cancelReason });
 }
 
+export async function getContactClientActivities(contactId) {
+  return request('GET', `/api/contacts/${contactId}/client-activities`);
+}
+
 export async function restoreContact(id) {
   return request('POST', `/api/contacts/${id}/restore`);
 }
@@ -157,6 +161,22 @@ export async function createClient(data) {
 
 export async function updateClient(id, data) {
   return request('PATCH', `/api/clients/${id}`, data);
+}
+
+export async function cancelClient(id, cancelReason = '') {
+  return request('POST', `/api/clients/${id}/cancel`, { cancelReason });
+}
+
+export async function restoreClient(id) {
+  return request('POST', `/api/clients/${id}/restore`);
+}
+
+export async function getCanceledClients() {
+  return request('GET', '/api/clients/canceled');
+}
+
+export async function getClientActivities(id) {
+  return request('GET', `/api/clients/${id}/client-activities`);
 }
 
 // ── Email Templates ───────────────────────────────────────────────────────────

@@ -14,27 +14,27 @@ export default function Sidebar({
   search, setSearch, searchRef, contacts, setContacts, currentUser,
 }) {
   const T = useTheme();
-  const [stageF,      setStageF]      = useState("all");
-  const [sortF,       setSortF]       = useState("recent");
-  const [addModal,    setAddModal]    = useState(false);
+  const [stageF, setStageF] = useState("all");
+  const [sortF, setSortF] = useState("recent");
+  const [addModal, setAddModal] = useState(false);
   const [editContact, setEditContact] = useState(null);
   const listRef = useRef(null);
   const toast = useAppToast();
 
   const client = CLIENTS.find(c => c.id === clientId);
-  const col    = pool === "prospect" ? T.accent : (client?.color || T.accent);
+  const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   const modeFiltered = contacts.filter(c => {
-    if (viewMode === "leads")     return LEAD_STAGES.includes(c.lifecycleStage);
+    if (viewMode === "leads") return LEAD_STAGES.includes(c.lifecycleStage);
     if (viewMode === "customers") return c.lifecycleStage === "customer";
-    if (viewMode === "lost")      return LOST_STAGES.includes(c.lifecycleStage);
+    if (viewMode === "lost") return LOST_STAGES.includes(c.lifecycleStage);
     return true;
   });
 
   const stageOpts =
-    viewMode === "leads"     ? LEAD_STAGES     :
+    viewMode === "leads" ? LEAD_STAGES :
     viewMode === "customers" ? CUSTOMER_STAGES :
-    viewMode === "lost"      ? LOST_STAGES     : ALL_STAGES;
+    viewMode === "lost" ? LOST_STAGES : ALL_STAGES;
 
   const filtered = modeFiltered
     .filter(c => {
@@ -49,7 +49,7 @@ export default function Sidebar({
       );
     })
     .sort((a, b) => {
-      if (sortF === "name")  return a.firstName.localeCompare(b.firstName);
+      if (sortF === "name") return a.firstName.localeCompare(b.firstName);
       if (sortF === "score") return b.leadScore - a.leadScore;
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
@@ -74,8 +74,8 @@ export default function Sidebar({
       nextIdx = currentIdx - 1;
     } else {
       const container = listRef.current;
-      const firstRow  = container?.querySelector("[data-contact-id]");
-      const pageSize  = (container && firstRow)
+      const firstRow = container?.querySelector("[data-contact-id]");
+      const pageSize = (container && firstRow)
         ? Math.max(1, Math.floor(container.clientHeight / firstRow.offsetHeight))
         : 10;
       if (e.key === "PageDown") {
@@ -100,30 +100,19 @@ export default function Sidebar({
       setAddModal(false);
       toast.success("Contact added.");
     } catch (err) {
-      console.error("Failed to save contact:", err);
       toast.error("Failed to save contact.");
     }
   }
 
   return (
-    <div
-      style={{
-        width: 280, flexShrink: 0,
-        background: T.surface, borderRight: "1px solid " + T.border,
-        display: "flex", flexDirection: "column",
-        height: "100%", overflow: "hidden",
-      }}
-    >
+    <div style={{
+      width: 290, flexShrink: 0,
+      background: T.surface, borderRight: "1px solid " + T.border,
+      display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
+    }}>
       {addModal && (
-        <ContactModal
-          onSave={handleAdd}
-          onClose={() => setAddModal(false)}
-          pool={pool}
-          clientId={clientId}
-          currentUser={currentUser}
-        />
+        <ContactModal onSave={handleAdd} onClose={() => setAddModal(false)} pool={pool} clientId={clientId} currentUser={currentUser} />
       )}
-
       {editContact && (
         <ContactModal
           contact={editContact}
@@ -139,150 +128,115 @@ export default function Sidebar({
             }
           }}
           onClose={() => setEditContact(null)}
-          pool={editContact.pool}
-          clientId={editContact.clientId}
-          currentUser={currentUser}
+          pool={editContact.pool} clientId={editContact.clientId} currentUser={currentUser}
         />
       )}
 
-      {/* Pool header */}
-      <div
-        style={{
-          padding: "7px 10px",
-          background: col + "08", borderBottom: "1px solid " + col + "28",
-          display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-        }}
-      >
-        <div style={{ width: 7, height: 7, borderRadius: "50%", background: col }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: col, flex: 1 }}>
-          {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
-        </span>
-        <span style={{ fontSize: 9, color: T.muted }}>{filtered.length}/{contacts.length}</span>
+      {/* Header */}
+      <div style={{
+        padding: "10px 14px", background: col + "0D", borderBottom: "1px solid " + T.border,
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+      }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66` }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: '0.02em' }}>
+              {pool === "prospect" ? "PROSPECT POOL" : (client?.name?.toUpperCase() || "CLIENT")}
+            </span>
+            <span style={{ fontSize: 9, color: T.muted }}>{filtered.length} visible</span>
+        </div>
         <button
           onClick={() => setAddModal(true)}
           style={{
-            background: col, border: "none", borderRadius: 5,
-            color: "#fff", fontSize: 11, fontWeight: 700,
-            padding: "3px 9px", cursor: "pointer", fontFamily: "inherit",
+            background: col, border: "none", borderRadius: 6, color: "#fff",
+            fontSize: 11, fontWeight: 700, padding: "5px 12px", cursor: "pointer",
+            boxShadow: `0 2px 4px ${col}44`, transition: 'transform 0.1s'
           }}
+          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.96)'}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
         >
           + Add
         </button>
       </div>
 
-      {/* Search & filters */}
-      <div style={{ padding: "8px 8px 5px", flexShrink: 0, borderBottom: "1px solid " + T.border }}>
-        <div style={{ position: "relative", marginBottom: 6 }}>
-          <span
-            style={{
-              position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)",
-              color: T.muted, fontSize: 13, pointerEvents: "none",
-            }}
-          >
-            ⌕
-          </span>
+      {/* Search & Filters */}
+      <div style={{ padding: "12px 12px 8px", flexShrink: 0, borderBottom: "1px solid " + T.border }}>
+        <div style={{ position: "relative", marginBottom: 10 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: T.muted, pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
           <input
-            ref={searchRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search name, company, city…"
+            ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={handleSearchKeyDown}
+            placeholder="Search contacts..."
             style={{
-              width: "100%", boxSizing: "border-box",
-              background: T.card,
-              border: "1px solid " + (search ? col : T.border),
-              borderRadius: 6, padding: "7px 26px 7px 28px",
-              color: T.text, fontSize: 11,
-              outline: "none", fontFamily: "inherit",
+              width: "100%", background: T.card, border: "1px solid " + (search ? col : T.border),
+              borderRadius: 8, padding: "8px 30px 8px 32px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit"
             }}
           />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              style={{
-                position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)",
-                background: "none", border: "none",
-                color: T.muted, cursor: "pointer", fontSize: 11, padding: 0,
-              }}
-            >
-              ✕
-            </button>
-          )}
         </div>
 
         <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
           <select
-            value={sortF}
-            onChange={e => setSortF(e.target.value)}
+            value={sortF} onChange={e => setSortF(e.target.value)}
             style={{
-              background: T.bg, border: "1px solid " + T.border,
-              borderRadius: 4, padding: "3px 6px",
-              color: T.dim, fontSize: 10, outline: "none",
-              cursor: "pointer", fontFamily: "inherit",
+              background: T.bg, border: "1px solid " + T.border, borderRadius: 6,
+              padding: "4px 8px", color: T.dim, fontSize: 10, outline: "none", cursor: "pointer"
             }}
           >
             <option value="recent">Recent</option>
-            <option value="name">Name A→Z</option>
-            <option value="score">Score ↓</option>
+            <option value="name">Name</option>
+            <option value="score">Score</option>
           </select>
 
           <StageFilterBtn T={T} label="All" active={stageF === "all"} color={col} onClick={() => setStageF("all")} />
-          {stageOpts.slice(0, 5).map(s => {
-            const sd = STAGE_DEF[s];
-            return (
-              <StageFilterBtn key={s} T={T} label={sd.label} active={stageF === s} color={sd.color} onClick={() => setStageF(s)} />
-            );
-          })}
+          {stageOpts.slice(0, 5).map(s => (
+            <StageFilterBtn key={s} T={T} label={STAGE_DEF[s].label} active={stageF === s} color={STAGE_DEF[s].color} onClick={() => setStageF(s)} />
+          ))}
         </div>
       </div>
 
-      {/* Contact list */}
+      {/* List */}
       <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: "20px 14px", textAlign: "center", color: T.muted, fontSize: 12 }}>
-            No contacts match.
-          </div>
+          <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 12 }}>No results found</div>
         ) : (
           filtered.slice(0, 150).map(c => {
-            const sd    = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
-            const q     = search.trim();
+            const sd = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
             const isSel = selected?.id === c.id;
             return (
               <div
-                key={c.id}
-                data-contact-id={c.id}
-                onClick={() => onSelect(c)}
+                key={c.id} data-contact-id={c.id} onClick={() => onSelect(c)}
                 style={{
-                  padding: "10px 13px",
-                  borderBottom: "1px solid " + T.border,
-                  cursor: "pointer",
-                  background: isSel ? col + "10" : "transparent",
-                  borderLeft: isSel ? "3px solid " + col : "3px solid transparent",
-                }}
-                onMouseEnter={e => {
-                  if (!isSel) { e.currentTarget.style.background = T.card; e.currentTarget.style.borderLeft = "3px solid " + T.borderHi; }
-                }}
-                onMouseLeave={e => {
-                  if (!isSel) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderLeft = "3px solid transparent"; }
+                  padding: "12px 14px", borderBottom: "1px solid " + T.border, cursor: "pointer",
+                  background: isSel ? col + "14" : "transparent",
+                  borderLeft: `4px solid ${isSel ? col : "transparent"}`,
+                  transition: "all 0.15s ease"
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 2 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: T.text, lineHeight: 1.2 }}>
-                    <Hi text={c.firstName + " " + c.lastName} q={q} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: isSel ? col : T.text }}>
+                    <Hi text={c.firstName + " " + c.lastName} q={search} />
                   </div>
-                  <span style={{ fontSize: 9, color: sd.color, fontWeight: 700, flexShrink: 0 }}>{sd.label}</span>
+                  <span style={{ fontSize: 9, color: sd.color, fontWeight: 800, background: sd.color + '15', padding: '2px 6px', borderRadius: 4 }}>
+                    {sd.label.toUpperCase()}
+                  </span>
                 </div>
-                <div style={{ fontSize: 11, color: T.dim, marginBottom: 2 }}><Hi text={c.company} q={q} /></div>
-                {c.city && (
-                  <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>
-                    📍 <Hi text={c.city} q={q} />
+                <div style={{ fontSize: 11, color: T.dim, marginBottom: 4 }}><Hi text={c.company} q={search} /></div>
+                
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <ScoreBar score={c.leadScore} />
                   </div>
-                )}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                  <ScoreBar score={c.leadScore} />
-                  <span style={{ fontSize: 9, color: T.muted, whiteSpace: "nowrap" }}>{fmt.ago(c.lastActivityAt)}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.text }}>{c.leadScore}</span>
                 </div>
-                {c.trucks && <div style={{ marginTop: 4, fontSize: 9, color: T.orange }}>🚛 {c.trucks} trucks</div>}
+
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, alignItems: "center" }}>
+                   <div style={{ display: 'flex', gap: 8 }}>
+                     {c.city && <span style={{ fontSize: 10, color: T.muted }}>📍 {c.city}</span>}
+                     {c.trucks && <span style={{ fontSize: 10, color: T.orange, fontWeight: 600 }}>🚛 {c.trucks}</span>}
+                   </div>
+                   <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt)}</span>
+                </div>
               </div>
             );
           })
@@ -297,11 +251,12 @@ function StageFilterBtn({ T, label, active, color, onClick }) {
     <button
       onClick={onClick}
       style={{
-        padding: "2px 5px", fontSize: 8, borderRadius: 3, cursor: "pointer",
-        background: active ? color + "25" : "transparent",
+        padding: "3px 8px", fontSize: 9, borderRadius: 12, cursor: "pointer",
+        background: active ? color : "transparent",
         border: "1px solid " + (active ? color : T.border),
-        color: active ? color : T.muted,
-        fontFamily: "inherit",
+        color: active ? "#fff" : T.muted,
+        fontWeight: active ? 700 : 400,
+        fontFamily: "inherit", transition: "all 0.2s"
       }}
     >
       {label}
