@@ -62,14 +62,24 @@ export async function getContactCounts() {
   return request('GET', '/api/contacts/counts');
 }
 
+export async function getDashboardSummary() {
+  const { pool, clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (pool) params.set('pool', pool);
+  if (pool === 'client' && clientId) params.set('clientId', clientId);
+  return request('GET', `/api/contacts/dashboard-summary?${params}`);
+}
+
 // Reads active pool from singleton — no manual params needed
-export async function getContacts() {
+// Optional status: 'active' | 'pending' | 'canceled' — filters server-side
+export async function getContacts(status = null) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
     params.set('pool', 'client');
     params.set('clientId', clientId);
   }
+  if (status && status !== 'all') params.set('status', status);
   return request('GET', `/api/contacts?${params}`);
 }
 
@@ -151,8 +161,8 @@ export async function verifyDomain(id) {
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 
-export async function getClients() {
-  return request('GET', '/api/clients');
+export async function getClients(includeCanceled = false) {
+  return request('GET', `/api/clients${includeCanceled ? '?all=true' : ''}`);
 }
 
 export async function createClient(data) {

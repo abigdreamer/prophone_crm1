@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { usePool } from "./context/PoolContext";
-import { useTheme } from "./context/ThemeContext";
+import { useTheme, useThemeName } from "./context/ThemeContext";
+import { VIEW_MODE } from "./constants/index";
 
 import TopNav from "./components/TopNav";
 import PoolSwitcher from "./components/PoolSwitcher";
@@ -48,11 +49,12 @@ export default function App() {
 
 function AppLayout({ currentUser, onSignOut }) {
   const T = useTheme();
+  const themeName = useThemeName();
   const navigate = useNavigate();
   const location = useLocation();
 
   const { pool, setPool, clientId, setClientId } = usePool();
-  const [viewMode, setViewMode] = useState("all");
+  const [viewMode, setViewMode] = useState(VIEW_MODE.ALL);
   const [selected, setSelected] = useState(null);
   const [charted, setCharted] = useState(null);
   const [search, setSearch] = useState("");
@@ -67,7 +69,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const [canceledContacts, setCanceledContacts] = useState([]);
 
   useEffect(() => {
-    if (viewMode !== "canceled" || !currentUser) return;
+    if (viewMode !== VIEW_MODE.CANCELED || !currentUser) return;
     db.getCanceledContacts().then(setCanceledContacts).catch(() => { });
   }, [viewMode, pool, clientId, currentUser]);
 
@@ -103,8 +105,9 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleUpdate = useCallback((updated) => {
     if (updated.isCanceled) {
       setContacts(prev => prev.filter(c => c.id !== updated.id));
-      setSelected(null);
-      setCharted(null);
+      // Keep panel open — show the canceled contact with Restore button
+      setSelected(updated);
+      setCharted(updated);
     } else {
       setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
       setCanceledContacts(prev => prev.filter(c => c.id !== updated.id));
@@ -154,14 +157,12 @@ function AppLayout({ currentUser, onSignOut }) {
       fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif",
       fontSize: 13, overflow: "hidden",
     }}>
-      {/* Top bar */}
       <div style={{
         height: 50, flexShrink: 0, position: "relative",
         background: T.navBg, borderBottom: "1px solid " + T.navBorder,
         display: "flex", alignItems: "center",
         padding: "0 14px", gap: 10, zIndex: 2000,
       }}>
-        {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginRight: 4, flexShrink: 0 }}>
           <div style={{
             width: 26, height: 26, borderRadius: 7, background: T.accent,
@@ -183,7 +184,6 @@ function AppLayout({ currentUser, onSignOut }) {
 
         <TopNav page={page} viewMode={viewMode} setPage={navigateTo} setViewMode={setViewMode} onMarketingClick={handleMarketingClick} />
 
-        {/* Right side: search badge + theme switcher + user chip */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {search && (
             <div style={{
@@ -235,18 +235,18 @@ function AppLayout({ currentUser, onSignOut }) {
               background: T.card, borderRadius: 10, padding: 4,
               border: "1px solid " + T.border,
               alignSelf: "flex-start", margin: "20px 0 0 20px",
-              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-              flexWrap: "wrap" // Added for responsiveness with more items
+              boxShadow: themeName === 'light' ? T.shadow : '0 2px 8px rgba(0,0,0,0.2)',
+              flexWrap: "wrap"
             }}>
               {[
-                ["all", "All", T.dim],
-                ["prospects", "Prospects", T.amber],
-                ["leads", "Leads", T.blue],
-                ["warm", "Warm", T.orange],
-                ["hot", "Hot", T.red],
-                ["customer", "Customer", T.green],
-                ["backburner", "Backburner", T.purple],
-                ["lost", "Lost", T.muted],
+                [VIEW_MODE.ALL,        "All",        T.dim],
+                [VIEW_MODE.PROSPECTS,  "Prospects",  T.amber],
+                [VIEW_MODE.LEADS,      "Leads",      T.blue],
+                [VIEW_MODE.WARM,       "Warm",       T.orange],
+                [VIEW_MODE.HOT,        "Hot",        T.red],
+                [VIEW_MODE.CUSTOMER,   "Customer",   T.green],
+                [VIEW_MODE.BACKBURNER, "Backburner", T.purple],
+                [VIEW_MODE.LOST,       "Lost",       T.muted],
               ].map(([mode, label, c]) => (
                 <button
                   key={mode}
@@ -281,7 +281,7 @@ function AppLayout({ currentUser, onSignOut }) {
               <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage pool={pool} clientId={clientId} viewMode={viewMode} setViewMode={(v) => { setViewMode(v); navigate("/contacts"); }} setPage={navigateTo} contacts={contacts} currentUser={currentUser} />} />
-                <Route path="/contacts" element={<ContactsPage pool={pool} clientId={clientId} viewMode={viewMode} onSelect={handleSelect} selected={selected} search={search} contacts={viewMode === "canceled" ? canceledContacts : contacts} setContacts={viewMode === "canceled" ? setCanceledContacts : setContacts} currentUser={currentUser} onRestoreContact={handleRestoreContact} />} />
+                <Route path="/contacts" element={<ContactsPage pool={pool} clientId={clientId} viewMode={viewMode} onSelect={handleSelect} selected={selected} search={search} contacts={viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts} setContacts={viewMode === VIEW_MODE.CANCELED ? setCanceledContacts : setContacts} currentUser={currentUser} onRestoreContact={handleRestoreContact} />} />
                 <Route path="/domains" element={<DomainsPage />} />
                 <Route path="/templates" element={<TemplatesPage />} />
                 <Route path="/campaigns" element={<CampaignsPage />} />

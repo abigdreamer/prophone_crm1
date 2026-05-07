@@ -58,5 +58,35 @@ export const lightTheme = {
   navDim:    "rgba(255,255,255,0.75)",
 };
 
+// ─── Nord Theme ───────────────────────────────────────────────────────────────
+export const polarTheme = {
+  bg:        "#2e3440", // Polar Night (base)
+  surface:   "#3b4252", // Polar Night (brighter)
+  card:      "#434c5e", // Polar Night (brightest)
+  border:    "#4c566a", // Polar Night (highlight)
+  borderHi:  "#81a1c1", // Frost (blue-ish)
+  accent:    "#88c0d0", // Frost (cyan)
+  accentLow: "rgba(136, 192, 208, 0.10)",
+  green:     "#a3be8c", // Aurora (green)
+  amber:     "#ebcb8b", // Aurora (yellow)
+  red:       "#bf616a", // Aurora (red)
+  blue:      "#81a1c1", // Frost (blue)
+  purple:    "#b48ead", // Aurora (purple)
+  teal:      "#8fbcbb", // Frost (teal)
+  orange:    "#d08770", // Aurora (orange)
+  muted:     "#d8dee9", // Snow Storm (base)
+  dim:       "#e5e9f0", // Snow Storm (brighter)
+  text:      "#eceff4", // Snow Storm (brightest)
+  shadow:    "0 1px 4px rgba(0,0,0,0.30), 0 1px 2px rgba(0,0,0,0.20)",
+  shadowMd:  "0 4px 16px rgba(0,0,0,0.40)",
+  shadowLg:  "0 8px 32px rgba(0,0,0,0.50)",
+  // Navbar-specific tokens 
+  navBg:     "#2e3440",
+  navBorder: "#3b4252",
+  navText:   "#eceff4",
+  navMuted:  "#d8dee9",
+  navDim:    "#e5e9f0",
+};
+
 // Default export kept for any static/non-component usage
 export default darkTheme;

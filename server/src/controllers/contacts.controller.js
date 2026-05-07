@@ -1,119 +1,12 @@
 import prisma from '../lib/prisma.js';
 import { skipDups } from '../lib/db-compat.js';
-
-const VALID_POOLS          = ['prospect', 'client'];
-const VALID_STAGES         = ['new','contacted','engaged','demo_scheduled','demo_done','proposal_sent','negotiating','customer','lost','churned'];
-const VALID_STATUSES       = ['active', 'inactive', 'pending'];
-const VALID_ACCOUNT_SIZES  = ['1-5', '6-15', '16-50', '51-200', '200+'];
-
-// Best-effort: extract city from a comma-separated address string.
-// Prioritizes well-known US cities for better accuracy.
-// Returns empty string if city cannot be determined with confidence.
-
-function extractCity(address) {
-  if (!address) return '';
-
-  const parts = address
-    .split(',')
-    .map(p => p.trim())
-    .filter(Boolean);
-
-  // Common well-known US cities
-  const knownCities = new Set([
-    'New York',
-    'Los Angeles',
-    'Chicago',
-    'Houston',
-    'Phoenix',
-    'Philadelphia',
-    'San Antonio',
-    'San Diego',
-    'Dallas',
-    'San Jose',
-    'Austin',
-    'Jacksonville',
-    'Fort Worth',
-    'Columbus',
-    'Charlotte',
-    'San Francisco',
-    'Indianapolis',
-    'Seattle',
-    'Denver',
-    'Washington',
-    'Boston',
-    'El Paso',
-    'Nashville',
-    'Detroit',
-    'Oklahoma City',
-    'Portland',
-    'Las Vegas',
-    'Memphis',
-    'Louisville',
-    'Baltimore',
-    'Milwaukee',
-    'Albuquerque',
-    'Tucson',
-    'Fresno',
-    'Sacramento',
-    'Mesa',
-    'Atlanta',
-    'Kansas City',
-    'Colorado Springs',
-    'Miami',
-    'Raleigh',
-    'Omaha',
-    'Long Beach',
-    'Virginia Beach',
-    'Oakland',
-    'Minneapolis',
-    'Tulsa',
-    'Arlington',
-    'Tampa',
-    'New Orleans',
-    'Cleveland',
-    'Honolulu',
-    'Anaheim',
-    'Lexington',
-    'Stockton',
-    'Corpus Christi',
-    'Henderson',
-    'Riverside',
-    'Newark',
-    'St. Louis',
-    'Pittsburgh',
-    'Cincinnati',
-    'Anchorage',
-    'Orlando',
-    'Buffalo',
-    'Plano',
-    'Irvine'
-  ]);
-
-  const skip = [
-    /^\d/, // street numbers / unit numbers
-    /^(suite|ste|apt|unit|#|floor|fl|bldg|po\s*box)\b/i,
-    /^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/, // state code ± zip
-    /^\d{5}(-\d{4})?$/, // zip code only
-    /^USA$/i,
-    /^United States$/i,
-  ];
-
-  // First: prioritize known cities
-  for (const part of parts) {
-    if (knownCities.has(part)) {
-      return part;
-    }
-  }
-
-  // Fallback: first valid non-skipped part
-  for (const part of parts) {
-    if (!skip.some(re => re.test(part))) {
-      return part;
-    }
-  }
-
-  return '';
-}
+import { extractCity } from '../utils/cityExtractor.js';
+import {
+  VALID_POOLS, VALID_STAGES, VALID_STATUSES, VALID_ACCOUNT_SIZES,
+  DASHBOARD_GROUPS, ACTIVITY_TYPE, CLIENT_ACTION,
+  STAGE, STATUS, POOL,
+  TRACKED_CONTACT_FIELDS,
+} from '../constants/index.js';
 
 function logClientActivity(entityId, action, performedBy, metadata = {}) {
   return prisma.clientActivity.create({
@@ -167,17 +60,36 @@ function formatContact(c) {
 }
 
 async function listContacts(req, res) {
-  const { pool, clientId } = req.query;
-  if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
+  const { pool, clientId, status } = req.query;
 
-  const where = { isCanceled: false };
+  if (pool && !VALID_POOLS.includes(pool)) {
+    return res.status(400).json({ error: 'Invalid pool' });
+  }
+
+  const where = {};
+
   if (pool) where.pool = pool;
   if (pool === 'client' && clientId) where.clientId = clientId;
+
+  const isAllStatus = !status || status === 'all';
+
+  if (!isAllStatus) {
+    const isCanceled = status === STATUS.CANCELED;
+
+    if (isCanceled) {
+      where.isCanceled = true;
+    } else if (VALID_STATUSES.includes(status)) {
+      where.status = status;
+      where.isCanceled = false;
+    }
+  }
 
   const contacts = await prisma.contact.findMany({
     where,
     include: { activities: true },
-    orderBy: { lastActivityAt: 'desc' },
+    orderBy: status === STATUS.CANCELED
+      ? { canceledAt: 'desc' }
+      : { lastActivityAt: 'desc' },
   });
 
   res.json(contacts.map(formatContact));
@@ -202,7 +114,7 @@ async function createContact(req, res) {
 
   const contact = await prisma.contact.create({
     data: {
-      pool:           b.pool           || 'prospect',
+      pool:           b.pool           || POOL.PROSPECT,
       clientId:       b.clientId       || null,
       firstName:      b.firstName,
       lastName:       b.lastName       || '',
@@ -214,9 +126,9 @@ async function createContact(req, res) {
       address:        (b.address       || '').trim(),
       city:           (b.city          || '').trim() || extractCity((b.address || '').trim()),
       trucks:         parseInt(b.trucks)        || 0,
-      lifecycleStage: b.lifecycleStage || 'new',
+      lifecycleStage: b.lifecycleStage || STAGE.NEW,
       leadScore:      b.leadScore      || 10,
-      status:         b.status         || 'active',
+      status:         b.status         || STATUS.ACTIVE,
       source:         b.source         || '',
       campaign:       b.campaign       || '',
       contractValue:  parseInt(b.contractValue) || 0,
@@ -247,7 +159,7 @@ async function createContact(req, res) {
   });
 
   const by = req.user?.name || req.user?.email || 'system';
-  logClientActivity(contact.id, 'CREATE', by, {
+  logClientActivity(contact.id, CLIENT_ACTION.CREATE, by, {
     name:    `${contact.firstName} ${contact.lastName}`.trim(),
     email:   contact.email,
     company: contact.company,
@@ -303,7 +215,7 @@ async function updateContact(req, res) {
 
   // Diff tracked fields and log if anything changed
   const changes = {};
-  for (const field of TRACKED_FIELDS) {
+  for (const field of TRACKED_CONTACT_FIELDS) {
     if (b[field] === undefined) continue;
     const oldVal = String(existing[field] ?? '');
     const newVal = String(b[field] ?? '');
@@ -311,7 +223,7 @@ async function updateContact(req, res) {
   }
   if (Object.keys(changes).length > 0) {
     const by = req.user?.name || req.user?.email || 'system';
-    logClientActivity(id, 'UPDATE', by, { changes }).catch(() => {});
+    logClientActivity(id, CLIENT_ACTION.UPDATE, by, { changes }).catch(() => {});
   }
 
   res.json(formatContact(updated));
@@ -424,9 +336,9 @@ async function importContacts(req, res) {
       city,
       trucks:         parseInt(r.trucks)        || 0,
       contractValue:  parseInt(r.contractValue) || 0,
-      lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : 'new',
+      lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : STAGE.NEW,
       leadScore:      10,
-      status:         'active',
+      status:         STATUS.ACTIVE,
       source:         s('source'),
       notes:          s('notes'),
       ownedBy:        s('ownedBy')  || currentUserName,
@@ -518,20 +430,20 @@ async function cancelContact(req, res) {
   const [updated] = await prisma.$transaction([
     prisma.contact.update({
       where: { id },
-      data: { isCanceled: true, status: 'canceled', canceledAt: new Date(), canceledBy: by, cancelReason },
+      data: { isCanceled: true, status: STATUS.CANCELED, canceledAt: new Date(), canceledBy: by, cancelReason },
       include: { activities: true },
     }),
     prisma.activity.create({
       data: {
         contactId: id,
-        type: 'CANCEL_CONTACT',
+        type: ACTIVITY_TYPE.CANCEL_CONTACT,
         note: cancelReason ? `Contact canceled — ${cancelReason}` : 'Contact canceled',
         by,
         ts: new Date(),
       },
     }),
     prisma.clientActivity.create({
-      data: { entityId: id, action: 'CANCEL', performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
+      data: { entityId: id, action: CLIENT_ACTION.CANCEL, performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
     }),
   ]);
 
@@ -549,18 +461,57 @@ async function restoreContact(req, res) {
   const [updated] = await prisma.$transaction([
     prisma.contact.update({
       where: { id },
-      data: { isCanceled: false, status: 'active', restoredAt: new Date(), restoredBy: by },
+      data: { isCanceled: false, status: STATUS.ACTIVE, restoredAt: new Date(), restoredBy: by },
       include: { activities: true },
     }),
     prisma.activity.create({
-      data: { contactId: id, type: 'UNCANCEL_CONTACT', note: 'Contact restored', by, ts: new Date() },
+      data: { contactId: id, type: ACTIVITY_TYPE.UNCANCEL_CONTACT, note: 'Contact restored', by, ts: new Date() },
     }),
     prisma.clientActivity.create({
-      data: { entityId: id, action: 'RESTORE', performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
+      data: { entityId: id, action: CLIENT_ACTION.RESTORE, performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
     }),
   ]);
 
   res.json(formatContact(updated));
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities };
+async function getDashboardSummary(req, res) {
+  const { pool, clientId } = req.query;
+  if (pool && !VALID_POOLS.includes(pool)) return res.status(400).json({ error: 'Invalid pool' });
+
+  const where = { isCanceled: false };
+  if (pool) where.pool = pool;
+  if (pool === 'client' && clientId) where.clientId = clientId;
+
+  const [stageCounts, recentContacts] = await Promise.all([
+    prisma.contact.groupBy({ by: ['lifecycleStage'], where, _count: { _all: true } }),
+    prisma.contact.findMany({
+      where,
+      orderBy: { lastActivityAt: 'desc' },
+      take: 3,
+      select: {
+        id: true, firstName: true, lastName: true, company: true,
+        lifecycleStage: true, lastActivityAt: true, leadScore: true,
+      },
+    }),
+  ]);
+
+  const stageMap = {};
+  for (const row of stageCounts) stageMap[row.lifecycleStage] = row._count._all;
+
+  const get = (...stages) => stages.reduce((sum, s) => sum + (stageMap[s] || 0), 0);
+
+  const counts = {
+    prospects: get(...DASHBOARD_GROUPS.prospects),
+    leads:     get(...DASHBOARD_GROUPS.leads),
+    warm:      get(...DASHBOARD_GROUPS.warm),
+    hot:       get(...DASHBOARD_GROUPS.hot),
+    customer:  get(...DASHBOARD_GROUPS.customer),
+    backburner: 0,
+    lost:      get(...DASHBOARD_GROUPS.lost),
+  };
+
+  res.json({ counts, recentContacts });
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary };

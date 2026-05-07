@@ -1,10 +1,13 @@
 import prisma from '../lib/prisma.js';
-
-const VALID_PLANS = ['Starter', 'Pro', 'Enterprise'];
+import { VALID_CLIENT_PLANS, CLIENT_ACTION, TRACKED_CLIENT_FIELDS } from '../constants/index.js';
 
 async function listClients(req, res) {
+  const { all } = req.query;
+  
+  const where = all === 'true' ? {} : { isCanceled: false };
+
   const clients = await prisma.client.findMany({
-    where: { isCanceled: false },
+    where,
     orderBy: { name: 'asc' },
   });
   res.json(clients);
@@ -32,7 +35,7 @@ async function clientExists(id) {
 async function createClient(req, res) {
   const { id, name, domain, color, industry, plan, mrr } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'id and name are required' });
-  if (plan && !VALID_PLANS.includes(plan)) return res.status(400).json({ error: 'Invalid plan' });
+  if (plan && !VALID_CLIENT_PLANS.includes(plan)) return res.status(400).json({ error: 'Invalid plan' });
 
   if (await clientExists(id)) {
     return res.status(409).json({ error: `A client with the ID "${id}" already exists. Please use a different company name.` });
@@ -52,7 +55,7 @@ async function createClient(req, res) {
 
   const by = req.user?.name || req.user?.email || 'system';
   prisma.clientActivity.create({
-    data: { entityType: 'client', entityId: client.id, action: 'CREATE', performedBy: by, metadata: { name: client.name, plan: client.plan }, ts: new Date() },
+    data: { entityType: 'client', entityId: client.id, action: CLIENT_ACTION.CREATE, performedBy: by, metadata: { name: client.name, plan: client.plan }, ts: new Date() },
   }).catch(() => {});
 
   res.status(201).json(client);
@@ -61,7 +64,7 @@ async function createClient(req, res) {
 async function updateClient(req, res) {
   const { id } = req.params;
   const body = req.body;
-  if (body.plan && !VALID_PLANS.includes(body.plan)) return res.status(400).json({ error: 'Invalid plan' });
+  if (body.plan && !VALID_CLIENT_PLANS.includes(body.plan)) return res.status(400).json({ error: 'Invalid plan' });
 
   const existing = await prisma.client.findUnique({ where: { id } });
   if (!existing) return res.status(404).json({ error: 'Client not found' });
@@ -79,9 +82,8 @@ async function updateClient(req, res) {
   });
 
   // Diff and log changes
-  const TRACKED = ['name', 'domain', 'industry', 'plan', 'mrr', 'color'];
   const changes = {};
-  for (const field of TRACKED) {
+  for (const field of TRACKED_CLIENT_FIELDS) {
     if (body[field] === undefined) continue;
     if (String(existing[field] ?? '') !== String(body[field] ?? '')) {
       changes[field] = { from: existing[field], to: body[field] };
@@ -90,7 +92,7 @@ async function updateClient(req, res) {
   if (Object.keys(changes).length > 0) {
     const by = req.user?.name || req.user?.email || 'system';
     prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: 'UPDATE', performedBy: by, metadata: { changes }, ts: new Date() },
+      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.UPDATE, performedBy: by, metadata: { changes }, ts: new Date() },
     }).catch(() => {});
   }
 
@@ -112,7 +114,7 @@ async function cancelClient(req, res) {
       data: { isCanceled: true, canceledAt: new Date(), canceledBy: by, cancelReason },
     }),
     prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: 'CANCEL', performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
+      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.CANCEL, performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
     }),
   ]);
 
@@ -133,7 +135,7 @@ async function restoreClient(req, res) {
       data: { isCanceled: false, restoredAt: new Date(), restoredBy: by },
     }),
     prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: 'RESTORE', performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
+      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.RESTORE, performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
     }),
   ]);
 

@@ -43,14 +43,16 @@ export default function LoginPage({ onLogin }) {
         : "radial-gradient(circle at 50% -20%, #e0e7ff 0%, #f1f5f9 100%)",
     }}>
       <div style={{
-        width: 480, background: T.card,
+        width: 480, background: T.surface,
         backdropFilter: "blur(20px)",
         border: "1px solid " + T.border,
         borderRadius: 24, padding: "40px",
-        boxShadow: "0 40px 100px rgba(0,0,0,0.4)",
+        boxShadow: themeName === "dark" 
+          ? "0 40px 100px rgba(0,0,0,0.4)" 
+          : "0 20px 50px rgba(99,102,241,0.1)",
       }}>
 
-        {/* Header: Logo and Brand (Centered) */}
+        {/* Header: Logo and Brand */}
         <div style={{ 
           display: "flex", 
           flexDirection: "column", 
@@ -72,24 +74,12 @@ export default function LoginPage({ onLogin }) {
           </div>
         </div>
 
-        {/* Title and Password Hint */}
+        {/* Title Section (Cleaned up) */}
         <div style={{ marginBottom: 32 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: T.text, margin: "0 0 8px 0" }}>Sign in</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.muted }}>
-            All accounts use password 
-            <span style={{ 
-              background: "rgba(99, 102, 241, 0.15)", 
-              color: "#818cf8", 
-              padding: "2px 8px", 
-              borderRadius: 6, 
-              fontSize: 11,
-              fontWeight: 600,
-              border: "1px solid rgba(99, 102, 241, 0.2)"
-            }}>demo</span>
-          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: T.text, margin: 0 }}>Sign in</h1>
         </div>
 
-        {/* Quick Select */}
+        {/* Quick Select Section */}
         <div style={{ marginBottom: 32 }}>
           <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>QUICK SELECT</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -101,8 +91,8 @@ export default function LoginPage({ onLogin }) {
                   onClick={() => setEmail(u.email)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "12px",
-                    background: active ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.02)",
-                    border: `1px solid ${active ? "rgba(99, 102, 241, 0.5)" : "rgba(255,255,255,0.05)"}`,
+                    background: active ? (themeName === "dark" ? "rgba(99, 102, 241, 0.08)" : "#f5f7ff") : T.card,
+                    border: `1px solid ${active ? T.accent : T.border}`,
                     borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
                     textAlign: "left", position: "relative",
                   }}
@@ -115,7 +105,7 @@ export default function LoginPage({ onLogin }) {
                   {active && (
                     <div style={{
                       position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                      width: 18, height: 18, borderRadius: "50%", background: "#6366f1",
+                      width: 18, height: 18, borderRadius: "50%", background: T.accent,
                       display: "flex", alignItems: "center", justifyContent: "center"
                     }}>
                       <Check size={11} color="#fff" strokeWidth={4} />
@@ -160,7 +150,8 @@ export default function LoginPage({ onLogin }) {
         {error && (
           <div style={{
             marginTop: 20, padding: "10px", borderRadius: 10,
-            background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)",
+            background: themeName === "dark" ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+            border: `1px solid ${themeName === "dark" ? "rgba(239, 68, 68, 0.2)" : "#fee2e2"}`,
             color: "#ef4444", fontSize: 12, textAlign: "center",
           }}>{error}</div>
         )}
