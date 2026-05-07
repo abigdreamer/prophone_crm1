@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react"; // Added useEffect
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
@@ -18,11 +18,23 @@ export default function Sidebar({
   const [sortF, setSortF] = useState("recent");
   const [addModal, setAddModal] = useState(false);
   const [editContact, setEditContact] = useState(null);
+  const [isFocused, setIsFocused] = useState(false); // Added for visual highlight
   const listRef = useRef(null);
   const toast = useAppToast();
 
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
+
+  // --- NEW: Auto-focus logic on mount ---
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchRef?.current) {
+        searchRef.current.focus();
+      }
+    }, 150); // Small delay to ensure route transition is smooth
+    return () => clearTimeout(timer);
+  }, [searchRef]);
+  // ---------------------------------------
 
   const modeFiltered = contacts.filter(c => {
     if (viewMode === "leads") return LEAD_STAGES.includes(c.lifecycleStage);
@@ -33,8 +45,8 @@ export default function Sidebar({
 
   const stageOpts =
     viewMode === "leads" ? LEAD_STAGES :
-    viewMode === "customers" ? CUSTOMER_STAGES :
-    viewMode === "lost" ? LOST_STAGES : ALL_STAGES;
+      viewMode === "customers" ? CUSTOMER_STAGES :
+        viewMode === "lost" ? LOST_STAGES : ALL_STAGES;
 
   const filtered = modeFiltered
     .filter(c => {
@@ -139,10 +151,10 @@ export default function Sidebar({
       }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66` }} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: '0.02em' }}>
-              {pool === "prospect" ? "PROSPECT POOL" : (client?.name?.toUpperCase() || "CLIENT")}
-            </span>
-            <span style={{ fontSize: 9, color: T.muted }}>{filtered.length} visible</span>
+          <span style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: '0.02em' }}>
+            {pool === "prospect" ? "PROSPECT POOL" : (client?.name?.toUpperCase() || "CLIENT")}
+          </span>
+          <span style={{ fontSize: 9, color: T.muted }}>{filtered.length} visible</span>
         </div>
         <button
           onClick={() => setAddModal(true)}
@@ -162,15 +174,28 @@ export default function Sidebar({
       <div style={{ padding: "12px 12px 8px", flexShrink: 0, borderBottom: "1px solid " + T.border }}>
         <div style={{ position: "relative", marginBottom: 10 }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: T.muted, pointerEvents: "none" }}>
+            style={{
+              position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+              width: 14, height: 14,
+              /* CHANGED: Icon turns green when focused or searching */
+              color: (isFocused || search) ? col : T.muted,
+              pointerEvents: "none",
+              transition: "color 0.2s ease"
+            }}>
             <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
           <input
             ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={handleSearchKeyDown}
+            /* CHANGED: Added Focus tracking */
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder="Search contacts..."
             style={{
-              width: "100%", background: T.card, border: "1px solid " + (search ? col : T.border),
-              borderRadius: 8, padding: "8px 30px 8px 32px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit"
+              width: "100%", background: T.card,
+              /* CHANGED: Border turns green (col) if focused or searching */
+              border: "1px solid " + ((isFocused || search) ? col : T.border),
+              borderRadius: 8, padding: "8px 30px 8px 32px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit",
+              transition: "border-color 0.2s ease"
             }}
           />
         </div>
@@ -222,7 +247,7 @@ export default function Sidebar({
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: T.dim, marginBottom: 4 }}><Hi text={c.company} q={search} /></div>
-                
+
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <ScoreBar score={c.leadScore} />
@@ -231,11 +256,11 @@ export default function Sidebar({
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, alignItems: "center" }}>
-                   <div style={{ display: 'flex', gap: 8 }}>
-                     {c.city && <span style={{ fontSize: 10, color: T.muted }}>📍 {c.city}</span>}
-                     {c.trucks && <span style={{ fontSize: 10, color: T.orange, fontWeight: 600 }}>🚛 {c.trucks}</span>}
-                   </div>
-                   <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt)}</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {c.city && <span style={{ fontSize: 10, color: T.muted }}>📍 {c.city}</span>}
+                    {c.trucks && <span style={{ fontSize: 10, color: T.orange, fontWeight: 600 }}>🚛 {c.trucks}</span>}
+                  </div>
+                  <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt)}</span>
                 </div>
               </div>
             );
