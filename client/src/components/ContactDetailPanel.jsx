@@ -5,6 +5,7 @@ import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
 import ContactModal from "./modals/ContactModal";
 import CancelModal from "./modals/CancelModal";
+import { RestoreModal } from "./modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
 import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
@@ -20,9 +21,10 @@ const ACTION_CFG = {
 
 export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   const T = useTheme();
-  const [modal,      setModal]      = useState(null);
-  const [auditLog,   setAuditLog]   = useState([]);
-  const [auditOpen,  setAuditOpen]  = useState(false);
+  const [modal,          setModal]          = useState(null);
+  const [auditLog,       setAuditLog]       = useState([]);
+  const [auditOpen,      setAuditOpen]      = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const toast = useAppToast();
 
   useEffect(() => {
@@ -84,13 +86,17 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     toast.success("Contact canceled.");
   }
 
-  async function handleRestore() {
+  async function handleRestoreConfirm() {
+    setRestoreLoading(true);
     try {
       const refreshed = await db.restoreContact(contact.id);
       onUpdate(refreshed);
+      setModal(null);
       toast.success("Contact restored.");
     } catch {
       toast.error("Failed to restore contact.");
+    } finally {
+      setRestoreLoading(false);
     }
   }
 
@@ -114,6 +120,15 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           contact={contact}
           onSave={handleCancel}
           onClose={() => setModal(null)}
+        />
+      )}
+      {modal === "restore" && (
+        <RestoreModal
+          title="Restore Contact"
+          message={`Restore ${contact.firstName} ${contact.lastName} back to active contacts?`}
+          loading={restoreLoading}
+          onRestore={handleRestoreConfirm}
+          onClose={() => { if (!restoreLoading) setModal(null); }}
         />
       )}
 
@@ -170,7 +185,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
             </>
           )}
           {contact.isCanceled && (
-            <Btn onClick={handleRestore} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
+            <Btn onClick={() => setModal("restore")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
               ↩ Restore
             </Btn>
           )}

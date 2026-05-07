@@ -1,5 +1,11 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { darkTheme, lightTheme } from "../theme";
+import { darkTheme, lightTheme, polarTheme } from "../theme";
+
+const THEMES = {
+  dark: darkTheme,
+  light: lightTheme,
+  polar: polarTheme,
+};
 
 const ThemeCtx      = createContext(darkTheme);
 const ThemeNameCtx  = createContext("dark");
@@ -11,11 +17,12 @@ export function ThemeProvider({ children }) {
     localStorage.getItem("prophone-theme") || "dark"
   );
 
-  const theme = themeName === "light" ? lightTheme : darkTheme;
+  const theme = THEMES[themeName] || THEMES.dark;
 
   useEffect(() => {
     document.body.style.background = theme.bg;
     document.body.style.color = theme.text;
+    document.body.style.transition = "background 0.2s ease, color 0.2s ease";
   }, [theme]);
 
   function toggleTheme() {
@@ -27,8 +34,10 @@ export function ThemeProvider({ children }) {
   }
 
   function selectTheme(name) {
-    localStorage.setItem("prophone-theme", name);
-    setThemeName(name);
+    if (THEMES[name]) {
+      localStorage.setItem("prophone-theme", name);
+      setThemeName(name);
+    }
   }
 
   return (

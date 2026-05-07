@@ -1,134 +1,57 @@
-import { useState, useEffect, useCallback } from "react";
-import { Building2, Plus, RefreshCw, Users, X, Pencil } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Building2, Plus, RefreshCw, Users, X, Pencil, History, Search } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
 import Sel from "../components/ui/Sel";
 import Btn from "../components/ui/Btn";
 import { Spinner } from "../components/ui/Loader";
 import CancelModal from "../components/modals/CancelModal";
+import { RestoreModal } from "../components/modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const PLANS = ["Starter", "Pro", "Enterprise"];
-const COLORS = [
-  "#6366f1", "#38bdf8", "#fb923c", "#4ade80",
-  "#f43f5e", "#fbbf24", "#c084fc", "#2dd4bf",
-];
-
-const fmtMrr  = v => v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`;
-const fmtDate = d => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-const slugify = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+const COLORS = ["#6366f1", "#38bdf8", "#fb923c", "#4ade80", "#f43f5e", "#fbbf24", "#c084fc", "#2dd4bf"];
 
 const ACTION_CFG = {
-  CREATE:  { label: "Created",  color: "#22c55e", icon: "✦" },
-  UPDATE:  { label: "Updated",  color: "#6366f1", icon: "✎" },
-  CANCEL:  { label: "Canceled", color: "#ef4444", icon: "✕" },
+  CREATE:  { label: "Created",  color: "#6366f1", icon: "✦" },
+  UPDATE:  { label: "Updated",  color: "#38bdf8", icon: "✎" },
+  CANCEL:  { label: "Canceled", color: "#f43f5e", icon: "✕" },
   RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
 };
 
-// ── Plan badge ────────────────────────────────────────────────────────────────
+const slugify = (str) => str.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+const fmtMrr  = v => v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`;
+
+// ── Shared UI ─────────────────────────────────────────────────────────────────
+
 function PlanBadge({ plan }) {
   const T = useTheme();
-  const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
-  const color = PLAN_COLOR[plan] || T.muted;
+  const color = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent }[plan] || T.muted;
   return (
     <span style={{
       fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
-      background: color + "20", color, border: `1px solid ${color}40`,
-      letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0,
+      background: color + "18", color, border: `1px solid ${color}35`,
+      textTransform: "uppercase", letterSpacing: "0.04em",
     }}>{plan}</span>
   );
 }
 
-// ── Stat tile ─────────────────────────────────────────────────────────────────
-function StatTile({ label, value, color }) {
-  const T = useTheme();
-  return (
-    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "18px 20px" }}>
-      <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1, marginBottom: 6 }}>{value}</div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em" }}>{label}</div>
-    </div>
-  );
-}
+// ── Client modal ──────────────────────────────────────────────────────────────
 
-// ── Client card ───────────────────────────────────────────────────────────────
-function ClientCard({ client, isSelected, total, onClick }) {
-  const T = useTheme();
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        display: "flex", alignItems: "center", gap: 16,
-        padding: "16px 20px",
-        background: isSelected ? client.color + "0d" : T.card,
-        border: `1px solid ${isSelected ? client.color + "70" : T.border}`,
-        borderRadius: 10, cursor: "pointer",
-        opacity: client.isCanceled ? 0.6 : 1,
-        transition: "border-color 0.15s, background 0.15s",
-      }}
-      onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = T.borderHi; e.currentTarget.style.background = T.surface; } }}
-      onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = T.border;   e.currentTarget.style.background = T.card; } }}
-    >
-      <div style={{
-        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-        background: client.color + "22", border: `2px solid ${client.color}44`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18, fontWeight: 800, color: client.color,
-      }}>
-        {client.name[0].toUpperCase()}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{client.name}</span>
-          <PlanBadge plan={client.plan} />
-          {client.isCanceled && (
-            <span style={{
-              fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
-              background: T.red + "20", color: T.red, border: `1px solid ${T.red}40`,
-              letterSpacing: "0.06em",
-            }}>CANCELED</span>
-          )}
-        </div>
-        <div style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 6 }}>
-          {client.industry && <span>{client.industry}</span>}
-          {client.industry && client.domain && <span style={{ opacity: 0.4 }}>·</span>}
-          {client.domain && <span style={{ fontFamily: "monospace", fontSize: 10 }}>{client.domain}</span>}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: T.green, lineHeight: 1 }}>{fmtMrr(client.mrr)}</span>
-        <span style={{ fontSize: 10, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}>
-          <Users size={10} /> {total} contact{total !== 1 ? "s" : ""}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ── Client modal (add or edit) ────────────────────────────────────────────────
 function ClientModal({ client, onSave, onClose }) {
   const T = useTheme();
-  const isEdit = !!client;
+  const isEdit  = !!client;
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState("");
   const [form,   setForm]   = useState(isEdit ? {
-    name:     client.name,
-    domain:   client.domain     || "",
-    color:    client.color      || COLORS[0],
-    industry: client.industry   || "",
-    plan:     client.plan       || "Starter",
-    mrr:      client.mrr        || "",
-  } : {
-    name: "", id: "", domain: "", color: COLORS[0],
-    industry: "", plan: "Starter", mrr: "",
-  });
+    name: client.name, domain: client.domain || "", color: client.color || COLORS[0],
+    industry: client.industry || "", plan: client.plan || "Starter", mrr: client.mrr || "",
+  } : { name: "", id: "", domain: "", color: COLORS[0], industry: "", plan: "Starter", mrr: "" });
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set    = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const autoId = slugify(form.name);
 
   async function handleSave() {
@@ -137,10 +60,7 @@ function ClientModal({ client, onSave, onClose }) {
     setSaving(true); setErr("");
     try {
       await onSave({ ...form, id: isEdit ? undefined : autoId, mrr: parseInt(form.mrr) || 0 });
-    } catch (e) {
-      setErr(e.message || "Failed to save");
-      setSaving(false);
-    }
+    } catch (e) { setErr(e.message || "Failed to save"); setSaving(false); }
   }
 
   return (
@@ -157,16 +77,22 @@ function ClientModal({ client, onSave, onClose }) {
         <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Brand Color</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
           {COLORS.map(c => (
-            <button key={c} onClick={() => set("color", c)} style={{ width: 28, height: 28, borderRadius: 6, background: c, border: `2px solid ${form.color === c ? T.text : "transparent"}`, cursor: "pointer", padding: 0, flexShrink: 0, boxShadow: form.color === c ? `0 0 0 3px ${c}40` : "none", transition: "box-shadow 0.15s" }} />
+            <button key={c} onClick={() => set("color", c)} style={{
+              width: 28, height: 28, borderRadius: 6, background: c, cursor: "pointer", padding: 0, flexShrink: 0,
+              border: `2px solid ${form.color === c ? T.text : "transparent"}`,
+              boxShadow: form.color === c ? `0 0 0 3px ${c}40` : "none", transition: "box-shadow 0.15s",
+            }} />
           ))}
-          <input type="color" value={form.color} onChange={e => set("color", e.target.value)} style={{ width: 28, height: 28, padding: 2, borderRadius: 6, border: `1px solid ${T.border}`, background: T.surface, cursor: "pointer" }} title="Custom color" />
+          <input type="color" value={form.color} onChange={e => set("color", e.target.value)}
+            style={{ width: 28, height: 28, padding: 2, borderRadius: 6, border: `1px solid ${T.border}`, background: T.surface, cursor: "pointer" }} />
         </div>
+
         <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, padding: "9px 13px", borderRadius: 8, background: form.color + "0d", border: `1px solid ${form.color}30` }}>
-          <div style={{ width: 30, height: 30, borderRadius: 7, background: form.color + "22", border: `2px solid ${form.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: form.color }}>
+          <div style={{ width: 30, height: 30, borderRadius: 7, background: form.color + "22", border: `2px solid ${form.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: form.color }}>
             {(form.name || "?")[0].toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{form.name || "Client Name"}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{form.name || "Client Name"}</div>
             <div style={{ fontSize: 10, color: T.muted, display: "flex", alignItems: "center", gap: 5 }}>
               {form.industry || "Industry"}
               {!isEdit && autoId && <><span style={{ opacity: 0.35 }}>·</span><code style={{ fontFamily: "monospace", color: T.accent, fontSize: 10 }}>{autoId}</code></>}
@@ -178,8 +104,10 @@ function ClientModal({ client, onSave, onClose }) {
 
       {!isEdit && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, padding: "8px 12px", borderRadius: 7, background: T.surface, border: `1px solid ${T.border}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0 }}>Client ID</span>
-          <code style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: autoId ? T.accent : T.muted, fontWeight: autoId ? 700 : 400 }}>{autoId || "will be generated from name…"}</code>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0 }}>Client ID</span>
+          <code style={{ flex: 1, fontFamily: "monospace", fontSize: 12, color: autoId ? T.accent : T.muted, fontWeight: autoId ? 600 : 400 }}>
+            {autoId || "will be generated from name…"}
+          </code>
           {autoId && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: T.green + "18", color: T.green, border: `1px solid ${T.green}30`, letterSpacing: "0.05em", flexShrink: 0 }}>AUTO</span>}
         </div>
       )}
@@ -189,434 +117,354 @@ function ClientModal({ client, onSave, onClose }) {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
         <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancel</Btn>
         <Btn onClick={handleSave} disabled={saving}>
-          {saving ? <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Spinner size={13} color="#fff" />{isEdit ? "Saving…" : "Adding…"}</span> : (isEdit ? "Save Changes" : "Add Client")}
+          {saving ? <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Spinner size={13} color="#fff" />{isEdit ? "Saving…" : "Adding…"}</span>
+                  : (isEdit ? "Save Changes" : "Add Client")}
         </Btn>
       </div>
     </Modal>
   );
 }
 
-// ── Detail panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRestored }) {
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+
+function activityDetail(a) {
+  if (a.action === "CANCEL")  return a.metadata?.reason || null;
+  if (a.action === "RESTORE") return a.metadata?.previousReason ? `Previously: "${a.metadata.previousReason}"` : null;
+  if (a.action === "CREATE")  return a.metadata?.plan ? `Plan: ${a.metadata.plan}` : null;
+  if (a.action === "UPDATE") {
+    const changes = a.metadata?.changes;
+    if (!changes) return null;
+    return Object.entries(changes).map(([k, { from, to }]) => `${k}: ${from} → ${to}`).join(" · ");
+  }
+  return null;
+}
+
+export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRestored }) {
   const T = useTheme();
   const toast = useAppToast();
-  const PLAN_COLOR = { Starter: T.muted, Pro: T.blue, Enterprise: T.accent };
-  const col = client.color;
-
+  const [activities,   setActivities]   = useState([]);
+  const [loadingAct,   setLoadingAct]   = useState(false);
   const [cancelModal,  setCancelModal]  = useState(false);
-  const [restoring,    setRestoring]    = useState(false);
-  const [auditLog,     setAuditLog]     = useState([]);
-  const [auditOpen,    setAuditOpen]    = useState(false);
-  const [auditLoading, setAuditLoading] = useState(false);
+  const [restoreModal, setRestoreModal] = useState(false);
 
   useEffect(() => {
-    setAuditLog([]);
-    setAuditOpen(false);
-  }, [client.id]);
+    setLoadingAct(true);
+    db.getClientActivities(client.id)
+      .then(data => setActivities(data || []))
+      .catch(() => toast.error("Failed to load history"))
+      .finally(() => setLoadingAct(false));
+  }, [client.id, client.isCanceled]);
 
-  async function loadAudit() {
-    if (auditLog.length > 0) { setAuditOpen(o => !o); return; }
-    setAuditOpen(true);
-    setAuditLoading(true);
-    try {
-      const data = await db.getClientActivities(client.id);
-      setAuditLog(data);
-    } catch { toast.error("Failed to load activity log."); }
-    finally { setAuditLoading(false); }
-  }
-
-  async function handleConfirmCancel(reason) {
-    const updated = await db.cancelClient(client.id, reason);
-    setCancelModal(false);
-    toast.success("Client canceled.");
-    onCanceled(updated);
-  }
-
-  async function handleRestore() {
-    setRestoring(true);
-    try {
-      const updated = await db.restoreClient(client.id);
-      toast.success("Client restored.");
-      onRestored(updated);
-    } catch { toast.error("Failed to restore client."); }
-    finally { setRestoring(false); }
-  }
-
-  const detailRows = [
-    { key: "CLIENT ID", val: <span style={{ fontFamily: "monospace", fontSize: 11, color: T.dim }}>{client.id}</span> },
-    { key: "DOMAIN",    val: client.domain ? (
-      <a href={`https://${client.domain}`} target="_blank" rel="noreferrer" style={{ color: T.blue, fontSize: 12, textDecoration: "none" }}>{client.domain}</a>
-    ) : <span style={{ fontSize: 12, color: T.muted }}>—</span> },
-    { key: "INDUSTRY",  val: <span style={{ fontSize: 12, color: T.dim }}>{client.industry || "—"}</span> },
-    { key: "PLAN",      val: <PlanBadge plan={client.plan} /> },
-    { key: "MRR",       val: <span style={{ fontSize: 13, fontWeight: 800, color: T.green }}>{fmtMrr(client.mrr)}</span> },
-    { key: "ADDED",     val: <span style={{ fontSize: 12, color: T.dim }}>{fmtDate(client.createdAt)}</span> },
-  ];
+  const accent = client.color || T.accent;
 
   return (
-    <div style={{ width: 460, flexShrink: 0, background: T.surface, borderLeft: `1px solid ${T.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ width: 400, flexShrink: 0, background: T.surface, borderLeft: `1px solid ${T.border}`, display: "flex", flexDirection: "column", height: "100%" }}>
 
       {cancelModal && (
         <CancelModal
           contact={{ firstName: client.name, lastName: "" }}
-          onSave={handleConfirmCancel}
+          onSave={async reason => { const u = await db.cancelClient(client.id, reason); onCanceled(u); setCancelModal(false); }}
           onClose={() => setCancelModal(false)}
+        />
+      )}
+      {restoreModal && (
+        <RestoreModal
+          title="Restore Client"
+          message={<>Restore <strong>{client.name}</strong> back to active accounts?</>}
+          confirmLabel="Restore Account"
+          onClose={() => setRestoreModal(false)}
+          onRestore={async () => { const u = await db.restoreClient(client.id); onRestored(u); setRestoreModal(false); }}
         />
       )}
 
       {/* Header */}
-      <div style={{ padding: "20px 20px 18px", borderBottom: `1px solid ${T.border}`, background: client.isCanceled ? T.red + "08" : col + "08" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 13, flexShrink: 0, background: col + "22", border: `2px solid ${col}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: col }}>
-            {client.name[0].toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.01em" }}>{client.name}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <PlanBadge plan={client.plan} />
-              {client.industry && <span style={{ fontSize: 11, color: T.muted }}>{client.industry}</span>}
-              {client.isCanceled && (
-                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: T.red + "20", color: T.red, border: `1px solid ${T.red}40`, letterSpacing: "0.06em" }}>CANCELED</span>
-              )}
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, padding: 2 }}>
-            <X size={16} />
-          </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 18px", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: client.isCanceled ? T.red : T.green, display: "inline-block" }} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.12em" }}>Client Lifecycle</span>
         </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex", padding: 2 }}>
+          <X size={15} />
+        </button>
       </div>
 
-      {/* Stat row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: `1px solid ${T.border}` }}>
-        {[
-          { label: "CONTACTS", value: total,               color: T.text  },
-          { label: "MRR",      value: fmtMrr(client.mrr),  color: T.green },
-          { label: "PLAN",     value: client.plan,          color: PLAN_COLOR[client.plan] || T.muted },
-        ].map((s, i) => (
-          <div key={s.label} style={{ padding: "14px 16px", borderRight: i < 2 ? `1px solid ${T.border}` : "none" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: s.color, lineHeight: 1, marginBottom: 5 }}>{s.value}</div>
-            <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.08em" }}>{s.label}</div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px 20px" }}>
+
+        {/* Identity card */}
+        <div style={{ background: accent + "08", border: `1px solid ${accent}22`, borderRadius: 10, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+              background: accent + "18", border: `1.5px solid ${accent}35`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 800, fontSize: 18, color: accent,
+            }}>
+              {client.name?.[0]}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text, lineHeight: 1.2 }}>{client.name}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{client.domain || "—"}</div>
+            </div>
+            {client.isCanceled
+              ? <span style={{ fontSize: 9, fontWeight: 700, color: T.red, background: T.red + "15", border: `1px solid ${T.red}30`, padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>Canceled</span>
+              : <PlanBadge plan={client.plan} />
+            }
           </div>
-        ))}
-      </div>
 
-      {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "18px 20px" }}>
-
-        {/* Cancellation info */}
-        {client.isCanceled && (
-          <div style={{ background: T.red + "0a", border: `1px solid ${T.red}25`, borderRadius: 8, padding: "12px 14px", marginBottom: 16 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.red + "aa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Cancellation Info</div>
-            {[
-              ["Canceled By", client.canceledBy  || "—"],
-              ["Canceled At", fmtDate(client.canceledAt)],
-              ["Reason",      client.cancelReason || "—"],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${T.red}15` }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: T.red + "80" }}>{k}</span>
-                <span style={{ fontSize: 12, color: T.dim }}>{v}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+            {[["Domain", client.domain || "—"], ["Industry", client.industry || "—"], ["MRR", client.mrr ? fmtMrr(client.mrr) : "—"], ["Leads", total]].map(([label, val]) => (
+              <div key={label} style={{ background: T.card, borderRadius: 6, padding: "6px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: T.muted, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{val}</div>
               </div>
             ))}
           </div>
-        )}
-
-        {/* Client details */}
-        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>Client Details</div>
-        {detailRows.map(({ key, val }) => (
-          <div key={key} style={{ display: "grid", gridTemplateColumns: "100px 1fr", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.05em" }}>{key}</span>
-            <div>{val}</div>
-          </div>
-        ))}
-        <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${T.border}` }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.05em" }}>COLOR</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 18, height: 18, borderRadius: 4, background: col }} />
-            <span style={{ fontFamily: "monospace", fontSize: 11, color: T.dim }}>{col}</span>
-          </div>
         </div>
 
-        {/* Audit log */}
-        <div style={{ marginTop: 18, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, overflow: "hidden" }}>
-          <button
-            onClick={loadAudit}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
-          >
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              Activity Log {auditLog.length > 0 && <span style={{ color: T.dim, fontWeight: 400 }}>({auditLog.length})</span>}
-            </span>
-            <span style={{ fontSize: 12, color: T.muted, display: "inline-block", transform: auditOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button onClick={onEdit} style={{ flex: 1, height: 34, borderRadius: 7, background: T.card, border: `1px solid ${T.border}`, color: T.dim, fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" }}>
+            <Pencil size={12} /> Edit
           </button>
+          {client.isCanceled ? (
+            <button onClick={() => setRestoreModal(true)} style={{ flex: 1, height: 34, borderRadius: 7, background: T.green + "10", border: `1px solid ${T.green}30`, color: T.green, fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" }}>
+              <RefreshCw size={12} /> Restore
+            </button>
+          ) : (
+            <button onClick={() => setCancelModal(true)} style={{ flex: 1, height: 34, borderRadius: 7, background: T.red + "10", border: `1px solid ${T.red}25`, color: T.red, fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "inherit" }}>
+              <X size={12} /> Cancel
+            </button>
+          )}
+        </div>
 
-          {auditOpen && (
-            <div style={{ borderTop: `1px solid ${T.border}` }}>
-              {auditLoading ? (
-                <div style={{ padding: "14px 16px", fontSize: 12, color: T.muted, textAlign: "center" }}>Loading…</div>
-              ) : auditLog.length === 0 ? (
-                <div style={{ padding: "14px 16px", fontSize: 12, color: T.muted, fontStyle: "italic" }}>No activity yet.</div>
-              ) : (
-                auditLog.map((entry, i) => {
-                  const cfg  = ACTION_CFG[entry.action] || { label: entry.action, color: T.muted, icon: "·" };
-                  const meta = entry.metadata || {};
-                  return (
-                    <div key={entry.id} style={{ display: "flex", gap: 10, padding: "10px 14px", borderBottom: i < auditLog.length - 1 ? `1px solid ${T.border}55` : "none" }}>
-                      <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0, background: cfg.color + "18", border: `1px solid ${cfg.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: cfg.color, marginTop: 1 }}>
-                        {cfg.icon}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: cfg.color + "18", color: cfg.color, border: `1px solid ${cfg.color}35` }}>{cfg.label}</span>
-                          <span style={{ fontSize: 10, color: T.muted }}>by {entry.performedBy || "system"} · {fmt.date(entry.ts)}</span>
-                        </div>
-                        {entry.action === "CANCEL" && meta.reason && (
-                          <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>"{meta.reason}"</div>
-                        )}
-                        {entry.action === "UPDATE" && meta.changes && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
-                            {Object.entries(meta.changes).map(([field, { from, to }]) => (
-                              <span key={field} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: T.accent + "12", color: T.dim, border: `1px solid ${T.border}` }}>
-                                {field}: <span style={{ textDecoration: "line-through", color: T.muted }}>{String(from)}</span> → <span style={{ fontWeight: 600, color: T.text }}>{String(to)}</span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {entry.action === "RESTORE" && meta.previousReason && (
-                          <div style={{ fontSize: 11, color: T.muted }}>Previously: <span style={{ fontStyle: "italic" }}>"{meta.previousReason}"</span></div>
-                        )}
-                      </div>
+        {/* Activity timeline */}
+        <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+            <History size={12} style={{ color: T.muted }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Activity History</span>
+            {!loadingAct && activities.length > 0 && (
+              <span style={{ fontSize: 10, color: T.muted, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "0px 6px" }}>{activities.length}</span>
+            )}
+          </div>
+
+          {loadingAct ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: 20 }}><Spinner size={18} /></div>
+          ) : activities.length === 0 ? (
+            <div style={{ padding: "16px 0", textAlign: "center", color: T.muted, fontSize: 12, fontStyle: "italic" }}>No activity yet.</div>
+          ) : (
+            <div>
+              {activities.map((a, i) => {
+                const cfg    = ACTION_CFG[a.action] || { label: a.action, color: T.muted, icon: "•" };
+                const detail = activityDetail(a);
+                const isLast = i === activities.length - 1;
+                return (
+                  <div key={a.id} style={{ display: "flex", gap: 10, position: "relative", paddingBottom: isLast ? 2 : 14 }}>
+                    {!isLast && <div style={{ position: "absolute", left: 9, top: 20, bottom: 0, width: 1, background: T.border }} />}
+
+                    {/* Icon dot */}
+                    <div style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      background: cfg.color + "18", border: `1.5px solid ${cfg.color}45`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 9, color: cfg.color, zIndex: 1, marginTop: 1,
+                    }}>
+                      {cfg.icon}
                     </div>
-                  );
-                })
-              )}
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
+                      {/* Badge + who + when on one line */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3,
+                          background: cfg.color + "15", color: cfg.color,
+                          border: `1px solid ${cfg.color}30`, textTransform: "uppercase", letterSpacing: "0.04em",
+                        }}>{cfg.label}</span>
+                        <span style={{ fontSize: 10, color: T.muted }}>
+                          by {a.performedBy || "system"} · {fmt.date(a.ts)}
+                        </span>
+                      </div>
+                      {/* Detail */}
+                      {detail && (
+                        <div style={{ fontSize: 11, color: T.dim, marginTop: 3, lineHeight: 1.5, fontStyle: a.action === "CANCEL" ? "italic" : "normal" }}>
+                          {detail}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
-      </div>
-
-      {/* Footer */}
-      <div style={{ padding: "12px 20px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8 }}>
-        {!client.isCanceled ? (
-          <>
-            <button
-              onClick={onEdit}
-              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 0", borderRadius: 7, background: T.card, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              <Pencil size={13} /> Edit Client
-            </button>
-            <button
-              onClick={() => setCancelModal(true)}
-              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 0", borderRadius: 7, background: T.red + "12", border: `1px solid ${T.red}30`, color: T.red, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              ✕ Cancel Client
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={handleRestore}
-            disabled={restoring}
-            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "10px 0", borderRadius: 7, background: T.green + "12", border: `1px solid ${T.green}30`, color: T.green, fontSize: 12, fontWeight: 600, cursor: restoring ? "wait" : "pointer", fontFamily: "inherit", opacity: restoring ? 0.7 : 1 }}
-          >
-            {restoring ? "Restoring…" : "↩ Restore Client"}
-          </button>
-        )}
       </div>
     </div>
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function ClientsPage() {
   const T = useTheme();
-  const [clients,       setClients]       = useState([]);
-  const [canceledList,  setCanceledList]  = useState([]);
-  const [showCanceled,  setShowCanceled]  = useState(false);
-  const [counts,        setCounts]        = useState({});
-  const [loading,       setLoading]       = useState(true);
-  const [search,        setSearch]        = useState("");
-  const [planF,         setPlanF]         = useState("all");
-  const [selected,      setSelected]      = useState(null);
-  const [modal,         setModal]         = useState(null);
+  const [clients,  setClients]  = useState([]);
+  const [counts,   setCounts]   = useState({});
+  const [loading,  setLoading]  = useState(true);
+  const [search,   setSearch]   = useState("");
+  const [planF,    setPlanF]    = useState("all");
+  const [statusF,  setStatusF]  = useState("all");
+  const [selected, setSelected] = useState(null);
+  const [modal,    setModal]    = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const [cls, cts] = await Promise.all([db.getClients(), db.getContactCounts()]);
-      setClients(cls);
+      const [cls, cts] = await Promise.all([db.getClients(true), db.getContactCounts()]);
+      setClients(cls || []);
       setCounts(cts.clients || {});
-      setSelected(prev => prev ? (cls.find(c => c.id === prev.id) || null) : null);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    if (!showCanceled) return;
-    db.getCanceledClients().then(setCanceledList).catch(() => {});
-  }, [showCanceled]);
+  const filtered = useMemo(() => clients.filter(c => {
+    const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || (c.domain || "").toLowerCase().includes(search.toLowerCase());
+    const matchPlan   = planF   === "all" ? true : c.plan === planF;
+    const matchStatus = statusF === "all" ? true : statusF === "canceled" ? c.isCanceled : !c.isCanceled;
+    return matchSearch && matchPlan && matchStatus;
+  }), [clients, search, planF, statusF]);
 
-  function handleAdded(c) {
-    setClients(prev => [...prev, c].sort((a, b) => a.name.localeCompare(b.name)));
-    setSelected(c);
-    setModal(null);
-  }
-  function handleUpdated(c) {
-    setClients(prev => prev.map(x => x.id === c.id ? c : x));
-    setSelected(c);
-    setModal(null);
-  }
-  function handleCanceled(c) {
-    setClients(prev => prev.filter(x => x.id !== c.id));
-    setCanceledList(prev => [c, ...prev]);
-    setSelected(null);
-  }
-  function handleRestored(c) {
-    setCanceledList(prev => prev.filter(x => x.id !== c.id));
-    setClients(prev => [...prev, c].sort((a, b) => a.name.localeCompare(b.name)));
-    setSelected(c);
-  }
+  const totalMrr   = clients.reduce((s, c) => s + (c.mrr || 0), 0);
+  const activeCount = clients.filter(c => !c.isCanceled).length;
 
-  const displayList = showCanceled ? canceledList : clients;
-  const filtered = displayList.filter(c => {
-    if (!showCanceled && planF !== "all" && c.plan !== planF) return false;
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      (c.domain   || "").toLowerCase().includes(q) ||
-      (c.industry || "").toLowerCase().includes(q)
-    );
-  });
-
-  const totalMrr = clients.reduce((s, c) => s + (c.mrr || 0), 0);
-  const stats = [
-    { label: "CLIENTS",    value: clients.length,                                      color: T.text   },
-    { label: "TOTAL MRR",  value: "$" + totalMrr.toLocaleString(),                     color: T.green  },
-    { label: "ENTERPRISE", value: clients.filter(c => c.plan === "Enterprise").length,  color: T.accent },
-    { label: "PRO",        value: clients.filter(c => c.plan === "Pro").length,         color: T.blue   },
-  ];
+  const selStyle = {
+    background: T.card, border: `1px solid ${T.border}`, borderRadius: 7,
+    padding: "0 12px", color: T.text, fontSize: 12, cursor: "pointer", height: "100%",
+  };
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden", margin: "-20px" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", margin: "-20px", background: T.bg }}>
 
-      {/* ── Left list ──────────────────────────────────────────────────────── */}
+      {/* Left content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "28px 28px 20px", minWidth: 0 }}>
 
-        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-          CRM · Accounts
+        {/* Page header */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 3 }}>Account Management</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: T.text }}>Clients</div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
-          <div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.02em" }}>Clients</div>
-            <div style={{ fontSize: 13, color: T.muted }}>Manage client accounts and track leads and revenue.</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={load}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 7, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              <RefreshCw size={13} /> Refresh
-            </button>
-            <button
-              onClick={() => { setShowCanceled(o => !o); setSelected(null); }}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: showCanceled ? T.red + "18" : T.card, border: `1px solid ${showCanceled ? T.red + "50" : T.border}`, borderRadius: 7, color: showCanceled ? T.red : T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              ✕ {showCanceled ? "Hide Canceled" : "Canceled"}
-            </button>
-            {!showCanceled && (
-              <button
-                onClick={() => setModal("add")}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: T.accent, border: "none", borderRadius: 7, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-              >
-                <Plus size={14} /> Add Client
-              </button>
-            )}
-          </div>
-        </div>
-
-        {!loading && !showCanceled && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
-            {stats.map(s => <StatTile key={s.label} {...s} />)}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+        {/* Toolbar */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20, height: 36 }}>
           <div style={{ flex: 1, position: "relative" }}>
-            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.muted, fontSize: 14, pointerEvents: "none" }}>⌕</span>
+            <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: T.muted }} />
             <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={showCanceled ? "Search canceled clients…" : "Search by name, domain, or industry…"}
-              style={{ width: "100%", boxSizing: "border-box", background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px 8px 34px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit" }}
-              onFocus={e => (e.target.style.borderColor = T.accent)}
-              onBlur={e  => (e.target.style.borderColor = T.border)}
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search by name or domain…"
+              style={{ width: "100%", height: "100%", background: T.card, border: `1px solid ${T.border}`, borderRadius: 7, padding: "0 12px 0 32px", color: T.text, fontSize: 12, outline: "none" }}
             />
           </div>
-          {!showCanceled && (
-            <select value={planF} onChange={e => setPlanF(e.target.value)} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit", cursor: "pointer", flexShrink: 0 }}>
-              <option value="all">All plans</option>
-              {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          )}
+          <select value={statusF} onChange={e => setStatusF(e.target.value)} style={selStyle}>
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="canceled">Canceled</option>
+          </select>
+          <select value={planF} onChange={e => setPlanF(e.target.value)} style={selStyle}>
+            <option value="all">All Plans</option>
+            {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <button onClick={load} style={{ ...selStyle, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", fontFamily: "inherit", fontWeight: 500 }}>
+            <RefreshCw size={13} /> Refresh
+          </button>
+          <button onClick={() => setModal("add")} style={{ height: "100%", padding: "0 16px", background: T.accent, border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: "inherit" }}>
+            <Plus size={14} /> Add Client
+          </button>
         </div>
 
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: T.muted, fontSize: 13 }}>Loading clients…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "50px 24px", textAlign: "center" }}>
-            <Building2 size={28} color={T.border} style={{ marginBottom: 12 }} />
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.text, marginBottom: 6 }}>
-              {showCanceled ? "No canceled clients" : (search || planF !== "all" ? "No clients match your filters" : "No clients yet")}
+        {/* Stats row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
+          {[
+            ["Total Clients",  clients.length,                                         T.text],
+            ["Revenue (MRR)",  fmtMrr(totalMrr),                                       T.green],
+            ["Active",         activeCount,                                              T.accent],
+            ["Enterprise",     clients.filter(c => c.plan === "Enterprise").length,     T.blue],
+          ].map(([label, value, color]) => (
+            <div key={label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 16px" }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+              <div style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
             </div>
-            <div style={{ fontSize: 12, color: T.muted, marginBottom: 18 }}>
-              {showCanceled ? "Canceled clients will appear here." : (search || planF !== "all" ? "Try adjusting your search or plan filter." : "Add your first client account to get started.")}
-            </div>
-            {!showCanceled && !search && planF === "all" && (
-              <button onClick={() => setModal("add")} style={{ background: T.accent, border: "none", borderRadius: 6, color: "#fff", fontWeight: 700, padding: "9px 22px", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-                + Add Client
-              </button>
-            )}
+          ))}
+        </div>
+
+        {/* Table */}
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "10px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 10, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <div style={{ flex: 2 }}>Name & Domain</div>
+            <div style={{ flex: 1 }}>Plan</div>
+            <div style={{ flex: 1 }}>Status</div>
+            <div style={{ flex: 1, textAlign: "right" }}>Leads</div>
+            <div style={{ flex: 1, textAlign: "right" }}>MRR</div>
           </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {filtered.map(c => (
-              <ClientCard
+
+          <div>
+            {loading && clients.length === 0 ? (
+              <div style={{ padding: 48, textAlign: "center" }}><Spinner size={24} /></div>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: T.muted, fontSize: 12 }}>No clients match.</div>
+            ) : filtered.map((c, idx) => (
+              <div
                 key={c.id}
-                client={c}
-                isSelected={selected?.id === c.id}
-                total={counts[c.id] || 0}
                 onClick={() => setSelected(prev => prev?.id === c.id ? null : c)}
-              />
+                style={{
+                  display: "flex", alignItems: "center", padding: "12px 20px",
+                  borderBottom: idx === filtered.length - 1 ? "none" : `1px solid ${T.border}`,
+                  background: selected?.id === c.id ? (c.color || T.accent) + "08" : "transparent",
+                  cursor: "pointer", opacity: c.isCanceled ? 0.65 : 1, transition: "background 0.1s",
+                }}
+                onMouseEnter={e => { if (selected?.id !== c.id) e.currentTarget.style.background = T.surface; }}
+                onMouseLeave={e => { e.currentTarget.style.background = selected?.id === c.id ? (c.color || T.accent) + "08" : "transparent"; }}
+              >
+                <div style={{ flex: 2, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 7, background: (c.color || T.accent) + "18", color: c.color || T.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                    {c.name[0]}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, color: T.text, fontSize: 13 }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: T.muted }}>{c.domain || "—"}</div>
+                  </div>
+                </div>
+                <div style={{ flex: 1 }}><PlanBadge plan={c.plan} /></div>
+                <div style={{ flex: 1 }}>
+                  {c.isCanceled
+                    ? <span style={{ fontSize: 9, fontWeight: 700, color: T.red,   background: T.red   + "12", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>Canceled</span>
+                    : <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + "12", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>Active</span>
+                  }
+                </div>
+                <div style={{ flex: 1, textAlign: "right", fontSize: 13, color: T.text, fontWeight: 500 }}>{counts[c.id] || 0}</div>
+                <div style={{ flex: 1, textAlign: "right", fontSize: 13, fontWeight: 600, color: T.text }}>{fmtMrr(c.mrr || 0)}</div>
+              </div>
             ))}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* ── Right detail panel ──────────────────────────────────────────────── */}
+      {/* Detail panel */}
       {selected && (
         <DetailPanel
           client={selected}
           total={counts[selected.id] || 0}
           onClose={() => setSelected(null)}
           onEdit={() => setModal("edit")}
-          onCanceled={handleCanceled}
-          onRestored={handleRestored}
+          onCanceled={async updated => { await load(); setSelected(updated); }}
+          onRestored={async updated => { await load(); setSelected(updated); }}
         />
       )}
 
-      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      {/* Modals */}
       {modal === "add" && (
-        <ClientModal
-          onSave={async data => { const c = await db.createClient(data); handleAdded(c); }}
-          onClose={() => setModal(null)}
-        />
+        <ClientModal onSave={async data => { await db.createClient(data); await load(); setModal(null); }} onClose={() => setModal(null)} />
       )}
       {modal === "edit" && selected && (
-        <ClientModal
-          client={selected}
-          onSave={async data => { const c = await db.updateClient(selected.id, data); handleUpdated(c); }}
-          onClose={() => setModal(null)}
-        />
+        <ClientModal client={selected} onSave={async data => { const u = await db.updateClient(selected.id, data); await load(); setSelected(u); setModal(null); }} onClose={() => setModal(null)} />
       )}
     </div>
   );

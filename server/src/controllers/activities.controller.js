@@ -1,23 +1,12 @@
 import prisma from '../lib/prisma.js';
-
-const VALID_TYPES = [
-  'form_submitted',
-  'email_sent', 'email_opened', 'email_clicked', 'email_replied',
-  'call_made', 'call_answered',
-  'sms_sent', 'sms_received',
-  'demo_scheduled', 'demo_held',
-  'proposal_sent', 'contract_signed',
-  'stage_changed', 'note_added',
-  'ad_clicked', 'ad_impression',
-  'meeting_scheduled', 'meeting_held',
-];
+import { VALID_ACTIVITY_TYPES } from '../constants/index.js';
 
 async function addActivity(req, res) {
   const { contactId } = req.params;
   const { type, note, by, ts } = req.body;
 
   if (!type) return res.status(400).json({ error: 'type is required' });
-  if (!VALID_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid activity type' });
+  if (!VALID_ACTIVITY_TYPES.includes(type)) return res.status(400).json({ error: 'Invalid activity type' });
 
   const contact = await prisma.contact.findUnique({ where: { id: contactId } });
   if (!contact) return res.status(404).json({ error: 'Contact not found' });

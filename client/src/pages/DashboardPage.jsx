@@ -1,244 +1,166 @@
+import { useState, useEffect } from "react";
 import Card from "../components/ui/Card";
 import Avatar from "../components/ui/Avatar";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import CLIENTS from "../data/clients";
-import { STAGE_DEF, LEAD_STAGES, LOST_STAGES } from "../data/stages";
+import { STAGE_DEF, LEAD_STAGES } from "../data/stages";
 import fmt from "../utils/format";
+import * as db from "../services/api";
+import { VIEW_MODE } from "../constants/index";
 
-// ─── Dashboard overview page ──────────────────────────────────────────────────
-export default function DashboardPage({ pool, clientId, viewMode, setViewMode, setPage, contacts }) {
+import DashboardStatusCount from "../components/DashboardStatusCount";
+
+export default function DashboardPage({ pool, clientId, viewMode, setViewMode, setPage, contacts, currentUser }) {
   const T = useTheme();
-  const client    = CLIENTS.find(c => c.id === clientId);
-  const col       = pool === "prospect" ? T.accent : (client?.color || T.accent);
+  const client = CLIENTS.find(c => c.id === clientId);
+  const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
-  const leads     = contacts.filter(c => LEAD_STAGES.includes(c.lifecycleStage));
-  const customers = contacts.filter(c => c.lifecycleStage === "customer");
-  const lost      = contacts.filter(c => LOST_STAGES.includes(c.lifecycleStage));
-  const pipeline  = leads
-    .filter(c => ["proposal_sent","negotiating"].includes(c.lifecycleStage))
-    .reduce((s, c) => s + (c.contractValue || 0), 0);
+  const [summary, setSummary] = useState({ counts: {}, recentContacts: [] });
 
+  useEffect(() => {
+    db.getDashboardSummary()
+      .then(data => setSummary({
+        counts: data.counts || {},
+        recentContacts: data.recentContacts || [],
+      }))
+      .catch(() => {});
+  }, [pool, clientId]);
+
+  // Active Leads breakdown
+  const leads = contacts.filter(c => LEAD_STAGES.includes(c.lifecycleStage));
   const stageMap = {};
   contacts.forEach(c => { stageMap[c.lifecycleStage] = (stageMap[c.lifecycleStage] || 0) + 1; });
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+  const navItems = [
+    { id: VIEW_MODE.ALL,        label: "All",        dot: T.dim    },
+    { id: VIEW_MODE.PROSPECTS,  label: "Prospects",  dot: T.amber  },
+    { id: VIEW_MODE.LEADS,      label: "Leads",      dot: T.blue   },
+    { id: VIEW_MODE.WARM,       label: "Warm",       dot: T.orange },
+    { id: VIEW_MODE.HOT,        label: "Hot",        dot: T.purple },
+    { id: VIEW_MODE.CUSTOMER,   label: "Customer",   dot: T.green  },
+    { id: VIEW_MODE.BACKBURNER, label: "Backburner", dot: T.teal   },
+    { id: VIEW_MODE.LOST,       label: "Lost",       dot: T.red    },
+  ];
 
-      {/* View mode tabs */}
-      <div
-        style={{
-          display: "flex", gap: 2,
-          background: T.surface, borderRadius: 8,
-          padding: 3, border: "1px solid " + T.border,
-          alignSelf: "flex-start",
-        }}
-      >
-        {[["all","All",T.dim],["leads","Leads",T.blue],["customers","Customers",T.green],["lost","Lost",T.red]].map(([mode,label,c]) => (
-          <button
-            key={mode}
-            onClick={() => { setViewMode(mode); setPage("table"); }}
-            style={{
-              padding: "6px 14px", borderRadius: 6, border: "none",
-              cursor: "pointer",
-              background: viewMode === mode ? T.card : "transparent",
-              color: viewMode === mode ? c : T.muted,
-              fontWeight: viewMode === mode ? 700 : 400,
-              fontSize: 11, fontFamily: "inherit",
-            }}
-          >
-            {label}
-          </button>
-        ))}
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* ─── Filter Navigation ─── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 4, background: T.bg,
+        padding: "6px", borderRadius: 12, border: "1px solid " + T.border, alignSelf: "flex-start"
+      }}>
+        {navItems.map((item) => {
+          const isActive = viewMode === item.id;
+          return (
+            <button 
+              key={item.id} 
+              onClick={() => setViewMode(item.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 8,
+                border: "none", cursor: "pointer", background: isActive ? T.surface : "transparent",
+                transition: "all 0.2s ease",
+              }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: item.dot, boxShadow: isActive ? `0 0 8px ${item.dot}80` : "none" }} />
+              <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? T.text : T.muted }}>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Pool / client banner */}
-      <div
-        style={{
-          background: col + "0a", border: "1px solid " + col + "28",
-          borderRadius: 8, padding: "12px 16px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 36, height: 36, borderRadius: 8,
-              background: col + "20", border: "1px solid " + col + "40",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, fontWeight: 800, color: col,
-            }}
-          >
+      {/* Banner */}
+      <div style={{ background: col + "0a", border: "1px solid " + col + "28", borderRadius: 12, padding: "16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: col + "20", border: "1px solid " + col + "40", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: col }}>
             {pool === "prospect" ? "P" : (client?.name || "C").slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>
-              {pool === "prospect" ? "Prospect Pool — GeniusAI" : client?.name}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted }}>
-              {pool === "prospect" ? "General pipeline" : `${client?.domain} · ${client?.industry}`}
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>{pool === "prospect" ? "Prospect Pool — GeniusAI" : client?.name}</div>
+            <div style={{ fontSize: 11, color: T.muted }}>{pool === "prospect" ? "General sales pipeline" : `${client?.domain} · ${client?.industry}`}</div>
           </div>
         </div>
-        {pool !== "prospect" && (
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: T.green }}>{fmt.mrr(client?.mrr || 0)}</div>
-            <div style={{ fontSize: 9, color: T.muted }}>MRR</div>
-          </div>
-        )}
       </div>
 
-      {/* Leads & Customers cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      {/* Main Status Grid (Click logic removed) */}
+      <DashboardStatusCount data={summary.counts} />
 
-        {/* Active Leads */}
-        <Card style={{ padding: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+      {/* Detailed Cards Section */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Card style={{ padding: 20, background: T.surface, border: "1px solid " + T.border }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.blue }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.blue }}>Active Leads</span>
-            <span style={{ marginLeft: "auto", fontSize: 10, color: T.muted }}>{leads.length} total</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Active Leads</span>
           </div>
-
           {LEAD_STAGES.map(s => {
             const cnt = stageMap[s] || 0;
-            const sd  = STAGE_DEF[s];
+            const sd = STAGE_DEF[s];
             const pct = leads.length ? (cnt / leads.length) * 100 : 0;
             return (
-              <div key={s} style={{ marginBottom: 7 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                  <span style={{ fontSize: 10, color: sd.color, fontWeight: 600 }}>{sd.label}</span>
-                  <span style={{ fontSize: 10, color: T.muted }}>{cnt}</span>
+              <div key={s} style={{ marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: T.muted }}>{sd.label}</span>
+                  <span style={{ fontSize: 11, color: T.text, fontWeight: 600 }}>{cnt}</span>
                 </div>
-                <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ height: 4, background: T.border, borderRadius: 2 }}>
                   <div style={{ height: "100%", width: pct + "%", background: sd.color, borderRadius: 2 }} />
                 </div>
               </div>
             );
           })}
-
-          <div
-            style={{
-              marginTop: 10, padding: "6px 10px",
-              background: T.amber + "10", border: "1px solid " + T.amber + "30",
-              borderRadius: 5, fontSize: 10, color: T.amber,
-            }}
-          >
-            Pipeline: ${Math.round(pipeline / 1000)}k
-          </div>
-
-          <button
-            onClick={() => { setViewMode("leads"); setPage("table"); }}
-            style={{
-              width: "100%", marginTop: 8, padding: 6,
-              background: "transparent", border: "1px solid " + T.border,
-              borderRadius: 5, color: T.blue, fontSize: 10, fontWeight: 600,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            View All Leads →
-          </button>
         </Card>
 
-        {/* Customers */}
-        <Card style={{ padding: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        <Card style={{ padding: 20, background: T.surface, border: "1px solid " + T.border }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.green }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.green }}>Customers</span>
-            <span style={{ marginLeft: "auto", fontSize: 10, color: T.muted }}>{customers.length} total</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Recent Contacts</span>
           </div>
-
-          {customers.slice(0, 5).map(c => (
-            <div
-              key={c.id}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                marginBottom: 6, padding: "5px 6px",
-                background: T.surface, borderRadius: 5,
-              }}
-            >
-              <div
-                style={{
-                  width: 24, height: 24, borderRadius: "50%",
-                  background: T.green + "20",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 9, fontWeight: 700, color: T.green, flexShrink: 0,
-                }}
-              >
-                {c.firstName[0]}{c.lastName[0]}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {c.firstName} {c.lastName}
+          {summary.recentContacts.length === 0 ? (
+            <div style={{ fontSize: 12, color: T.muted }}>No contacts yet.</div>
+          ) : (
+            summary.recentContacts.map(c => (
+              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "8px", background: T.card, borderRadius: 8, border: "1px solid " + T.border }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.green + "20", color: T.green, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>
+                  {(c.firstName?.[0] || "?")}{(c.lastName?.[0] || "")}
                 </div>
-                <div style={{ fontSize: 9, color: T.muted }}>
-                  {c.company}{c.trucks ? ` · 🚛 ${c.trucks}` : ""}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{c.firstName} {c.lastName}</div>
+                  <div style={{ fontSize: 10, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.company || c.lifecycleStage}</div>
                 </div>
+                <div style={{ fontSize: 10, color: T.muted, flexShrink: 0 }}>{fmt.ago(c.lastActivityAt)}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: T.green }}>
-                  ${(c.contractValue || 0).toLocaleString()}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {customers.length > 5 && (
-            <div style={{ fontSize: 10, color: T.muted, textAlign: "center", marginTop: 4 }}>
-              +{customers.length - 5} more
-            </div>
+            ))
           )}
-
-          <div
-            style={{
-              marginTop: 8, padding: "6px 10px",
-              background: T.red + "10", border: "1px solid " + T.red + "30",
-              borderRadius: 5, fontSize: 10, color: T.red,
-            }}
-          >
-            Lost/Churned: {lost.length}
-          </div>
-
-          <button
-            onClick={() => { setViewMode("customers"); setPage("table"); }}
-            style={{
-              width: "100%", marginTop: 8, padding: 6,
-              background: "transparent", border: "1px solid " + T.border,
-              borderRadius: 5, color: T.green, fontSize: 10, fontWeight: 600,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            View All Customers →
-          </button>
         </Card>
       </div>
 
-      {/* Team activity */}
-      <Card style={{ padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 12 }}>Team Activity</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
+      {/* Team Activity Section */}
+      <Card style={{ padding: 20, background: T.surface, border: "1px solid " + T.border }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.purple, boxShadow: `0 0 10px ${T.purple}80` }} />
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: T.text, margin: 0 }}>Team Activity</h2>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           {USERS_DB.map(u => {
             const myC = contacts.filter(c => c.addedBy === u.name || c.ownedBy === u.name);
-            const myA = myC.flatMap(c => (c.activities || []).filter(a => a.by === u.name));
             return (
-              <div
-                key={u.id}
-                style={{
-                  background: T.surface, border: "1px solid " + T.border,
-                  borderRadius: 7, padding: "10px 12px",
-                  display: "flex", alignItems: "center", gap: 10,
-                }}
-              >
-                <Avatar user={u} size={32} />
+              <div key={u.id} style={{
+                background: T.card, border: "1px solid " + T.border,
+                borderRadius: 10, padding: "12px 16px", display: "flex",
+                alignItems: "center", gap: 12
+              }}>
+                <Avatar user={u} size={36} />
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{u.name.split(" ")[0]}</div>
-                  <div style={{ fontSize: 9, color: u.color }}>{u.role}</div>
-                  <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>{myC.length} contacts · {myA.length} actions</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{u.name}</div>
+                  <div style={{ fontSize: 10, color: u.color || T.muted, fontWeight: 600 }}>{u.role}</div>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{myC.length} managed contacts</div>
                 </div>
               </div>
             );
           })}
         </div>
       </Card>
+
     </div>
   );
 }
