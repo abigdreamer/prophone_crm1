@@ -12,7 +12,7 @@ import ImportModal from "../components/modals/ImportModal";
 import { RestoreModal } from "../components/modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
-import CLIENTS from "../data/clients";
+import { useClientById } from "../context/ClientsContext";
 import { STAGE_DEF, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
@@ -110,7 +110,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
       });
   }, [statusF, viewMode, pool, clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const client = CLIENTS.find(c => c.id === clientId);
+  const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   // Source data: prefer locally-fetched (status-filtered) results when available

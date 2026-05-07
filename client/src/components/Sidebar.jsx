@@ -4,7 +4,7 @@ import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
-import CLIENTS from "../data/clients";
+import { useClientById } from "../context/ClientsContext";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
@@ -21,7 +21,7 @@ export default function Sidebar({
   const listRef = useRef(null);
   const toast = useAppToast();
 
-  const client = CLIENTS.find(c => c.id === clientId);
+  const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   const modeFiltered = contacts.filter(c => {

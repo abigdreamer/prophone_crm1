@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { useTheme, useThemeName, useSetTheme } from "../../context/ThemeContext";
-import { usePool } from "../../context/PoolContext"; 
-import CLIENTS from "../../data/clients";
+import { usePool } from "../../context/PoolContext";
+import { useClientById } from "../../context/ClientsContext";
 
 const THEMES = [
   { id: "dark",  label: "Default" },
@@ -27,8 +27,7 @@ export default function ThemeSwitcher() {
 
   const current = THEMES.find(t => t.id === themeName) || THEMES[0];
 
-  // Dynamic color for the indicator based on pool/client context
-  const client = CLIENTS.find(c => c.id === clientId);
+  const client = useClientById(clientId);
   const activeCol = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   return (
