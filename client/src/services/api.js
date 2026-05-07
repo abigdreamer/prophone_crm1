@@ -17,9 +17,9 @@ export function getActivePool() {
 
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
 async function request(method, path, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  const token = localStorage.getItem('prophone_token');
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = { "Content-Type": "application/json" };
+  const token = localStorage.getItem("prophone_token");
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${API}${path}`, {
     method,
@@ -27,12 +27,16 @@ async function request(method, path, body) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
+  const data = await res.json().catch(() => null);
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(err.error || 'Request failed');
+    const error = new Error(data?.error || "Request failed");
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
 
-  return res.json();
+  return data;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

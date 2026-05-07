@@ -19,18 +19,18 @@ import { useAppToast } from "../context/ToastContext";
 export default function LifecycleChart({ contact, onUpdate, currentUser }) {
   const T = useTheme();
   const [filter, setFilter] = useState("all");
-  const [modal,  setModal]  = useState(null);   // "log" | "stage" | "edit"
+  const [modal, setModal] = useState(null);   // "log" | "stage" | "edit"
   const toast = useAppToast();
 
   if (!contact) return null;
 
-  const d            = STAGE_DEF[contact.lifecycleStage] || STAGE_DEF.new;
-  const acts         = contact.activities || [];
-  const stageOrder   = ["new","contacted","engaged","demo_scheduled","demo_done","proposal_sent","negotiating","customer"];
-  const currentIdx   = stageOrder.indexOf(contact.lifecycleStage);
-  const isCustomer   = contact.lifecycleStage === "customer";
-  const isLost       = LOST_STAGES.includes(contact.lifecycleStage);
-  const addedByUser  = USERS_DB.find(u => u.name === contact.addedBy) || USERS_DB[0];
+  const d = STAGE_DEF[contact.lifecycleStage] || STAGE_DEF.new;
+  const acts = contact.activities || [];
+  const stageOrder = ["new", "contacted", "engaged", "demo_scheduled", "demo_done", "proposal_sent", "negotiating", "customer"];
+  const currentIdx = stageOrder.indexOf(contact.lifecycleStage);
+  const isCustomer = contact.lifecycleStage === "customer";
+  const isLost = LOST_STAGES.includes(contact.lifecycleStage);
+  const addedByUser = USERS_DB.find(u => u.name === contact.addedBy) || USERS_DB[0];
 
   const filtered = filter === "all" ? acts : acts.filter(a => ACT_DEF[a.type]?.cat === filter);
 
@@ -97,8 +97,7 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
               setModal(null);
               toast.success("Contact saved.");
             } catch (err) {
-              console.error("Failed to update contact:", err);
-              toast.error("Failed to update contact.");
+              toast.error(err.message || "Failed to update contact.");
             }
           }}
           onClose={() => setModal(null)}
@@ -160,10 +159,10 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           {/* Key details grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 10, marginBottom: 8 }}>
             {[
-              ["Email",  contact.email,  T.accent],
-              ["Phone",  contact.phone,  T.text],
-              ["Score",  contact.leadScore, T.amber],
-              ["Value",  contact.contractValue ? "$" + contact.contractValue.toLocaleString() : "—", T.green],
+              ["Email", contact.email, T.accent],
+              ["Phone", contact.phone, T.text],
+              ["Score", contact.leadScore, T.amber],
+              ["Value", contact.contractValue ? "$" + contact.contractValue.toLocaleString() : "—", T.green],
             ].map(([k, v, c]) => (
               <div key={k}>
                 <span style={{ color: T.muted }}>{k}: </span>
@@ -199,9 +198,9 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
-            <Btn onClick={() => setModal("log")}    style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
-            <Btn onClick={() => setModal("stage")}  variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
-            <Btn onClick={() => setModal("edit")}   variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
+            <Btn onClick={() => setModal("log")} style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
+            <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
+            <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
             <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px", borderColor: T.red, color: T.red }}>✕ Cancel</Btn>
           </div>
         )}
@@ -211,7 +210,7 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 10 }}>Lead Journey</div>
           <div style={{ display: "flex", alignItems: "center", overflowX: "auto", paddingBottom: 6 }}>
             {stageOrder.map((s, i) => {
-              const sd   = STAGE_DEF[s];
+              const sd = STAGE_DEF[s];
               const done = !isLost && currentIdx >= i;
               const curr = contact.lifecycleStage === s;
               return (
@@ -289,12 +288,12 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
         {/* Activity stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginBottom: 14 }}>
           {[
-            ["Emails",   acts.filter(a => ACT_DEF[a.type]?.cat === "email").length,   T.blue],
-            ["Calls",    acts.filter(a => ACT_DEF[a.type]?.cat === "call").length,    T.green],
-            ["Ads",      acts.filter(a => ACT_DEF[a.type]?.cat === "ad").length,      T.purple],
+            ["Emails", acts.filter(a => ACT_DEF[a.type]?.cat === "email").length, T.blue],
+            ["Calls", acts.filter(a => ACT_DEF[a.type]?.cat === "call").length, T.green],
+            ["Ads", acts.filter(a => ACT_DEF[a.type]?.cat === "ad").length, T.purple],
             ["Meetings", acts.filter(a => ACT_DEF[a.type]?.cat === "meeting").length, T.amber],
-            ["Total",    acts.length,                                                  T.accent],
-            ["Last",     fmt.ago(contact.lastActivityAt),                              T.orange],
+            ["Total", acts.length, T.accent],
+            ["Last", fmt.ago(contact.lastActivityAt), T.orange],
           ].map(([l, v, c]) => (
             <div
               key={l}
@@ -340,7 +339,7 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
             </div>
             <div style={{ paddingLeft: 14, borderLeft: "2px solid " + T.border }}>
               {dayActs.map(act => {
-                const def    = ACT_DEF[act.type] || { label: act.type, icon: "·", color: T.muted, cat: "system" };
+                const def = ACT_DEF[act.type] || { label: act.type, icon: "·", color: T.muted, cat: "system" };
                 const byUser = USERS_DB.find(u => u.name === act.by);
                 return (
                   <div

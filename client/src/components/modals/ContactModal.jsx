@@ -53,16 +53,17 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   }
 
   // Used by all dismiss paths in edit mode — saves without blocking validation
-  async function doSave() {
-    setSaving(true);
-    try {
-      await onSave(buildPayload());
-    } catch {
-      onClose();
-    } finally {
-      setSaving(false);
-    }
+ async function doSave() {
+  setSaving(true);
+  try {
+    await onSave(buildPayload());
+  } catch (err) {
+    toast.error(err.message || "Failed to save contact");
+    throw err;
+  } finally {
+    setSaving(false);
   }
+}
 
   // Used by the explicit Save button — validates required fields first
   async function handleSave() {
@@ -74,7 +75,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   }
 
   // In edit mode every dismiss path saves; in add mode it just closes
-  const handleClose = isEdit ? doSave : onClose;
+  const handleClose = onClose;
 
   return (
     <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={handleClose} width={600}>
