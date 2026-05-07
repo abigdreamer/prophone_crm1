@@ -16,43 +16,43 @@ function logClientActivity(entityId, action, performedBy, metadata = {}) {
 
 function formatContact(c) {
   return {
-    id:             c.id,
-    pool:           c.pool,
-    clientId:       c.clientId,
-    firstName:      c.firstName,
-    lastName:       c.lastName,
-    email:          c.email,
-    phone:          c.phone,
-    company:        c.company,
-    title:          c.title,
-    website:        c.website,
-    address:        c.address,
-    city:           c.city,
-    trucks:         c.trucks,
+    id: c.id,
+    pool: c.pool,
+    clientId: c.clientId,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    email: c.email,
+    phone: c.phone,
+    company: c.company,
+    title: c.title,
+    website: c.website,
+    address: c.address,
+    city: c.city,
+    trucks: c.trucks,
     lifecycleStage: c.lifecycleStage,
-    leadScore:      c.leadScore,
-    status:         c.status,
-    source:         c.source,
-    campaign:       c.campaign,
-    emailsSent:     c.emailsSent,
-    emailsOpened:   c.emailsOpened,
-    emailsClicked:  c.emailsClicked,
-    callsMade:      c.callsMade,
-    callsAnswered:  c.callsAnswered,
+    leadScore: c.leadScore,
+    status: c.status,
+    source: c.source,
+    campaign: c.campaign,
+    emailsSent: c.emailsSent,
+    emailsOpened: c.emailsOpened,
+    emailsClicked: c.emailsClicked,
+    callsMade: c.callsMade,
+    callsAnswered: c.callsAnswered,
     lastActivityAt: c.lastActivityAt,
-    contractValue:  c.contractValue,
-    accountSize:    c.accountSize,
-    tags:           c.tags,
-    notes:          c.notes,
-    ownedBy:        c.ownedBy,
-    addedBy:        c.addedBy,
-    isCanceled:     c.isCanceled,
-    canceledAt:     c.canceledAt,
-    canceledBy:     c.canceledBy,
-    cancelReason:   c.cancelReason,
-    restoredAt:     c.restoredAt,
-    restoredBy:     c.restoredBy,
-    createdAt:      c.createdAt,
+    contractValue: c.contractValue,
+    accountSize: c.accountSize,
+    tags: c.tags,
+    notes: c.notes,
+    ownedBy: c.ownedBy,
+    addedBy: c.addedBy,
+    isCanceled: c.isCanceled,
+    canceledAt: c.canceledAt,
+    canceledBy: c.canceledBy,
+    cancelReason: c.cancelReason,
+    restoredAt: c.restoredAt,
+    restoredBy: c.restoredBy,
+    createdAt: c.createdAt,
     activities: (c.activities || [])
       .sort((a, b) => new Date(a.ts) - new Date(b.ts))
       .map(a => ({ id: a.id, type: a.type, note: a.note, ts: a.ts, by: a.by })),
@@ -107,36 +107,36 @@ async function getContact(req, res) {
 async function createContact(req, res) {
   const b = req.body;
   if (!b.firstName) return res.status(400).json({ error: 'firstName is required' });
-  if (b.pool && !VALID_POOLS.includes(b.pool))                   return res.status(400).json({ error: 'Invalid pool' });
+  if (b.pool && !VALID_POOLS.includes(b.pool)) return res.status(400).json({ error: 'Invalid pool' });
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
-  if (b.status && !VALID_STATUSES.includes(b.status))            return res.status(400).json({ error: 'Invalid status' });
+  if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
   if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) return res.status(400).json({ error: 'Invalid accountSize' });
 
   const contact = await prisma.contact.create({
     data: {
-      pool:           b.pool           || POOL.PROSPECT,
-      clientId:       b.clientId       || null,
-      firstName:      b.firstName,
-      lastName:       b.lastName       || '',
-      email:          b.email          || '',
-      phone:          b.phone          || '',
-      company:        b.company        || '',
-      title:          b.title          || '',
-      website:        b.website        || '',
-      address:        (b.address       || '').trim(),
-      city:           (b.city          || '').trim() || extractCity((b.address || '').trim()),
-      trucks:         parseInt(b.trucks)        || 0,
+      pool: b.pool || POOL.PROSPECT,
+      clientId: b.clientId || null,
+      firstName: b.firstName,
+      lastName: b.lastName || '',
+      email: b.email || '',
+      phone: b.phone || '',
+      company: b.company || '',
+      title: b.title || '',
+      website: b.website || '',
+      address: (b.address || '').trim(),
+      city: (b.city || '').trim() || extractCity((b.address || '').trim()),
+      trucks: parseInt(b.trucks) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
-      leadScore:      b.leadScore      || 10,
-      status:         b.status         || STATUS.ACTIVE,
-      source:         b.source         || '',
-      campaign:       b.campaign       || '',
-      contractValue:  parseInt(b.contractValue) || 0,
-      accountSize:    b.accountSize    || '1-5',
-      tags:           b.tags           || [],
-      notes:          b.notes          || '',
-      ownedBy:        b.ownedBy        || '',
-      addedBy:        b.addedBy        || '',
+      leadScore: b.leadScore || 10,
+      status: b.status || STATUS.ACTIVE,
+      source: b.source || '',
+      campaign: b.campaign || '',
+      contractValue: parseInt(b.contractValue) || 0,
+      accountSize: b.accountSize || '1-5',
+      tags: b.tags || [],
+      notes: b.notes || '',
+      ownedBy: b.ownedBy || '',
+      addedBy: b.addedBy || '',
       lastActivityAt: new Date(),
     },
   });
@@ -145,10 +145,10 @@ async function createContact(req, res) {
     await prisma.activity.createMany({
       data: b.activities.map(a => ({
         contactId: contact.id,
-        type:      a.type,
-        note:      a.note || '',
-        by:        a.by   || '',
-        ts:        a.ts ? new Date(a.ts) : new Date(),
+        type: a.type,
+        note: a.note || '',
+        by: a.by || '',
+        ts: a.ts ? new Date(a.ts) : new Date(),
       })),
     });
   }
@@ -160,11 +160,11 @@ async function createContact(req, res) {
 
   const by = req.user?.name || req.user?.email || 'system';
   logClientActivity(contact.id, CLIENT_ACTION.CREATE, by, {
-    name:    `${contact.firstName} ${contact.lastName}`.trim(),
-    email:   contact.email,
+    name: `${contact.firstName} ${contact.lastName}`.trim(),
+    email: contact.email,
     company: contact.company,
-    pool:    contact.pool,
-  }).catch(() => {});
+    pool: contact.pool,
+  }).catch(() => { });
 
   res.status(201).json(formatContact(full));
 }
@@ -173,57 +173,103 @@ async function updateContact(req, res) {
   const { id } = req.params;
   const b = req.body;
 
-  if (b.pool && !VALID_POOLS.includes(b.pool))                        return res.status(400).json({ error: 'Invalid pool' });
-  if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage))   return res.status(400).json({ error: 'Invalid lifecycleStage' });
-  if (b.status && !VALID_STATUSES.includes(b.status))                 return res.status(400).json({ error: 'Invalid status' });
-  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize))  return res.status(400).json({ error: 'Invalid accountSize' });
+  if (b.pool && !VALID_POOLS.includes(b.pool)) {
+    return res.status(400).json({ error: "Invalid pool" });
+  }
 
-  const existing = await prisma.contact.findUnique({ where: { id } });
-  if (!existing) return res.status(404).json({ error: 'Contact not found' });
+  if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) {
+    return res.status(400).json({ error: "Invalid lifecycleStage" });
+  }
+
+  if (b.status && !VALID_STATUSES.includes(b.status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+
+  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) {
+    return res.status(400).json({ error: "Invalid accountSize" });
+  }
+
+  const existing = await prisma.contact.findUnique({
+    where: { id },
+    include: { activities: true },
+  });
+
+  if (!existing) {
+    return res.status(404).json({ error: "Contact not found" });
+  }
+
+  const isBecomingCustomer =
+    b.lifecycleStage === STAGE.CUSTOMER &&
+    existing.lifecycleStage !== STAGE.CUSTOMER;
+
+  if (isBecomingCustomer && !["admin", "manager"].includes(req.user?.role)) {
+    return res.status(403).json({
+      error: "Only managers and admins can turn a lead into a customer",
+    });
+  }
 
   const updated = await prisma.contact.update({
     where: { id },
     data: {
-      firstName:      b.firstName      ?? existing.firstName,
-      lastName:       b.lastName       ?? existing.lastName,
-      email:          b.email          ?? existing.email,
-      phone:          b.phone          ?? existing.phone,
-      company:        b.company        ?? existing.company,
-      title:          b.title          ?? existing.title,
-      website:        b.website        ?? existing.website,
-      address:        b.address !== undefined ? b.address.trim() : existing.address,
-      city:           b.city !== undefined
-                        ? b.city
-                        : (b.address !== undefined && !existing.city)
-                            ? extractCity(b.address.trim())
-                            : existing.city,
-      trucks:         b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
+      firstName: b.firstName ?? existing.firstName,
+      lastName: b.lastName ?? existing.lastName,
+      email: b.email ?? existing.email,
+      phone: b.phone ?? existing.phone,
+      company: b.company ?? existing.company,
+      title: b.title ?? existing.title,
+      website: b.website ?? existing.website,
+      address: b.address !== undefined ? b.address.trim() : existing.address,
+      city:
+        b.city !== undefined
+          ? b.city
+          : b.address !== undefined && !existing.city
+            ? extractCity(b.address.trim())
+            : existing.city,
+      trucks: b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
       lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
-      leadScore:      b.leadScore      ?? existing.leadScore,
-      status:         b.status         ?? existing.status,
-      source:         b.source         ?? existing.source,
-      campaign:       b.campaign       ?? existing.campaign,
-      contractValue:  b.contractValue !== undefined ? parseInt(b.contractValue) : existing.contractValue,
-      accountSize:    b.accountSize    ?? existing.accountSize,
-      tags:           b.tags           ?? existing.tags,
-      notes:          b.notes          ?? existing.notes,
-      ownedBy:        b.ownedBy        ?? existing.ownedBy,
-      lastActivityAt: b.lastActivityAt ? new Date(b.lastActivityAt) : new Date(),
+      leadScore: b.leadScore ?? existing.leadScore,
+      status: b.status ?? existing.status,
+      source: b.source ?? existing.source,
+      campaign: b.campaign ?? existing.campaign,
+      contractValue:
+        b.contractValue !== undefined
+          ? parseInt(b.contractValue)
+          : existing.contractValue,
+      accountSize: b.accountSize ?? existing.accountSize,
+      tags: b.tags ?? existing.tags,
+      notes: b.notes ?? existing.notes,
+      ownedBy: b.ownedBy ?? existing.ownedBy,
+      lastActivityAt: new Date(),
     },
     include: { activities: true },
   });
 
-  // Diff tracked fields and log if anything changed
   const changes = {};
   for (const field of TRACKED_CONTACT_FIELDS) {
     if (b[field] === undefined) continue;
-    const oldVal = String(existing[field] ?? '');
-    const newVal = String(b[field] ?? '');
-    if (oldVal !== newVal) changes[field] = { from: existing[field], to: b[field] };
+
+    const oldVal = String(existing[field] ?? "");
+    const newVal = String(b[field] ?? "");
+
+    if (oldVal !== newVal) {
+      changes[field] = { from: existing[field], to: b[field] };
+    }
   }
+
+  const by = req.user?.name || req.user?.email || "system";
+
   if (Object.keys(changes).length > 0) {
-    const by = req.user?.name || req.user?.email || 'system';
-    logClientActivity(id, CLIENT_ACTION.UPDATE, by, { changes }).catch(() => {});
+    await prisma.activity.create({
+      data: {
+        contactId: id,
+        type: ACTIVITY_TYPE.LEAD_UPDATED,
+        note: "Contact updated",
+        by,
+        ts: new Date(),
+      },
+    });
+
+    logClientActivity(id, CLIENT_ACTION.UPDATE, by, { changes }).catch(() => { });
   }
 
   res.json(formatContact(updated));
@@ -280,8 +326,8 @@ async function importContacts(req, res) {
 
   const toInsert = [];
   const toUpdate = [];
-  const invalid  = [];
-  const errors   = [];
+  const invalid = [];
+  const errors = [];
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -299,15 +345,15 @@ async function importContacts(req, res) {
     }
 
     let firstName = s('firstName') || s('first_name');
-    let lastName  = s('lastName')  || s('last_name');
+    let lastName = s('lastName') || s('last_name');
 
     // Split "Full Name" into first + last if firstName is missing
     if (!firstName && (s('fullName'))) {
-      const full  = s('fullName');
+      const full = s('fullName');
       const space = full.indexOf(' ');
       if (space !== -1) {
         firstName = full.slice(0, space);
-        lastName  = lastName || full.slice(space + 1);
+        lastName = lastName || full.slice(space + 1);
       } else {
         firstName = full;
       }
@@ -320,7 +366,7 @@ async function importContacts(req, res) {
     }
 
     const address = s('address');
-    const city    = s('city') || extractCity(address);
+    const city = s('city') || extractCity(address);
 
     const data = {
       pool,
@@ -329,21 +375,21 @@ async function importContacts(req, res) {
       lastName,
       email,
       phone,
-      company:        s('company'),
-      title:          s('title'),
-      website:        s('website'),
+      company: s('company'),
+      title: s('title'),
+      website: s('website'),
       address,
       city,
-      trucks:         parseInt(r.trucks)        || 0,
-      contractValue:  parseInt(r.contractValue) || 0,
+      trucks: parseInt(r.trucks) || 0,
+      contractValue: parseInt(r.contractValue) || 0,
       lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : STAGE.NEW,
-      leadScore:      10,
-      status:         STATUS.ACTIVE,
-      source:         s('source'),
-      notes:          s('notes'),
-      ownedBy:        s('ownedBy')  || currentUserName,
-      addedBy:        s('addedBy')  || currentUserName,
-      tags:           [],
+      leadScore: 10,
+      status: STATUS.ACTIVE,
+      source: s('source'),
+      notes: s('notes'),
+      ownedBy: s('ownedBy') || currentUserName,
+      addedBy: s('addedBy') || currentUserName,
+      tags: [],
       lastActivityAt: new Date(),
     };
 
@@ -361,7 +407,7 @@ async function importContacts(req, res) {
   }
 
   let imported = 0;
-  let updated  = 0;
+  let updated = 0;
 
   // Chunked inserts
   for (let i = 0; i < toInsert.length; i += CHUNK) {
@@ -384,11 +430,11 @@ async function importContacts(req, res) {
   const skipped = rows.length - imported - updated - invalid.length;
 
   res.json({
-    total:    rows.length,
+    total: rows.length,
     imported,
     updated,
-    skipped:  skipped + invalid.length,
-    invalid:  invalid.length,
+    skipped: skipped + invalid.length,
+    invalid: invalid.length,
     errors,
   });
 }
@@ -503,12 +549,12 @@ async function getDashboardSummary(req, res) {
 
   const counts = {
     prospects: get(...DASHBOARD_GROUPS.prospects),
-    leads:     get(...DASHBOARD_GROUPS.leads),
-    warm:      get(...DASHBOARD_GROUPS.warm),
-    hot:       get(...DASHBOARD_GROUPS.hot),
-    customer:  get(...DASHBOARD_GROUPS.customer),
+    leads: get(...DASHBOARD_GROUPS.leads),
+    warm: get(...DASHBOARD_GROUPS.warm),
+    hot: get(...DASHBOARD_GROUPS.hot),
+    customer: get(...DASHBOARD_GROUPS.customer),
     backburner: 0,
-    lost:      get(...DASHBOARD_GROUPS.lost),
+    lost: get(...DASHBOARD_GROUPS.lost),
   };
 
   res.json({ counts, recentContacts });

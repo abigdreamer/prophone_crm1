@@ -68,16 +68,18 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     }
   }
 
-  async function handleEdit(updated) {
-    try {
-      const refreshed = await db.updateContact(updated.id, updated);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Contact saved.");
-    } catch {
-      toast.error("Failed to update contact.");
-    }
+async function handleEdit(updated) {
+  try {
+    const refreshed = await db.updateContact(updated.id, updated);
+
+    onUpdate(refreshed);
+    setModal(null);
+
+    toast.success("Contact saved.");
+  } catch (err) {
+    toast.error(err.message || "Failed to update contact.");
   }
+}
 
   async function handleCancel(reason) {
     const refreshed = await db.cancelContact(contact.id, reason);
@@ -185,7 +187,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
             </>
           )}
           {contact.isCanceled && (
-            <Btn onClick={() => setModal("restore")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
+            <Btn onClick={handleRestore} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
               ↩ Restore
             </Btn>
           )}

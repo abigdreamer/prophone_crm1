@@ -63,8 +63,9 @@ export const ACTIVITY_TYPE = Object.freeze({
   AD_IMPRESSION:     'ad_impression',
   MEETING_SCHEDULED: 'meeting_scheduled',
   MEETING_HELD:      'meeting_held',
-  CANCEL_CONTACT:    'CANCEL_CONTACT',
-  UNCANCEL_CONTACT:  'UNCANCEL_CONTACT',
+  CANCEL_CONTACT:    'cancel_contact',
+  UNCANCEL_CONTACT:  'uncancel_contact',
+  LEAD_UPDATED:      'lead_updated',
 });
 
 export const VALID_ACTIVITY_TYPES = [
