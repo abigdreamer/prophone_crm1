@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Pill } from "./ui/Pill";
 import { useTheme } from "../context/ThemeContext";
-import STATIC_CLIENTS from "../data/clients";
+import { useClients } from "../context/ClientsContext";
 import fmt from "../utils/format";
-import { getClients } from "../services/api";
 
 export default function PoolSwitcher({
   pool,
@@ -13,21 +12,12 @@ export default function PoolSwitcher({
   contactCounts = { prospect: 0, clients: {} }
 }) {
   const T = useTheme();
+  const { clients } = useClients();
   const [open, setOpen] = useState(false);
-  const [clients, setClients] = useState(STATIC_CLIENTS);
   const ref = useRef(null);
 
-  // Dynamic active color based on context
-  const client = clients.find(c => c.id === clientId) || clients[0] || STATIC_CLIENTS[0];
+  const client = clients.find(c => c.id === clientId) || clients[0] || null;
   const activeCol = pool === "prospect" ? T.accent : (client?.color || T.accent);
-
-  useEffect(() => {
-    getClients().then(setClients).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (open) getClients().then(setClients).catch(() => {});
-  }, [open]);
 
   useEffect(() => {
     const h = e => {
@@ -67,12 +57,12 @@ export default function PoolSwitcher({
 
         <div style={{ flex: 1, textAlign: "left" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: T.navText, lineHeight: 1 }}>
-            {pool === "prospect" ? "Prospect Pool" : client.name}
+            {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
           </div>
           <div style={{ fontSize: 9, color: T.navMuted, marginTop: 1 }}>
             {pool === "prospect" 
               ? `${fmt.num(contactCounts.prospect)} leads` 
-              : `${contactCounts.clients[clientId] || 0} leads · ${client.plan}`}
+              : `${contactCounts.clients[clientId] || 0} leads · ${client?.plan || ""}`}
           </div>
         </div>
 

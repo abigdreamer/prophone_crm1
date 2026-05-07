@@ -4,8 +4,8 @@ import {
   BarChart2, Settings, ChevronDown,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
-import { usePool } from "../context/PoolContext"; 
-import CLIENTS from "../data/clients"; 
+import { usePool } from "../context/PoolContext";
+import { useClientById } from "../context/ClientsContext";
 
 const MARKETING_IDS = new Set(["domains", "templates", "campaigns", "sequences"]);
 
@@ -24,8 +24,7 @@ export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketi
   const [open, setOpen] = useState(null);
   const ref = useRef(null);
 
-  // Dynamic color for the underline based on pool/client context
-  const client = CLIENTS.find(c => c.id === clientId);
+  const client = useClientById(clientId);
   const activeCol = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   useEffect(() => {
