@@ -262,6 +262,9 @@ export const sendCampaign = async (req, res) => {
             company:   r.contact.company   || '',
           };
 
+          // Substitute variables in subject line
+          const finalSubject = substituteIntoHtml(subj, vars);
+
           // Prefer stored HTML snapshot; fall back to server-side render
           let html = tmpl.htmlOutput
             ? substituteIntoHtml(tmpl.htmlOutput, vars)
@@ -285,7 +288,7 @@ export const sendCampaign = async (req, res) => {
             to:           r.contact.email,
             from:         fromEmail,
             fromName:     campaign.fromName || '',
-            subject:      subj,
+            subject:      finalSubject,
             html,
             text,
             headers,
@@ -293,6 +296,15 @@ export const sendCampaign = async (req, res) => {
         });
 
       if (!emails.length) continue;
+
+      // Debug: log first email payload to verify headers
+      console.log('[sendCampaign] Sample email payload:', JSON.stringify({
+        to: emails[0].to,
+        hasText: !!emails[0].text,
+        headers: emails[0].headers,
+        reply_to: emails[0].reply_to,
+        hasUnsubFooter: emails[0].html?.includes('Unsubscribe'),
+      }, null, 2));
 
       try {
         const results = await sendBatchEmails(emails);
@@ -329,17 +341,17 @@ export const getCampaignAnalytics = async (req, res) => {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    const statusGroups = await repo.groupRecipientsByStatus(req.params.id);
-    const counts = {};
-    for (const g of statusGroups) counts[g.status] = g._count.status;
+    const total = campaign.recipientsCount || 1;
 
-    const total      = campaign.recipientsCount || 1;
-    const sent       = counts.sent       || campaign.sentCount       || 0;
-    const delivered  = counts.delivered  || campaign.deliveredCount  || 0;
-    const opened     = counts.opened     || campaign.openedCount     || 0;
-    const clicked    = counts.clicked    || campaign.clickedCount    || 0;
-    const bounced    = counts.bounced    || campaign.bouncedCount    || 0;
-    const unsubbed   = counts.unsubscribed || campaign.unsubscribedCount || 0;
+    // Count based on timestamps — each is independent, no overriding
+    const [sent, delivered, opened, clicked, bounced, unsubbed] = await Promise.all([
+      repo.countByTimestamp(req.params.id, 'sentAt'),
+      repo.countByTimestamp(req.params.id, 'deliveredAt'),
+      repo.countByTimestamp(req.params.id, 'openedAt'),
+      repo.countByTimestamp(req.params.id, 'clickedAt'),
+      repo.countByTimestamp(req.params.id, 'bouncedAt'),
+      repo.countByStatus(req.params.id, 'unsubscribed'),
+    ]);
 
     const base = sent || total;
 
