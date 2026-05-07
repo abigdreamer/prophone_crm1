@@ -10,7 +10,7 @@ import { Check, Eye, ArrowRight } from "lucide-react";
 export default function LoginPage({ onLogin }) {
   const T = useTheme();
   const themeName = useThemeName();
-  const [email, setEmail] = useState("amy@geniusai.biz");
+  const [email, setEmail] = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
