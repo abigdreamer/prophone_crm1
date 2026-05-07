@@ -4,8 +4,9 @@ import {
   BarChart2, Settings, ChevronDown,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { usePool } from "../context/PoolContext"; 
+import CLIENTS from "../data/clients"; 
 
-// Marketing items kept here only for active-state detection (no dropdown rendered).
 const MARKETING_IDS = new Set(["domains", "templates", "campaigns", "sequences"]);
 
 const NAV = [
@@ -19,8 +20,13 @@ const NAV = [
 
 export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketingClick }) {
   const T = useTheme();
+  const { pool, clientId } = usePool(); 
   const [open, setOpen] = useState(null);
   const ref = useRef(null);
+
+  // Dynamic color for the underline based on pool/client context
+  const client = CLIENTS.find(c => c.id === clientId);
+  const activeCol = pool === "prospect" ? T.accent : (client?.color || T.accent);
 
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(null); };
@@ -28,7 +34,6 @@ export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketi
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // page may be "campaigns/uuid" — compare against root segment
   const pageRoot = page.split("/")[0];
 
   return (
@@ -59,16 +64,18 @@ export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketi
                 padding: "0 12px",
                 background: "transparent",
                 border: "none",
-                borderBottom: active ? `2px solid ${T.accent}` : "2px solid transparent",
+                // Dynamic Underline Only
+                borderBottom: active ? `2px solid ${activeCol}` : "2px solid transparent",
                 borderTop: "2px solid transparent",
                 cursor: "pointer",
+                // Text color stays standard Nav Theme
                 color: active ? T.navText : T.navMuted,
                 fontWeight: active ? 600 : 400,
                 fontSize: 12, fontFamily: "inherit",
-                transition: "color 0.15s",
+                transition: "color 0.15s, border-color 0.15s",
                 whiteSpace: "nowrap",
               }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.navDim; }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.color = T.navText; }}
               onMouseLeave={e => { if (!active) e.currentTarget.style.color = T.navMuted; }}
             >
               <Icon size={14} strokeWidth={active ? 2.2 : 1.8} />
@@ -113,10 +120,10 @@ export default function TopNav({ page, viewMode, setPage, setViewMode, onMarketi
                       style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between",
                         width: "100%", padding: "9px 16px",
-                        background: a ? T.accentLow : "transparent",
-                        borderLeft: a ? "2px solid " + T.accent : "2px solid transparent",
+                        background: a ? activeCol + "15" : "transparent",
+                        borderLeft: a ? "2px solid " + activeCol : "2px solid transparent",
                         border: "none", cursor: item.soon ? "default" : "pointer",
-                        color: a ? T.accent : item.soon ? T.muted : T.text,
+                        color: a ? activeCol : item.soon ? T.muted : T.text,
                         fontSize: 12, fontWeight: a ? 600 : 400,
                         textAlign: "left", fontFamily: "inherit",
                         opacity: item.soon ? 0.75 : 1,

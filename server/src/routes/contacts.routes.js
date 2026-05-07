@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import asyncHandler from '../utils/asyncHandler.js';
 import requireAuth from '../middleware/auth.middleware.js';
-import { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact } from '../controllers/contacts.controller.js';
+import { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities } from '../controllers/contacts.controller.js';
 import { addActivity } from '../controllers/activities.controller.js';
 
 const router = Router();
@@ -16,8 +16,9 @@ router.post('/',                   asyncHandler(createContact));
 router.patch('/:id',               asyncHandler(updateContact));
 router.delete('/:id',              asyncHandler(deleteContact));
 router.post('/import',             asyncHandler(importContacts));
-router.post('/:id/cancel',         asyncHandler(cancelContact));
-router.post('/:id/restore',        asyncHandler(restoreContact));
-router.post('/:contactId/activities', asyncHandler(addActivity));
+router.post('/:id/cancel',              asyncHandler(cancelContact));
+router.post('/:id/restore',             asyncHandler(restoreContact));
+router.get('/:id/client-activities',    asyncHandler(getContactClientActivities));
+router.post('/:contactId/activities',   asyncHandler(addActivity));
 
 export default router;

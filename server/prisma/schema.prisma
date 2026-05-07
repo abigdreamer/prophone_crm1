@@ -28,6 +28,12 @@ model Client {
   industry  String    @default("")
   plan      String    @default("Starter")
   mrr       Int       @default(0)
+  isCanceled   Boolean   @default(false) @map("is_canceled")
+  canceledAt   DateTime? @map("canceled_at")
+  canceledBy   String    @default("") @map("canceled_by")
+  cancelReason String    @default("") @map("cancel_reason")
+  restoredAt   DateTime? @map("restored_at")
+  restoredBy   String    @default("") @map("restored_by")
   createdAt      DateTime       @default(now()) @map("created_at")
   contacts       Contact[]
   contactGroups  ContactGroup[]
@@ -65,6 +71,7 @@ model Contact {
   company        String     @default("")
   title          String     @default("")
   website        String     @default("")
+  address        String     @default("")
   city           String     @default("")
   trucks         Int        @default(0)
   lifecycleStage String     @default("new") @map("lifecycle_stage")
@@ -257,6 +264,20 @@ model CampaignRecipient {
   @@unique([campaignId, contactId])
   @@index([campaignId])
   @@map("campaign_recipients")
+}
+
+model ClientActivity {
+  id          String   @id @default(uuid())
+  entityType  String   @default("contact") @map("entity_type")
+  entityId    String   @map("entity_id")
+  action      String
+  performedBy String   @default("") @map("performed_by")
+  metadata    Json     @default("{}")
+  ts          DateTime @default(now())
+
+  @@index([entityId, ts(sort: Desc)])
+  @@index([action])
+  @@map("client_activities")
 }
 
 model CampaignRecipientEvent {

@@ -8,6 +8,7 @@ import * as db from "../../services/api";
 
 // ── Contact field definitions ─────────────────────────────────────────────────
 const CONTACT_FIELDS = [
+  { key: "fullName",      label: "Full Name (auto-split)", required: false },
   { key: "firstName",     label: "First Name",       required: true  },
   { key: "lastName",      label: "Last Name",         required: false },
   { key: "email",         label: "Email",             required: true },
@@ -15,6 +16,7 @@ const CONTACT_FIELDS = [
   { key: "company",       label: "Company",           required: false },
   { key: "title",         label: "Job Title",         required: false },
   { key: "website",       label: "Website",           required: false },
+  { key: "address",       label: "Address",           required: false },
   { key: "city",          label: "City",              required: false },
   { key: "trucks",        label: "# of Trucks",       required: false },
   { key: "contractValue", label: "Contract Value ($)", required: false },
@@ -25,14 +27,16 @@ const CONTACT_FIELDS = [
 
 // Common CSV header → contact field auto-detection
 const AUTO_MAP = {
+  "full name":   "fullName",  fullname:      "fullName",  full_name:    "fullName",
+  "contact name":"fullName",  name:          "fullName",
   firstname:     "firstName", first_name:    "firstName", "first name": "firstName",
   lastname:      "lastName",  last_name:     "lastName",  "last name":  "lastName",
-  name:          "firstName",
   email:         "email",     "e-mail":      "email",     "email address": "email",
   phone:         "phone",     mobile:        "phone",     cell:           "phone",  "phone number": "phone",
   company:       "company",   organization:  "company",   "company name": "company",
   title:         "title",     "job title":   "title",     position:       "title",  role: "title",
   website:       "website",   url:           "website",   "website url": "website", "web": "website",
+  address:       "address",   "street address": "address", "street": "address", "mailing address": "address",
   city:          "city",      location:      "city",
   trucks:        "trucks",    "# of trucks": "trucks",    "num trucks": "trucks", "number of trucks": "trucks",
   "contract value": "contractValue", contract: "contractValue", value: "contractValue", mrr: "contractValue",
@@ -165,7 +169,7 @@ function StepUpload({ onParsed }) {
       <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 8, background: T.surface, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Expected columns (any order)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "# of Trucks", "Contract Value"].map(f => (
+          {["Full Name *", "First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "# of Trucks", "Contract Value"].map(f => (
             <span key={f} style={{
               fontSize: 10, padding: "2px 8px", borderRadius: 4,
               background: T.card, border: `1px solid ${T.border}`, color: T.dim,
@@ -173,7 +177,7 @@ function StepUpload({ onParsed }) {
           ))}
         </div>
         <div style={{ fontSize: 10, color: T.muted, marginTop: 8 }}>
-          * First Name is required. Each row must have at least an Email or Phone.
+          * Provide either First Name or Full Name (auto-split on space). Each row must have at least an Email or Phone. Supports up to 10,000 rows.
         </div>
       </div>
     </div>
@@ -431,7 +435,19 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
       const contact = {};
       headers.forEach((h, i) => {
         const field = mapping[i];
-        if (field && field !== "__skip__") contact[field] = row[h] ?? "";
+        if (!field || field === "__skip__") return;
+        if (field === "fullName") {
+          const full = (row[h] ?? "").trim();
+          const space = full.indexOf(" ");
+          if (space !== -1) {
+            contact.firstName = contact.firstName || full.slice(0, space).trim();
+            contact.lastName  = contact.lastName  || full.slice(space + 1).trim();
+          } else {
+            contact.firstName = contact.firstName || full;
+          }
+        } else {
+          contact[field] = row[h] ?? "";
+        }
       });
       return contact;
     });

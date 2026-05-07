@@ -10,7 +10,7 @@ import { Check, Eye, ArrowRight } from "lucide-react";
 export default function LoginPage({ onLogin }) {
   const T = useTheme();
   const themeName = useThemeName();
-  const [email, setEmail] = useState("mike@geniusai.biz");
+  const [email, setEmail] = useState("amy@geniusai.biz");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,31 +43,56 @@ export default function LoginPage({ onLogin }) {
         : "radial-gradient(circle at 50% -20%, #e0e7ff 0%, #f1f5f9 100%)",
     }}>
       <div style={{
-        width: 440, background: T.card,
+        width: 480, background: T.card,
         backdropFilter: "blur(20px)",
         border: "1px solid " + T.border,
-        borderRadius: 28, padding: "48px 40px",
+        borderRadius: 24, padding: "40px",
         boxShadow: "0 40px 100px rgba(0,0,0,0.4)",
       }}>
 
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
+        {/* Header: Logo and Brand (Centered) */}
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column", 
+          alignItems: "center", 
+          textAlign: "center", 
+          marginBottom: 40 
+        }}>
           <div style={{
-            width: 52, height: 52, borderRadius: 14,
+            width: 64, height: 64, borderRadius: 18,
             background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, fontWeight: 900, color: "#fff",
-            margin: "0 auto 16px",
-            boxShadow: "0 0 30px rgba(99, 102, 241, 0.3)",
+            fontSize: 32, fontWeight: 900, color: "#fff",
+            marginBottom: 16,
+            boxShadow: "0 10px 30px rgba(99, 102, 241, 0.3)",
           }}>G</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.5px" }}>GeniusAI</div>
-          <div style={{ fontSize: 11, color: T.muted, letterSpacing: "2px", marginTop: 4 }}>PROPHONE CRM</div>
+          <div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: T.text, lineHeight: 1.2, letterSpacing: "-0.5px" }}>GeniusAI</div>
+            <div style={{ fontSize: 11, color: T.muted, letterSpacing: "2.5px", marginTop: 4, fontWeight: 600 }}>PROPHONE CRM</div>
+          </div>
+        </div>
+
+        {/* Title and Password Hint */}
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: T.text, margin: "0 0 8px 0" }}>Sign in</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.muted }}>
+            All accounts use password 
+            <span style={{ 
+              background: "rgba(99, 102, 241, 0.15)", 
+              color: "#818cf8", 
+              padding: "2px 8px", 
+              borderRadius: 6, 
+              fontSize: 11,
+              fontWeight: 600,
+              border: "1px solid rgba(99, 102, 241, 0.2)"
+            }}>demo</span>
+          </div>
         </div>
 
         {/* Quick Select */}
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 16 }}>Quick Select</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>QUICK SELECT</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {USERS_DB.slice(0, 4).map(u => {
               const active = email === u.email;
               return (
@@ -75,48 +100,55 @@ export default function LoginPage({ onLogin }) {
                   key={u.id}
                   onClick={() => setEmail(u.email)}
                   style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "14px",
-                    background: active ? T.accent + "15" : T.surface,
-                    border: `1px solid ${active ? T.accent : T.border}`,
-                    borderRadius: 16, cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    display: "flex", alignItems: "center", gap: 12, padding: "12px",
+                    background: active ? "rgba(99, 102, 241, 0.08)" : "rgba(255,255,255,0.02)",
+                    border: `1px solid ${active ? "rgba(99, 102, 241, 0.5)" : "rgba(255,255,255,0.05)"}`,
+                    borderRadius: 12, cursor: "pointer", transition: "all 0.2s",
                     textAlign: "left", position: "relative",
                   }}
                 >
-                  <Avatar user={u} size={34} />
+                  <Avatar user={u} size={30} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: active ? T.text : T.dim }}>{u.name.split(" ")[0]}</div>
                     <div style={{ fontSize: 10, color: T.muted }}>{u.role || "Staff"}</div>
                   </div>
-                  {active && <Check size={14} color="#6366f1" style={{ position: "absolute", right: 12, top: 12 }} />}
+                  {active && (
+                    <div style={{
+                      position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                      width: 18, height: 18, borderRadius: "50%", background: "#6366f1",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}>
+                      <Check size={11} color="#fff" strokeWidth={4} />
+                    </div>
+                  )}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Inputs */}
+        {/* Form Inputs */}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>EMAIL ADDRESS</label>
-            <Input value={email} onChange={setEmail} placeholder="name@company.com" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>EMAIL</label>
+            <Input value={email} onChange={setEmail} placeholder="amy@geniusai.biz" />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>PASSWORD</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.5px" }}>PASSWORD</label>
             <div style={{ position: "relative" }}>
               <Input
                 value={password}
                 onChange={setPassword}
                 type={showPass ? "text" : "password"}
-                placeholder="••••••••"
+                placeholder="••••"
               />
               <button
                 type="button"
                 onClick={() => setShowPass(!showPass)}
                 style={{
-                  position: "absolute", right: 12, bottom: 12,
-                  background: "none", border: "none", cursor: "pointer",
-                  color: T.muted,
+                  position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer", color: T.muted, opacity: 0.4
                 }}
               >
                 <Eye size={18} />
@@ -127,9 +159,9 @@ export default function LoginPage({ onLogin }) {
 
         {error && (
           <div style={{
-            marginTop: 20, padding: "12px", borderRadius: 12,
-            background: T.red + "18", border: "1px solid " + T.red + "30",
-            color: T.red, fontSize: 12, textAlign: "center",
+            marginTop: 20, padding: "10px", borderRadius: 10,
+            background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)",
+            color: "#ef4444", fontSize: 12, textAlign: "center",
           }}>{error}</div>
         )}
 
@@ -138,24 +170,23 @@ export default function LoginPage({ onLogin }) {
           disabled={loading}
           style={{
             width: "100%", padding: "16px", marginTop: 32,
-            background: loading ? "rgba(99, 102, 241, 0.5)" : "linear-gradient(90deg, #6366f1 0%, #4f46e5 100%)",
-            border: "none", borderRadius: 14, color: "#fff",
-            fontWeight: 700, fontSize: 16, cursor: loading ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-            boxShadow: "0 10px 25px rgba(99, 102, 241, 0.3)",
-            transition: "transform 0.2s",
+            background: "linear-gradient(90deg, #7c3aed 0%, #6366f1 100%)",
+            border: "none", borderRadius: 12, color: "#fff",
+            fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            boxShadow: "0 10px 20px rgba(99, 102, 241, 0.2)",
           }}
         >
-          {loading
-            ? <><Spinner size={16} color="#fff" /> Logging in…</>
-            : <>Sign in <ArrowRight size={18} /></>}
+          {loading ? "Signing in..." : <>Sign in <ArrowRight size={18} /></>}
         </button>
 
+        {/* Footer */}
         <div style={{
-          marginTop: 40, fontSize: 10, color: T.muted,
-          textAlign: "center", letterSpacing: "1px", fontWeight: 500,
+          marginTop: 40, fontSize: 9, color: T.muted,
+          textAlign: "center", letterSpacing: "1.5px", fontWeight: 600,
+          opacity: 0.6
         }}>
-          SECURED BY GENIUSAI ECOSYSTEM
+          PART OF THE GENIUSAI • PROPHONE SUITE
         </div>
       </div>
     </div>

@@ -18,7 +18,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
 
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
-    email: "", phone: "", website: "", city: "",
+    email: "", phone: "", website: "", address: "", city: "",
     trucks: 1, lifecycleStage: "new", source: "", campaign: "",
     tags: [], notes: "", contractValue: "", accountSize: "1-5",
     ownedBy: currentUser?.name || "",
@@ -85,7 +85,11 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         <Input label="Phone"        value={form.phone}         onChange={v => set("phone",         v)} placeholder="(510) 555-1234" type="tel" />
         <Input label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="TowPro LLC" />
         <Input label="Job Title"    value={form.title}         onChange={v => set("title",         v)} placeholder="Owner" />
-        <Input label="City"         value={form.city}          onChange={v => set("city",          v)} placeholder="Oakland, CA" />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <Input label="Address" value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, Dallas, TX 75201" />
+          <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>City is auto-extracted from address if left blank.</div>
+        </div>
+        <Input label="City"         value={form.city}          onChange={v => set("city",          v)} placeholder="Dallas" />
         <Input label="# of Trucks"  value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="4" type="number" />
         <Input label="Contract Value ($)" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="5000" type="number" />
         <Sel
