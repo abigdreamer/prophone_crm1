@@ -5,6 +5,7 @@ import {
   Loader2, Check, Search, Trash2, MoreVertical, Megaphone, ChevronRight,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { usePool } from "../context/PoolContext";
 import {
   getCampaigns, createCampaign, deleteCampaign,
   getPublishedTemplates, getActivePool, getClients,
@@ -526,6 +527,7 @@ function DeleteModal({ campaign, onClose, onConfirm, loading }) {
 export default function CampaignsPage() {
   const T = useTheme();
   const navigate = useNavigate();
+  const { clientId } = usePool();
   const [campaigns, setCampaigns] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [showNew,   setShowNew]   = useState(false);
@@ -541,7 +543,7 @@ export default function CampaignsPage() {
       setCampaigns(Array.isArray(c) ? c : []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, []);
+  }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 

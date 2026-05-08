@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
 import { useTheme } from "../context/ThemeContext";
+import { usePool } from "../context/PoolContext";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
   MoreHorizontal, Pencil, Send, Copy, Trash2, X,
@@ -2427,6 +2428,7 @@ const STATUS_OPTIONS = [
 // ─── Template list ────────────────────────────────────────────────────────────
 function TemplateList({ onOpenBuilder }) {
   const C = useContext(CCtx);
+  const { clientId } = usePool();
   const [templates,      setTemplates]      = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [search,         setSearch]         = useState("");
@@ -2441,7 +2443,7 @@ function TemplateList({ onOpenBuilder }) {
   const toast   = useAppToast();
   const confirm = useConfirmDialog();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handle(e) {
