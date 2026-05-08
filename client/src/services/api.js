@@ -196,22 +196,30 @@ export async function getClientActivities(id) {
 // ── Email Templates ───────────────────────────────────────────────────────────
 
 export async function getTemplates() {
-  const r = await request('GET', '/api/email-templates');
+  const { clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  const r = await request('GET', `/api/email-templates?${params}`);
   return r.data ?? r;
 }
 
 export async function getTemplateById(id) {
-  const r = await request('GET', `/api/email-templates/${id}`);
+  const { clientId } = getActivePool();
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  const r = await request('GET', `/api/email-templates/${id}?${params}`);
   return r.data ?? r;
 }
 
 export async function createTemplate(data) {
-  const r = await request('POST', '/api/email-templates', data);
+  const { clientId } = getActivePool();
+  const r = await request('POST', '/api/email-templates', { clientId: clientId || null, ...data });
   return r.data ?? r;
 }
 
 export async function updateTemplate(id, data) {
-  const r = await request('PUT', `/api/email-templates/${id}`, data);
+  const { clientId } = getActivePool();
+  const r = await request('PUT', `/api/email-templates/${id}`, { clientId: clientId || null, ...data });
   return r.data ?? r;
 }
 
