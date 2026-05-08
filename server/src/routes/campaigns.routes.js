@@ -11,6 +11,7 @@ import {
   previewRecipients,
   removeRecipients,
   sendCampaign,
+  resendCampaign,
   getCampaignAnalytics,
   listPublishedTemplates,
 } from '../controllers/campaigns.controller.js';
@@ -32,6 +33,7 @@ router.delete('/:id/recipients',      removeRecipients);
 router.get('/:id/recipients/preview', previewRecipients);
 
 router.post('/:id/send',      sendCampaign);
+router.post('/:id/resend',    resendCampaign);
 router.get('/:id/analytics',  getCampaignAnalytics);
 
 export default router;

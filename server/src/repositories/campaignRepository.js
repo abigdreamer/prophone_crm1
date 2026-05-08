@@ -166,6 +166,13 @@ export async function markRecipientSent(id, messageId) {
   });
 }
 
+export async function resetRecipientsForResend(campaignId, statuses) {
+  return prisma.campaignRecipient.updateMany({
+    where: { campaignId, status: { in: statuses } },
+    data:  { status: 'pending', sentAt: null, messageId: null },
+  });
+}
+
 export async function updateRecipientStatus(id, status) {
   return prisma.campaignRecipient.update({
     where: { id },
