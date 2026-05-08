@@ -3,13 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock,
+  Search, Trash2, Activity, X, Clock, Pencil,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
-  removeCampaignRecipients, sendCampaign, getCampaignAnalytics,
-  previewCampaignRecipients, getContact,
+  removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
+  getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
@@ -637,6 +637,294 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   );
 }
 
+// ── Edit Campaign Modal ───────────────────────────────────────────────────────
+
+function EditField({ label, value, onChange, placeholder, type = "text", required }) {
+  const T = useTheme();
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 5, letterSpacing: "0.03em" }}>
+        {label}{required && <span style={{ color: T.accent, marginLeft: 2 }}>*</span>}
+      </div>
+      <input
+        type={type} value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%", padding: "9px 12px", borderRadius: 7, boxSizing: "border-box",
+          background: T.surface, border: "1px solid " + T.border,
+          color: T.text, fontSize: 12, fontFamily: "inherit", outline: "none",
+        }}
+        onFocus={e => e.target.style.borderColor = T.accent}
+        onBlur={e => e.target.style.borderColor = T.border}
+      />
+    </div>
+  );
+}
+
+function EditCampaignModal({ campaign, onClose, onSaved }) {
+  const T = useTheme();
+  const [form, setForm] = useState({
+    name:      campaign.name      || "",
+    subject:   campaign.subject   || "",
+    subjectB:  campaign.subjectB  || "",
+    fromName:  campaign.fromName  || "",
+    fromEmail: campaign.fromEmail || "",
+    templateId:  campaign.templateId  || null,
+    templateIdB: campaign.templateIdB || null,
+  });
+  const [templates, setTemplates] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const isSent = campaign.status === "sent";
+  const isAB   = campaign.type   === "ab_test";
+
+  useEffect(() => {
+    if (!isSent) {
+      getPublishedTemplates().then(setTemplates).catch(() => {});
+    }
+  }, [isSent]);
+
+  const handleSelectTemplate = (id) => {
+    const tpl = templates.find(t => t.id === id);
+    setForm(f => ({ ...f, templateId: id, subject: f.subject || tpl?.subject || "" }));
+  };
+
+  const handleSelectTemplateB = (id) => {
+    const tpl = templates.find(t => t.id === id);
+    setForm(f => ({ ...f, templateIdB: id, subjectB: f.subjectB || tpl?.subject || "" }));
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await updateCampaign(campaign.id, {
+        name:        form.name.trim(),
+        subject:     form.subject.trim(),
+        subjectB:    form.subjectB.trim(),
+        fromName:    form.fromName.trim(),
+        fromEmail:   form.fromEmail.trim(),
+        templateId:  form.templateId  || null,
+        templateIdB: form.templateIdB || null,
+      });
+      onSaved(updated);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        width: 520, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid " + T.border }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.accent + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Pencil size={15} color={T.accent} />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Edit Campaign</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{campaign.name}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <EditField label="Campaign Name" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Campaign name" />
+
+          {!isSent && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, letterSpacing: "0.03em" }}>
+                TEMPLATE{isAB ? " A" : ""}
+              </div>
+              <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid " + T.border, borderRadius: 8, padding: 8 }}>
+                {templates.length === 0
+                  ? <div style={{ fontSize: 12, color: T.muted, padding: "12px 8px" }}>Loading templates…</div>
+                  : templates.map(t => {
+                    const sel = form.templateId === t.id;
+                    return (
+                      <div key={t.id} onClick={() => handleSelectTemplate(t.id)} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6, cursor: "pointer", marginBottom: 4,
+                        border: "1px solid " + (sel ? T.accent + "80" : T.border), background: sel ? T.accent + "10" : "transparent",
+                      }}>
+                        <Mail size={12} color={sel ? T.accent : T.muted} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                          <div style={{ fontSize: 10, color: T.muted }}>{t.subject || "No subject"}</div>
+                        </div>
+                        {sel && <CheckCircle2 size={12} color={T.accent} />}
+                      </div>
+                    );
+                  })
+                }
+              </div>
+            </>
+          )}
+
+          <EditField label={isAB ? "Subject A" : "Subject Line"} value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Your email subject…" />
+
+          {isAB && (
+            <>
+              {!isSent && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, letterSpacing: "0.03em" }}>TEMPLATE B</div>
+                  <div style={{ maxHeight: 140, overflowY: "auto", border: "1px solid " + T.border, borderRadius: 8, padding: 8 }}>
+                    {templates.map(t => {
+                      const sel = form.templateIdB === t.id;
+                      return (
+                        <div key={t.id} onClick={() => handleSelectTemplateB(t.id)} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6, cursor: "pointer", marginBottom: 4,
+                          border: "1px solid " + (sel ? T.orange + "80" : T.border), background: sel ? T.orange + "10" : "transparent",
+                        }}>
+                          <Mail size={12} color={sel ? T.orange : T.muted} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                          </div>
+                          {sel && <CheckCircle2 size={12} color={T.orange} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              <EditField label="Subject B" value={form.subjectB} onChange={v => setForm(f => ({ ...f, subjectB: v }))} placeholder="Subject for variant B…" />
+            </>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <EditField label="From Name"  value={form.fromName}  onChange={v => setForm(f => ({ ...f, fromName: v }))}  placeholder="Company name" />
+            <EditField label="From Email" type="email" value={form.fromEmail} onChange={v => setForm(f => ({ ...f, fromEmail: v }))} placeholder="sales@yourdomain.com" />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "14px 22px", borderTop: "1px solid " + T.border }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.name.trim()}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: form.name.trim() ? T.accent : T.border,
+              color: form.name.trim() ? "#fff" : T.muted,
+              fontSize: 13, fontWeight: 600,
+              cursor: saving || !form.name.trim() ? "default" : "pointer",
+              fontFamily: "inherit", opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Saving…</> : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Resend Modal ──────────────────────────────────────────────────────────────
+
+const RESEND_FILTERS = [
+  { id: "bounced",     label: "Bounced",      desc: "Contacts whose emails bounced",                statuses: ["bounced"] },
+  { id: "not_opened",  label: "Not opened",   desc: "Sent/delivered but never opened",              statuses: ["sent", "delivered"] },
+  { id: "pending",     label: "Pending only", desc: "Contacts that were never sent",                statuses: ["pending"] },
+  { id: "all",         label: "Everyone",     desc: "All recipients (except unsubscribed)",         statuses: ["bounced", "sent", "delivered", "pending"] },
+];
+
+function ResendModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  const [selected, setSelected] = useState("bounced");
+  const filter = RESEND_FILTERS.find(f => f.id === selected);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        padding: 28, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%", background: T.accent + "18",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <Send size={18} color={T.accent} />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Resend Campaign</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
+              Choose which recipients to resend to
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 22 }}>
+          {RESEND_FILTERS.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setSelected(f.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 14px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                border: "1px solid " + (selected === f.id ? T.accent + "80" : T.border),
+                background: selected === f.id ? T.accent + "12" : T.surface,
+                textAlign: "left",
+              }}
+            >
+              <div style={{
+                width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                border: "2px solid " + (selected === f.id ? T.accent : T.border),
+                background: selected === f.id ? T.accent : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {selected === f.id && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{f.label}</div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{f.desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{
+            padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border,
+            background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+          }}>Cancel</button>
+          <button
+            onClick={() => onConfirm(filter.statuses)}
+            disabled={loading}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: loading ? "default" : "pointer", fontFamily: "inherit",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading
+              ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending…</>
+              : <><Send size={13} /> Resend Now</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Send Confirm Modal ────────────────────────────────────────────────────────
 
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
@@ -703,6 +991,8 @@ export default function CampaignDetailPage() {
   const [loading,           setLoading]           = useState(true);
   const [showAddModal,      setShowAddModal]      = useState(false);
   const [showSendModal,     setShowSendModal]     = useState(false);
+  const [showResendModal,   setShowResendModal]   = useState(false);
+  const [showEditModal,     setShowEditModal]     = useState(false);
   const [sending,           setSending]           = useState(false);
   const [statusFilter,      setStatusFilter]      = useState("all");
   const [search,            setSearch]            = useState("");
@@ -765,6 +1055,27 @@ export default function CampaignDetailPage() {
       setSending(false);
     }
   }, [id]);
+
+  const handleResend = useCallback(async (recipientStatuses) => {
+    setSending(true);
+    try {
+      const updated = await resendCampaign(id, recipientStatuses);
+      setCampaign(updated);
+      setShowResendModal(false);
+      const a = await getCampaignAnalytics(id).catch(() => null);
+      setAnalytics(a);
+      setTableKey(k => k + 1);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSending(false);
+    }
+  }, [id]);
+
+  const handleEditSaved = useCallback(updated => {
+    setCampaign(updated);
+    setShowEditModal(false);
+  }, []);
 
   const handleAdded = useCallback(updated => {
     setCampaign(updated);
@@ -829,6 +1140,17 @@ export default function CampaignDetailPage() {
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>{campaign.name}</span>
+          <button
+            onClick={() => setShowEditModal(true)}
+            title="Edit campaign"
+            style={{
+              display: "flex", alignItems: "center",
+              padding: "4px 8px", borderRadius: 6, border: "1px solid " + T.border,
+              background: "transparent", color: T.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <Pencil size={12} />
+          </button>
           {campaign.subject && (
             <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
               · Subject: {campaign.subject}
@@ -848,11 +1170,6 @@ export default function CampaignDetailPage() {
           {isSending && (
             <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.amber, fontSize: 12 }}>
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
-            </div>
-          )}
-          {isSent && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.green, fontSize: 12 }}>
-              <CheckCircle2 size={12} /> Sent
             </div>
           )}
           {!isSent && (
@@ -880,15 +1197,28 @@ export default function CampaignDetailPage() {
               <Send size={12} /> Send Campaign
             </button>
           )}
+          {isSent && (
+            <button
+              onClick={() => setShowResendModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 16px", borderRadius: 7, border: "none",
+                background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Send size={12} /> Resend Campaign
+            </button>
+          )}
           <button
             onClick={load}
             style={{
-              display: "flex", alignItems: "center",
-              padding: "7px 10px", borderRadius: 7, border: "1px solid " + T.border,
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
               background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
             }}
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
@@ -1091,6 +1421,21 @@ export default function CampaignDetailPage() {
           onClose={() => setShowSendModal(false)}
           onConfirm={handleSend}
           loading={sending}
+        />
+      )}
+      {showResendModal && (
+        <ResendModal
+          campaign={campaign}
+          onClose={() => setShowResendModal(false)}
+          onConfirm={handleResend}
+          loading={sending}
+        />
+      )}
+      {showEditModal && (
+        <EditCampaignModal
+          campaign={campaign}
+          onClose={() => setShowEditModal(false)}
+          onSaved={handleEditSaved}
         />
       )}
     </div>

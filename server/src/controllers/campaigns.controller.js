@@ -322,6 +322,119 @@ export const sendCampaign = async (req, res) => {
   }
 };
 
+// ── Resend ────────────────────────────────────────────────────────────────────
+
+const VALID_RESEND_STATUSES = ['pending', 'sent', 'delivered', 'bounced'];
+
+export const resendCampaign = async (req, res) => {
+  const campaignId = req.params.id;
+  try {
+    const campaign = await repo.findById(campaignId);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    if (campaign.status === 'sending') return sendError(res, 'Campaign is currently sending', 400);
+    if (!campaign.templateId) return sendError(res, 'Campaign has no template selected', 400);
+
+    // Which recipient statuses to resend to
+    const raw = req.body?.recipientStatuses;
+    const statuses = Array.isArray(raw)
+      ? raw.filter(s => VALID_RESEND_STATUSES.includes(s))
+      : ['bounced'];
+    if (!statuses.length) return sendError(res, 'No valid recipient statuses provided', 400);
+
+    // Reset matching recipients back to pending
+    const { count } = await repo.resetRecipientsForResend(campaignId, statuses);
+    if (!count) return sendError(res, 'No recipients matched the selected filter', 400);
+
+    const template = await templateRepo.findById(campaign.templateId);
+    if (!template) return sendError(res, 'Template not found — it may have been deleted', 404);
+
+    const templateB = campaign.templateIdB
+      ? await templateRepo.findById(campaign.templateIdB)
+      : null;
+
+    let fromEmail = campaign.fromEmail?.trim() || '';
+    if (!fromEmail) {
+      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
+      if (clientDomain) {
+        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      } else {
+        const anyDomain = await domainRepo.findAnyVerified();
+        fromEmail = anyDomain
+          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
+          : (process.env.RESEND_FROM_EMAIL || '');
+      }
+    }
+    if (!fromEmail) {
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+    }
+
+    await repo.updateCampaign(campaignId, { status: 'sending' });
+
+    const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
+    const contactIds = allRecipients.map(r => r.contactId).filter(Boolean);
+    const suppressedIds = await repo.findSuppressedContactIds(contactIds);
+    const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
+
+    const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
+    let totalSent = 0;
+
+    for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
+      const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
+      const emails = batch
+        .filter(r => r.contact?.email?.includes('@'))
+        .map(r => {
+          const isB  = campaign.type === 'ab_test' && r.abVariant === 'B';
+          const tmpl = isB && templateB ? templateB : template;
+          const subj = (isB && campaign.subjectB) ? campaign.subjectB
+                       : (campaign.subject || tmpl.subject || tmpl.name);
+
+          const vars = {
+            firstName: r.contact.firstName || '',
+            lastName:  r.contact.lastName  || '',
+            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:     r.contact.email     || '',
+            company:   r.contact.company   || '',
+          };
+
+          let html = tmpl.htmlOutput
+            ? substituteIntoHtml(tmpl.htmlOutput, vars)
+            : renderTemplate(tmpl.body, vars);
+
+          if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
+
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+
+          const text    = htmlToPlainText(html);
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+
+          return { _recipientId: r.id, to: r.contact.email, from: fromEmail, fromName: campaign.fromName || '', subject: subj, html, text, headers };
+        });
+
+      if (!emails.length) continue;
+      try {
+        const results = await sendBatchEmails(emails);
+        await Promise.all(emails.map((e, j) =>
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+        ));
+        totalSent += emails.length;
+      } catch (batchErr) {
+        console.error(`[resendCampaign] batch error:`, batchErr.message);
+      }
+    }
+
+    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: (campaign.sentCount || 0) + totalSent });
+
+    sendSuccess(res, await repo.findById(campaignId));
+  } catch (err) {
+    await repo.updateCampaign(campaignId, { status: 'sent' }).catch(() => {});
+    sendServerError(res, err, 'resendCampaign');
+  }
+};
+
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 export const getCampaignAnalytics = async (req, res) => {

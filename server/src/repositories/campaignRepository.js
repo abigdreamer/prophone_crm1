@@ -136,6 +136,13 @@ export async function markRecipientSent(id, messageId) {
   });
 }
 
+export async function resetRecipientsForResend(campaignId, statuses) {
+  return prisma.campaignRecipient.updateMany({
+    where: { campaignId, status: { in: statuses } },
+    data:  { status: 'pending', sentAt: null, messageId: null },
+  });
+}
+
 // ── Webhook event helpers ─────────────────────────────────────────────────────
 
 export async function findRecipientByMessageId(messageId) {
