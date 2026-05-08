@@ -187,7 +187,7 @@ async function handleEdit(updated) {
             </>
           )}
           {contact.isCanceled && (
-            <Btn onClick={handleRestore} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
+            <Btn onClick={() => setModal("restore")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
               ↩ Restore
             </Btn>
           )}
