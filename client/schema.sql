@@ -1,14 +1,25 @@
--- ─── ProPhone CRM — Database Schema ──────────────────────────────────────────
--- Steps:
---   1. Open Supabase Dashboard → SQL Editor → New Query
---   2. Paste & run this file
---   3. Then run seed.sql
+-- ─── ProPhone CRM — Database Schema (Supabase / SQL-only subset) ─────────────
 --
--- NOTE: After running, disable RLS or add policies:
---   alter table users     disable row level security;
---   alter table clients   disable row level security;
---   alter table contacts  disable row level security;
---   alter table activities disable row level security;
+-- WHEN TO USE THIS FILE
+--   • Fresh Supabase project: run this in SQL Editor, then run seed.sql from this folder.
+--   • Local or production DB managed by the Node server: use Prisma instead
+--     (`server/prisma/schema.prisma` + `npx prisma migrate deploy`). Do NOT run this
+--     file there — it only creates 4 tables, uses different ID types than Prisma, and
+--     `drop table contacts` will fail if tables like `campaign_recipients` exist (FKs).
+--
+-- DIFF VS PRISMA MIGRATION (server/prisma/migrations/…)
+--   • IDs: here = uuid + gen_random_uuid(); Prisma = text (no DB default on ids; app/SQL supplies values).
+--   • Timestamps: here = timestamptz; Prisma = timestamp(3) without time zone.
+--   • Missing here (present in Prisma): contact_groups, domains, email_templates,
+--     interactive_sessions, campaigns, campaign_recipients, campaign_recipient_events;
+--     contacts.contact_group_id.
+--   • tags default: '{}' is fine for text[]; Prisma uses ARRAY[]::text[].
+--
+-- Steps (Supabase only):
+--   1. Dashboard → SQL Editor → New Query → paste & run this file
+--   2. Run seed.sql
+--
+-- RLS: statements at bottom disable RLS on these four tables for anon/service use.
 
 -- Drop existing (child tables first)
 drop table if exists activities;
