@@ -71,7 +71,12 @@ export async function handleUnsubscribe(req, res) {
       return res.status(404).send(unsubPage('Recipient not found.', false));
     }
 
-    // Mark recipient as unsubscribed
+    // Already unsubscribed — don't double-increment count
+    if (recipient.status === 'unsubscribed') {
+      return res.send(unsubPage('You are already unsubscribed.', true));
+    }
+
+    // Mark recipient as unsubscribed + flag the contact globally
     await Promise.all([
       prisma.campaignRecipient.update({
         where: { id: rid },
@@ -80,6 +85,10 @@ export async function handleUnsubscribe(req, res) {
       prisma.campaign.update({
         where: { id: recipient.campaignId },
         data:  { unsubscribedCount: { increment: 1 } },
+      }),
+      prisma.contact.update({
+        where: { id: recipient.contactId },
+        data:  { isUnsubscribed: true },
       }),
     ]);
 
@@ -99,13 +108,14 @@ export async function handleUnsubscribePost(req, res) {
   try {
     const recipient = await prisma.campaignRecipient.findUnique({
       where:  { id: rid },
-      select: { id: true, campaignId: true },
+      select: { id: true, campaignId: true, contactId: true },
     });
     if (!recipient) return res.status(404).json({ error: 'not found' });
 
     await Promise.all([
       prisma.campaignRecipient.update({ where: { id: rid }, data: { status: 'unsubscribed' } }),
       prisma.campaign.update({ where: { id: recipient.campaignId }, data: { unsubscribedCount: { increment: 1 } } }),
+      prisma.contact.update({ where: { id: recipient.contactId }, data: { is_unsubscribed: true } }),
     ]);
     res.json({ ok: true });
   } catch {

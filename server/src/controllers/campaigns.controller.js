@@ -229,6 +229,14 @@ export const sendCampaign = async (req, res) => {
     const suppressedIds = await repo.findSuppressedContactIds(contactIds);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
 
+    // Mark suppressed recipients so they don't stay as "pending"
+    const suppressedRecipients = allRecipients.filter(r => suppressedIds.has(r.contactId));
+    if (suppressedRecipients.length) {
+      await Promise.all(suppressedRecipients.map(r =>
+        repo.updateRecipientStatus(r.id, 'skipped'),
+      ));
+    }
+
     if (!recipients.length) return sendError(res, 'All recipients are suppressed (previously bounced or unsubscribed)', 400);
 
     // Idempotency: mark as sending before we start
@@ -244,6 +252,14 @@ export const sendCampaign = async (req, res) => {
 
     for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
       const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
+
+      // Mark contacts with no valid email as skipped
+      const noEmail = batch.filter(r => !r.contact?.email?.includes('@'));
+      if (noEmail.length) {
+        await Promise.all(noEmail.map(r =>
+          repo.updateRecipientStatus(r.id, 'skipped'),
+        ));
+      }
 
       // Build email payload — filter out contacts with no email address
       const emails = batch
@@ -281,7 +297,8 @@ export const sendCampaign = async (req, res) => {
           if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
 
           const text    = htmlToPlainText(html);
-          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+          const fromDomain = fromEmail.split('@')[1] || 'mail';
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl, fromDomain) : undefined;
 
           return {
             _recipientId: r.id,

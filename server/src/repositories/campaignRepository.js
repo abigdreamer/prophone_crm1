@@ -166,6 +166,13 @@ export async function markRecipientSent(id, messageId) {
   });
 }
 
+export async function updateRecipientStatus(id, status) {
+  return prisma.campaignRecipient.update({
+    where: { id },
+    data:  { status },
+  });
+}
+
 // ── Webhook event helpers ─────────────────────────────────────────────────────
 
 export async function findRecipientByMessageId(messageId) {
@@ -209,7 +216,10 @@ export async function applyEmailEvent(messageId, event) {
         await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
         return;
       }
-      recipientData.status   = 'opened';
+      // Only update status if it hasn't progressed past opened (e.g., already clicked)
+      if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.opened) {
+        recipientData.status = 'opened';
+      }
       recipientData.openedAt = now;
       // Open implies delivered
       if (!recipient.deliveredAt) {
@@ -386,12 +396,22 @@ export async function applyTrackingEvent(recipientId, event) {
 
 // Return set of contactIds that have ever bounced or unsubscribed
 export async function findSuppressedContactIds(contactIds) {
-  const rows = await prisma.campaignRecipient.findMany({
+  // Check campaign_recipients for bounced/unsubscribed status
+  const recipientRows = await prisma.campaignRecipient.findMany({
     where:  { contactId: { in: contactIds }, status: { in: ['bounced', 'unsubscribed'] } },
     select: { contactId: true },
     distinct: ['contactId'],
   });
-  return new Set(rows.map(r => r.contactId));
+
+  // Also check contacts table for globally unsubscribed contacts
+  const unsubRows = await prisma.contact.findMany({
+    where:  { id: { in: contactIds }, isUnsubscribed: true },
+    select: { id: true },
+  });
+
+  const set = new Set(recipientRows.map(r => r.contactId));
+  unsubRows.forEach(r => set.add(r.id));
+  return set;
 }
 
 export async function getContactsForFilter(clientId, filter) {

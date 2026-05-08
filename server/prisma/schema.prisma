@@ -97,6 +97,7 @@ model Contact {
   cancelReason   String     @default("") @map("cancel_reason")
   restoredAt     DateTime?  @map("restored_at")
   restoredBy     String     @default("") @map("restored_by")
+  isUnsubscribed Boolean    @default(false) @map("is_unsubscribed")
   createdAt      DateTime   @default(now()) @map("created_at")
   client         Client?    @relation(fields: [clientId], references: [id])
   activities     Activity[]
