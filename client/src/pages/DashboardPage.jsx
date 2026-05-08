@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
-import Card from '../components/ui/Card';
-import Avatar from '../components/ui/Avatar';
-import { useTheme } from '../context/ThemeContext';
-import USERS_DB from '../data/users';
-import { STAGE_DEF, LEAD_STAGES } from '../data/stages';
-import fmt from '../utils/format';
-import * as db from '../services/api';
-import { VIEW_MODE } from '../constants/index';
+import { useState, useEffect } from "react";
+import Card from "../components/ui/Card";
+import Avatar from "../components/ui/Avatar";
+import { useTheme } from "../context/ThemeContext";
+import USERS_DB from "../data/users";
+import { STAGE_DEF, LEAD_STAGES } from "../data/stages";
+import fmt from "../utils/format";
+import * as db from "../services/api";
+import { VIEW_MODE } from "../constants/index";
 
-import DashboardStatusCount from '../components/DashboardStatusCount';
+import DashboardStatusCount from "../components/DashboardStatusCount";
 
 export default function DashboardPage({
   pool,
@@ -29,7 +29,7 @@ export default function DashboardPage({
   });
 
   // Dynamic branding color based on the client from API
-  const col = pool === 'prospect' ? T.accent : activeClient?.color || T.accent;
+  const col = pool === "prospect" ? T.accent : activeClient?.color || T.accent;
 
   useEffect(() => {
     setIsLoading(true);
@@ -37,7 +37,7 @@ export default function DashboardPage({
     const loadData = async () => {
       try {
         // 1. Fetch Client Details from API (No longer using static CLIENTS data)
-        if (pool !== 'prospect' && clientId) {
+        if (pool !== "prospect" && clientId) {
           const allClients = await db.getClients();
           const match = allClients.find((c) => c.id === clientId);
           setActiveClient(match || null);
@@ -52,7 +52,7 @@ export default function DashboardPage({
           recentContacts: summaryData.recentContacts || [],
         });
       } catch (err) {
-        console.error('Dashboard Load Error:', err);
+        console.error("Dashboard Load Error:", err);
       } finally {
         setIsLoading(false);
       }
@@ -71,42 +71,42 @@ export default function DashboardPage({
   const navItems = [
     {
       id: VIEW_MODE.ALL,
-      label: 'All',
+      label: "All",
       dot: T.dim,
     },
     {
       id: VIEW_MODE.PROSPECTS,
-      label: 'Prospects',
+      label: "Prospects",
       dot: T.amber,
     },
     {
       id: VIEW_MODE.LEADS,
-      label: 'Leads',
+      label: "Leads",
       dot: T.blue,
     },
     {
       id: VIEW_MODE.WARM,
-      label: 'Warm',
+      label: "Warm",
       dot: T.orange,
     },
     {
       id: VIEW_MODE.HOT,
-      label: 'Hot',
+      label: "Hot",
       dot: T.purple,
     },
     {
       id: VIEW_MODE.CUSTOMER,
-      label: 'Customer',
+      label: "Customer",
       dot: T.green,
     },
     {
       id: VIEW_MODE.BACKBURNER,
-      label: 'Backburner',
+      label: "Backburner",
       dot: T.teal,
     },
     {
       id: VIEW_MODE.LOST,
-      label: 'Lost',
+      label: "Lost",
       dot: T.red,
     },
   ];
@@ -114,22 +114,22 @@ export default function DashboardPage({
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         gap: 20,
       }}
     >
       {/* ─── Filter Navigation ─── */}
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
+          display: "flex",
+          alignItems: "center",
           gap: 4,
           background: T.bg,
-          padding: '6px',
+          padding: "6px",
           borderRadius: 12,
-          border: '1px solid ' + T.border,
-          alignSelf: 'flex-start',
+          border: "1px solid " + T.border,
+          alignSelf: "flex-start",
         }}
       >
         {navItems.map((item) => {
@@ -139,24 +139,24 @@ export default function DashboardPage({
               key={item.id}
               onClick={() => setViewMode(item.id)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
+                display: "flex",
+                alignItems: "center",
                 gap: 8,
-                padding: '8px 16px',
+                padding: "8px 16px",
                 borderRadius: 8,
-                border: 'none',
-                cursor: 'pointer',
-                background: isActive ? T.surface : 'transparent',
-                transition: 'all 0.2s ease',
+                border: "none",
+                cursor: "pointer",
+                background: isActive ? T.surface : "transparent",
+                transition: "all 0.2s ease",
               }}
             >
               <div
                 style={{
                   width: 6,
                   height: 6,
-                  borderRadius: '50%',
+                  borderRadius: "50%",
                   background: item.dot,
-                  boxShadow: isActive ? `0 0 8px ${item.dot}80` : 'none',
+                  boxShadow: isActive ? `0 0 8px ${item.dot}80` : "none",
                 }}
               />
               <span
@@ -176,19 +176,19 @@ export default function DashboardPage({
       {/* Banner */}
       <div
         style={{
-          background: col + '0a',
-          border: '1px solid ' + col + '28',
+          background: col + "0a",
+          border: "1px solid " + col + "28",
           borderRadius: 12,
-          padding: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          padding: "16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 14,
           }}
         >
@@ -197,19 +197,17 @@ export default function DashboardPage({
               width: 40,
               height: 40,
               borderRadius: 10,
-              background: col + '20',
-              border: '1px solid ' + col + '40',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: col + "20",
+              border: "1px solid " + col + "40",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontSize: 16,
               fontWeight: 800,
               color: col,
             }}
           >
-            {pool === 'prospect'
-              ? 'P'
-              : (activeClient?.name || 'C').slice(0, 2).toUpperCase()}
+            {pool === "prospect" ? "P" : (activeClient?.name || "C").slice(0, 2).toUpperCase()}
           </div>
           <div>
             <div
@@ -219,10 +217,9 @@ export default function DashboardPage({
                 color: T.text,
               }}
             >
-              {pool === 'prospect'
-                ? 'Prospect Pool — GeniusAI'
-                : activeClient?.name ||
-                  (isLoading ? 'Syncing...' : 'Unknown Client')}
+              {pool === "prospect"
+                ? "Prospect Pool — GeniusAI"
+                : activeClient?.name || (isLoading ? "Syncing..." : "Unknown Client")}
             </div>
             <div
               style={{
@@ -230,13 +227,13 @@ export default function DashboardPage({
                 color: T.muted,
               }}
             >
-              {pool === 'prospect'
-                ? 'General sales pipeline'
+              {pool === "prospect"
+                ? "General sales pipeline"
                 : activeClient
-                  ? `${activeClient.domain || 'No Domain'} · ${activeClient.industry || 'No Industry'}`
+                  ? `${activeClient.domain || "No Domain"} · ${activeClient.industry || "No Industry"}`
                   : isLoading
-                    ? 'Fetching from server...'
-                    : 'No client details found'}
+                    ? "Fetching from server..."
+                    : "No client details found"}
             </div>
           </div>
         </div>
@@ -246,8 +243,8 @@ export default function DashboardPage({
 
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
           gap: 16,
         }}
       >
@@ -255,13 +252,13 @@ export default function DashboardPage({
           style={{
             padding: 20,
             background: T.surface,
-            border: '1px solid ' + T.border,
+            border: "1px solid " + T.border,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 8,
               marginBottom: 16,
             }}
@@ -270,7 +267,7 @@ export default function DashboardPage({
               style={{
                 width: 8,
                 height: 8,
-                borderRadius: '50%',
+                borderRadius: "50%",
                 background: T.blue,
               }}
             />
@@ -297,8 +294,8 @@ export default function DashboardPage({
               >
                 <div
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
+                    display: "flex",
+                    justifyContent: "space-between",
                     marginBottom: 4,
                   }}
                 >
@@ -329,8 +326,8 @@ export default function DashboardPage({
                 >
                   <div
                     style={{
-                      height: '100%',
-                      width: pct + '%',
+                      height: "100%",
+                      width: pct + "%",
                       background: sd.color,
                       borderRadius: 2,
                     }}
@@ -345,13 +342,13 @@ export default function DashboardPage({
           style={{
             padding: 20,
             background: T.surface,
-            border: '1px solid ' + T.border,
+            border: "1px solid " + T.border,
           }}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 8,
               marginBottom: 16,
             }}
@@ -360,7 +357,7 @@ export default function DashboardPage({
               style={{
                 width: 8,
                 height: 8,
-                borderRadius: '50%',
+                borderRadius: "50%",
                 background: T.green,
               }}
             />
@@ -388,32 +385,32 @@ export default function DashboardPage({
               <div
                 key={c.id}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
+                  display: "flex",
+                  alignItems: "center",
                   gap: 10,
                   marginBottom: 8,
-                  padding: '8px',
+                  padding: "8px",
                   background: T.card,
                   borderRadius: 8,
-                  border: '1px solid ' + T.border,
+                  border: "1px solid " + T.border,
                 }}
               >
                 <div
                   style={{
                     width: 28,
                     height: 28,
-                    borderRadius: '50%',
-                    background: T.green + '20',
+                    borderRadius: "50%",
+                    background: T.green + "20",
                     color: T.green,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     fontSize: 10,
                     fontWeight: 700,
                   }}
                 >
-                  {c.firstName?.[0] || '?'}
-                  {c.lastName?.[0] || ''}
+                  {c.firstName?.[0] || "?"}
+                  {c.lastName?.[0] || ""}
                 </div>
                 <div
                   style={{
@@ -434,9 +431,9 @@ export default function DashboardPage({
                     style={{
                       fontSize: 10,
                       color: T.muted,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {c.company || c.lifecycleStage}
@@ -461,13 +458,13 @@ export default function DashboardPage({
         style={{
           padding: 20,
           background: T.surface,
-          border: '1px solid ' + T.border,
+          border: "1px solid " + T.border,
         }}
       >
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 10,
             marginBottom: 20,
           }}
@@ -476,7 +473,7 @@ export default function DashboardPage({
             style={{
               width: 8,
               height: 8,
-              borderRadius: '50%',
+              borderRadius: "50%",
               background: T.purple,
               boxShadow: `0 0 10px ${T.purple}80`,
             }}
@@ -494,25 +491,23 @@ export default function DashboardPage({
         </div>
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
             gap: 12,
           }}
         >
           {USERS_DB.map((u) => {
-            const myC = contacts.filter(
-              (c) => c.addedBy === u.name || c.ownedBy === u.name,
-            );
+            const myC = contacts.filter((c) => c.addedBy === u.name || c.ownedBy === u.name);
             return (
               <div
                 key={u.id}
                 style={{
                   background: T.card,
-                  border: '1px solid ' + T.border,
+                  border: "1px solid " + T.border,
                   borderRadius: 10,
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
+                  padding: "12px 16px",
+                  display: "flex",
+                  alignItems: "center",
                   gap: 12,
                 }}
               >
