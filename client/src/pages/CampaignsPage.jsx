@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
-  Loader2, Check, Search, Trash2, MoreVertical, Megaphone, ChevronRight,
+  Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import {
-  getCampaigns, createCampaign, deleteCampaign,
+  getCampaigns, createCampaign, cancelCampaign, restoreCampaign,
   getPublishedTemplates, getActivePool, getClients,
 } from "../services/api";
 
@@ -31,10 +31,11 @@ function thisWeekCount(list) {
 function StatusBadge({ status }) {
   const T = useTheme();
   const map = {
-    draft:   { label: "Draft",   color: T.muted  },
-    sending: { label: "Sending", color: T.amber  },
-    sent:    { label: "Sent",    color: T.green  },
-    paused:  { label: "Paused",  color: T.orange },
+    draft:   { label: "Draft",    color: T.muted  },
+    sending: { label: "Sending",  color: T.amber  },
+    sent:    { label: "Sent",     color: T.green  },
+    paused:  { label: "Paused",   color: T.orange },
+    canceled:{ label: "Canceled", color: T.red    },
   };
   const { label, color } = map[status] ?? { label: status, color: T.muted };
   return (
@@ -70,7 +71,7 @@ function CampaignThumb({ campaign }) {
 
 const GRID_COLS = "1fr 1fr 140px 140px 44px";
 
-function CampaignRow({ campaign, isLast, onOpen, onDelete }) {
+function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -133,7 +134,9 @@ function CampaignRow({ campaign, isLast, onOpen, onDelete }) {
       </div>
 
       {/* STATUS col */}
-      <div><StatusBadge status={campaign.status} /></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <StatusBadge status={campaign.isCanceled ? "canceled" : campaign.status} />
+      </div>
 
       {/* CREATED col */}
       <div style={{ fontSize: 13, color: T.muted }}>{createdLabel}</div>
@@ -156,21 +159,27 @@ function CampaignRow({ campaign, isLast, onOpen, onDelete }) {
           <div style={{
             position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200,
             background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-            minWidth: 130, boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+            minWidth: 150, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0",
           }}>
-            <button
-              onClick={() => { setMenuOpen(false); onDelete(campaign); }}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 14px", background: "none", border: "none",
-                color: T.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                borderRadius: 8,
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = T.red + "12"}
-              onMouseLeave={e => e.currentTarget.style.background = "none"}
-            >
-              <Trash2 size={12} /> Delete
-            </button>
+            {campaign.isCanceled ? (
+              <button
+                onClick={() => { setMenuOpen(false); onRestore(campaign); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={e => e.currentTarget.style.background = T.green + "12"}
+                onMouseLeave={e => e.currentTarget.style.background = "none"}
+              >
+                <RotateCcw size={12} /> Restore
+              </button>
+            ) : (
+              <button
+                onClick={() => { setMenuOpen(false); onCancel(campaign); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                onMouseEnter={e => e.currentTarget.style.background = T.red + "12"}
+                onMouseLeave={e => e.currentTarget.style.background = "none"}
+              >
+                <Ban size={12} /> Cancel
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -500,21 +509,73 @@ function NewCampaignModal({ onClose, onCreated }) {
   );
 }
 
-// ── Delete Modal ──────────────────────────────────────────────────────────────
+// ── Cancel / Restore Modals ────────────────────────────────────────────────────
 
-function DeleteModal({ campaign, onClose, onConfirm, loading }) {
+function CancelCampaignModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  const [reason, setReason] = useState("");
+  const canConfirm = reason.trim().length > 0 && !loading;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: 28, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.red + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Ban size={16} color={T.red} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Cancel campaign?</div>
+        </div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 16, lineHeight: 1.6 }}>
+          "<strong style={{ color: T.text }}>{campaign.name}</strong>" will be marked as canceled. You can restore it at any time.
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+            CANCELLATION REASON <span style={{ color: T.red }}>*</span>
+          </div>
+          <textarea
+            autoFocus
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Explain why this campaign is being canceled…"
+            rows={3}
+            style={{
+              width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 7,
+              background: T.surface, border: "1px solid " + (reason.trim() ? T.border : T.red + "60"),
+              color: T.text, fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical",
+            }}
+            onFocus={e => e.target.style.borderColor = T.accent}
+            onBlur={e => e.target.style.borderColor = reason.trim() ? T.border : T.red + "60"}
+          />
+          {!reason.trim() && <div style={{ fontSize: 10, color: T.red, marginTop: 4 }}>Required before canceling.</div>}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Keep</button>
+          <button onClick={() => onConfirm(reason.trim())} disabled={!canConfirm} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: canConfirm ? T.red : T.border, color: canConfirm ? "#fff" : T.muted, fontSize: 13, fontWeight: 600, cursor: canConfirm ? "pointer" : "default", fontFamily: "inherit" }}>
+            {loading ? "Canceling…" : <><Ban size={12} /> Cancel Campaign</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RestoreCampaignModal({ campaign, onClose, onConfirm, loading }) {
   const T = useTheme();
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: 28, width: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 8 }}>Delete campaign?</div>
-        <div style={{ fontSize: 13, color: T.muted, marginBottom: 24 }}>
-          "<strong style={{ color: T.text }}>{campaign.name}</strong>" and all its recipients will be permanently deleted.
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.green + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <RotateCcw size={16} color={T.green} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>Restore campaign?</div>
+        </div>
+        <div style={{ fontSize: 13, color: T.muted, marginBottom: 24, lineHeight: 1.6 }}>
+          "<strong style={{ color: T.text }}>{campaign.name}</strong>" will be restored to its previous status.
         </div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-          <button onClick={onConfirm} disabled={loading} style={{ padding: "8px 18px", borderRadius: 7, border: "none", background: T.red, color: "#fff", fontSize: 13, fontWeight: 600, cursor: loading ? "default" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
-            {loading ? "Deleting…" : "Delete"}
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Close</button>
+          <button onClick={onConfirm} disabled={loading} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: T.green, color: "#fff", fontSize: 13, fontWeight: 600, cursor: loading ? "default" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Restoring…" : <><RotateCcw size={12} /> Restore</>}
           </button>
         </div>
       </div>
@@ -528,12 +589,13 @@ export default function CampaignsPage() {
   const T = useTheme();
   const navigate = useNavigate();
   const { clientId } = usePool();
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [showNew,   setShowNew]   = useState(false);
-  const [toDelete,  setToDelete]  = useState(null);
-  const [deleting,  setDeleting]  = useState(false);
-  const [search,    setSearch]    = useState("");
+  const [campaigns,  setCampaigns]  = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [showNew,    setShowNew]    = useState(false);
+  const [toCancel,   setToCancel]   = useState(null);
+  const [toRestore,  setToRestore]  = useState(null);
+  const [acting,     setActing]     = useState(false);
+  const [search,     setSearch]     = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const load = useCallback(async () => {
@@ -552,19 +614,31 @@ export default function CampaignsPage() {
     navigate("/campaigns/" + campaign.id);
   }, [navigate]);
 
-  const handleDelete = useCallback(async () => {
-    if (!toDelete) return;
-    setDeleting(true);
+  const handleCancel = useCallback(async (reason) => {
+    if (!toCancel) return;
+    setActing(true);
     try {
-      await deleteCampaign(toDelete.id);
-      setCampaigns(prev => prev.filter(c => c.id !== toDelete.id));
-      setToDelete(null);
+      const updated = await cancelCampaign(toCancel.id, reason);
+      setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+      setToCancel(null);
     } catch (err) { console.error(err); }
-    finally { setDeleting(false); }
-  }, [toDelete]);
+    finally { setActing(false); }
+  }, [toCancel]);
+
+  const handleRestore = useCallback(async () => {
+    if (!toRestore) return;
+    setActing(true);
+    try {
+      const updated = await restoreCampaign(toRestore.id);
+      setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+      setToRestore(null);
+    } catch (err) { console.error(err); }
+    finally { setActing(false); }
+  }, [toRestore]);
 
   const filtered = campaigns.filter(c => {
-    const matchStatus = statusFilter === "all" || c.status === statusFilter;
+    const effectiveStatus = c.isCanceled ? "canceled" : c.status;
+    const matchStatus = statusFilter === "all" || effectiveStatus === statusFilter;
     const q = search.toLowerCase();
     const matchSearch = !q
       || c.name.toLowerCase().includes(q)
@@ -574,10 +648,11 @@ export default function CampaignsPage() {
   });
 
   const total    = campaigns.length;
-  const draft    = campaigns.filter(c => c.status === "draft").length;
-  const active   = campaigns.filter(c => c.status === "sending").length;
-  const sent     = campaigns.filter(c => c.status === "sent").length;
-  const paused   = campaigns.filter(c => c.status === "paused").length;
+  const draft    = campaigns.filter(c => !c.isCanceled && c.status === "draft").length;
+  const active   = campaigns.filter(c => !c.isCanceled && c.status === "sending").length;
+  const sent     = campaigns.filter(c => !c.isCanceled && c.status === "sent").length;
+  const paused   = campaigns.filter(c => !c.isCanceled && c.status === "paused").length;
+  const canceled = campaigns.filter(c => c.isCanceled).length;
   const newThisWeek = thisWeekCount(campaigns);
 
   return (
@@ -601,13 +676,14 @@ export default function CampaignsPage() {
       </div>
 
       {/* ── Stats cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time",         subColor: T.dim,    dot: null        },
-          { label: "Draft",   value: draft,  sub: draft === 1 ? "not sent yet" : "not sent yet",                      subColor: T.muted,  dot: T.muted     },
-          { label: "Sending", value: active, sub: active === 1 ? "in progress" : active === 0 ? "none active" : "in progress", subColor: T.amber, dot: T.amber },
-          { label: "Sent",    value: sent,   sub: "successfully delivered",                                             subColor: T.green,  dot: T.green     },
-          { label: "Paused",  value: paused, sub: paused === 1 ? "on hold" : paused === 0 ? "none paused" : "on hold", subColor: T.orange, dot: T.orange    },
+          { label: "Total",    value: total,    sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time",  subColor: T.dim,    dot: null     },
+          { label: "Draft",    value: draft,    sub: "not sent yet",                                              subColor: T.muted,  dot: T.muted  },
+          { label: "Sending",  value: active,   sub: active === 0 ? "none active" : "in progress",               subColor: T.amber,  dot: T.amber  },
+          { label: "Sent",     value: sent,     sub: "successfully delivered",                                    subColor: T.green,  dot: T.green  },
+          { label: "Paused",   value: paused,   sub: paused === 0 ? "none paused" : "on hold",                   subColor: T.orange, dot: T.orange },
+          { label: "Canceled", value: canceled, sub: "restorable",                                               subColor: T.red,    dot: T.red    },
         ].map(({ label, value, sub, subColor, dot }) => (
           <div key={label} style={{ padding: "18px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -643,6 +719,7 @@ export default function CampaignsPage() {
           <option value="sending">Sending</option>
           <option value="sent">Sent</option>
           <option value="paused">Paused</option>
+          <option value="canceled">Canceled</option>
         </select>
       </div>
 
@@ -684,7 +761,8 @@ export default function CampaignsPage() {
                 campaign={c}
                 isLast={idx === filtered.length - 1}
                 onOpen={() => navigate("/campaigns/" + c.id)}
-                onDelete={setToDelete}
+                onCancel={setToCancel}
+                onRestore={setToRestore}
               />
             ))
           )}
@@ -692,7 +770,8 @@ export default function CampaignsPage() {
       )}
 
       {showNew && <NewCampaignModal onClose={() => setShowNew(false)} onCreated={handleCreated} />}
-      {toDelete && <DeleteModal campaign={toDelete} onClose={() => setToDelete(null)} onConfirm={handleDelete} loading={deleting} />}
+      {toCancel  && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
+      {toRestore && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
     </div>
   );
 }

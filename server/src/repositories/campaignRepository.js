@@ -32,16 +32,21 @@ export async function removeCampaign(id) {
   return prisma.campaign.delete({ where: { id } });
 }
 
-// Timestamp-based filters: each tab shows everyone who reached that stage
-const TIMESTAMP_FILTERS = {
-  sent:         { sentAt:      { not: null } },
-  delivered:    { deliveredAt: { not: null } },
-  opened:       { openedAt:   { not: null } },
-  clicked:      { clickedAt:  { not: null } },
-  bounced:      { bouncedAt:  { not: null } },
-  unsubscribed: { status: 'unsubscribed' },
-  pending:      { status: 'pending' },
-};
+export async function cancelCampaign(id, cancelReason = '') {
+  return prisma.campaign.update({
+    where: { id },
+    data:  { isCanceled: true, canceledAt: new Date(), cancelReason, restoredAt: null },
+    include: { template: { select: { id: true, name: true, subject: true } } },
+  });
+}
+
+export async function restoreCampaign(id) {
+  return prisma.campaign.update({
+    where: { id },
+    data:  { isCanceled: false, restoredAt: new Date() },
+    include: { template: { select: { id: true, name: true, subject: true } } },
+  });
+}
 
 export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };

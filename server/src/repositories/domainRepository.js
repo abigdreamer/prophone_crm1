@@ -61,3 +61,17 @@ export async function findByResendId(resendDomainId) {
     where: { resendDomainId }
   });
 }
+
+export async function cancelDomain(id, cancelReason = '') {
+  return prisma.domain.update({
+    where: { id },
+    data:  { isCanceled: true, canceledAt: new Date(), cancelReason, restoredAt: null },
+  });
+}
+
+export async function restoreDomain(id) {
+  return prisma.domain.update({
+    where: { id },
+    data:  { isCanceled: false, restoredAt: new Date() },
+  });
+}

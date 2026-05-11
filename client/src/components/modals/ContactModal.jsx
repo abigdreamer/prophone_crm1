@@ -9,6 +9,17 @@ import USERS_DB from "../../data/users";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
 
+const SOCIAL_FIELDS = [
+  { key: "facebook",  label: "Facebook",  placeholder: "https://facebook.com/yourpage" },
+  { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/yourhandle" },
+  { key: "linkedin",  label: "LinkedIn",  placeholder: "https://linkedin.com/in/profile" },
+  { key: "twitter",   label: "Twitter / X", placeholder: "https://twitter.com/handle" },
+  { key: "youtube",   label: "YouTube",   placeholder: "https://youtube.com/@channel" },
+  { key: "yelp",      label: "Yelp",      placeholder: "https://yelp.com/biz/name" },
+  { key: "pinterest", label: "Pinterest", placeholder: "https://pinterest.com/profile" },
+  { key: "tiktok",    label: "TikTok",    placeholder: "https://tiktok.com/@handle" },
+];
+
 // ─── Add / Edit Contact modal ─────────────────────────────────────────────────
 export default function ContactModal({ contact, onSave, onClose, pool, clientId, currentUser }) {
   const T = useTheme();
@@ -19,13 +30,19 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", address: "", city: "",
-    trucks: 1, lifecycleStage: "new", source: "", campaign: "",
+    description: "",
+    socialLinks: {},
+    trucks: 0, lifecycleStage: "new", source: "", campaign: "",
     tags: [], notes: "", contractValue: "", accountSize: "1-5",
     ownedBy: currentUser?.name || "",
     pool, clientId,
   });
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const setSocial = (k, v) => setForm(p => ({
+    ...p,
+    socialLinks: { ...p.socialLinks, [k]: v },
+  }));
 
   function buildPayload() {
     return {
@@ -47,25 +64,23 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         ts: new Date().toISOString(),
         by: currentUser?.name || "Unknown",
       }],
-      trucks:        parseInt(form.trucks)        || 1,
+      trucks:        parseInt(form.trucks)        || 0,
       contractValue: parseInt(form.contractValue) || 0,
     };
   }
 
-  // Used by all dismiss paths in edit mode — saves without blocking validation
- async function doSave() {
-  setSaving(true);
-  try {
-    await onSave(buildPayload());
-  } catch (err) {
-    toast.error(err.message || "Failed to save contact");
-    throw err;
-  } finally {
-    setSaving(false);
+  async function doSave() {
+    setSaving(true);
+    try {
+      await onSave(buildPayload());
+    } catch (err) {
+      toast.error(err.message || "Failed to save contact");
+      throw err;
+    } finally {
+      setSaving(false);
+    }
   }
-}
 
-  // Used by the explicit Save button — validates required fields first
   async function handleSave() {
     if (!form.firstName || !form.email) {
       toast.warning("First name and email are required.");
@@ -74,11 +89,11 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
     await doSave();
   }
 
-  // In edit mode every dismiss path saves; in add mode it just closes
   const handleClose = onClose;
 
   return (
-    <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={handleClose} width={600}>
+    <Modal title={isEdit ? "Edit Contact" : "Add Contact"} onClose={handleClose} width={640}>
+      {/* ── Basic Info ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Input label="First Name *" value={form.firstName}     onChange={v => set("firstName",     v)} placeholder="Mike" />
         <Input label="Last Name"    value={form.lastName}      onChange={v => set("lastName",      v)} placeholder="Johnson" />
@@ -88,10 +103,9 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         <Input label="Job Title"    value={form.title}         onChange={v => set("title",         v)} placeholder="Owner" />
         <div style={{ gridColumn: "1 / -1" }}>
           <Input label="Address" value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, Dallas, TX 75201" />
-          <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>City is auto-extracted from address if left blank.</div>
         </div>
-        <Input label="City"         value={form.city}          onChange={v => set("city",          v)} placeholder="Dallas" />
-        <Input label="# of Trucks"  value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="4" type="number" />
+        <Input label="Website"            value={form.website}       onChange={v => set("website",       v)} placeholder="https://towpro.com" />
+        <Input label="# of Trucks"        value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="4" type="number" />
         <Input label="Contract Value ($)" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="5000" type="number" />
         <Sel
           label="Stage"
@@ -107,6 +121,50 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         />
       </div>
 
+      {/* ── Description ── */}
+      <div style={{ marginTop: 14 }}>
+        <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Description
+        </label>
+        <textarea
+          value={form.description || ""}
+          onChange={e => set("description", e.target.value)}
+          placeholder="Brief description of this contact or company…"
+          style={{
+            width: "100%", marginTop: 4,
+            background: T.surface, border: "1px solid " + T.border,
+            borderRadius: 6, padding: "8px 11px",
+            color: T.text, fontSize: 12,
+            outline: "none", fontFamily: "inherit",
+            minHeight: 54, resize: "vertical", boxSizing: "border-box",
+          }}
+          onFocus={e => (e.target.style.borderColor = T.accent)}
+          onBlur={e  => (e.target.style.borderColor = T.border)}
+        />
+      </div>
+
+      {/* ── Social Media ── */}
+      <div style={{ marginTop: 18 }}>
+        <div style={{
+          fontSize: 10, color: T.muted, fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10,
+        }}>
+          Social Media Links
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {SOCIAL_FIELDS.map(({ key, label, placeholder }) => (
+            <Input
+              key={key}
+              label={label}
+              value={form.socialLinks?.[key] || ""}
+              onChange={v => setSocial(key, v)}
+              placeholder={placeholder}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Notes ── */}
       <div style={{ marginTop: 14 }}>
         <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Notes

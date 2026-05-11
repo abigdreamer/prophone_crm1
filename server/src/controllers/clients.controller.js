@@ -1,15 +1,11 @@
 import prisma from '../lib/prisma.js';
-import { VALID_CLIENT_PLANS, CLIENT_ACTION, TRACKED_CLIENT_FIELDS } from '../constants/index.js';
+import { VALID_CLIENT_PLANS, ACTION, ENTITY_TYPE, TRACKED_CLIENT_FIELDS } from '../constants/index.js';
+import { logActivity } from '../lib/activityLogger.js';
 
 async function listClients(req, res) {
   const { all } = req.query;
-  
   const where = all === 'true' ? {} : { isCanceled: false };
-
-  const clients = await prisma.client.findMany({
-    where,
-    orderBy: { name: 'asc' },
-  });
+  const clients = await prisma.client.findMany({ where, orderBy: { name: 'asc' } });
   res.json(clients);
 }
 
@@ -43,8 +39,7 @@ async function createClient(req, res) {
 
   const client = await prisma.client.create({
     data: {
-      id,
-      name,
+      id, name,
       domain:   domain   || '',
       color:    color    || '#6366f1',
       industry: industry || '',
@@ -54,9 +49,7 @@ async function createClient(req, res) {
   });
 
   const by = req.user?.name || req.user?.email || 'system';
-  prisma.clientActivity.create({
-    data: { entityType: 'client', entityId: client.id, action: CLIENT_ACTION.CREATE, performedBy: by, metadata: { name: client.name, plan: client.plan }, ts: new Date() },
-  }).catch(() => {});
+  logActivity(ENTITY_TYPE.CLIENT, client.id, ACTION.CREATE, `Client created: ${client.name}`, by);
 
   res.status(201).json(client);
 }
@@ -81,7 +74,6 @@ async function updateClient(req, res) {
     },
   });
 
-  // Diff and log changes
   const changes = {};
   for (const field of TRACKED_CLIENT_FIELDS) {
     if (body[field] === undefined) continue;
@@ -91,9 +83,7 @@ async function updateClient(req, res) {
   }
   if (Object.keys(changes).length > 0) {
     const by = req.user?.name || req.user?.email || 'system';
-    prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.UPDATE, performedBy: by, metadata: { changes }, ts: new Date() },
-    }).catch(() => {});
+    logActivity(ENTITY_TYPE.CLIENT, id, ACTION.UPDATE, `Client updated`, by);
   }
 
   res.json(client);
@@ -113,8 +103,8 @@ async function cancelClient(req, res) {
       where: { id },
       data: { isCanceled: true, canceledAt: new Date(), canceledBy: by, cancelReason },
     }),
-    prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.CANCEL, performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
+    prisma.activity.create({
+      data: { entityType: ENTITY_TYPE.CLIENT, entityId: id, type: ACTION.CANCEL, note: cancelReason || 'Client canceled', by },
     }),
   ]);
 
@@ -134,8 +124,8 @@ async function restoreClient(req, res) {
       where: { id },
       data: { isCanceled: false, restoredAt: new Date(), restoredBy: by },
     }),
-    prisma.clientActivity.create({
-      data: { entityType: 'client', entityId: id, action: CLIENT_ACTION.RESTORE, performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
+    prisma.activity.create({
+      data: { entityType: ENTITY_TYPE.CLIENT, entityId: id, type: ACTION.RESTORE, note: 'Client restored', by },
     }),
   ]);
 
@@ -143,8 +133,8 @@ async function restoreClient(req, res) {
 }
 
 async function getClientActivities(req, res) {
-  const activities = await prisma.clientActivity.findMany({
-    where: { entityId: req.params.id, entityType: 'client' },
+  const activities = await prisma.activity.findMany({
+    where: { entityType: ENTITY_TYPE.CLIENT, entityId: req.params.id },
     orderBy: { ts: 'desc' },
   });
   res.json(activities);

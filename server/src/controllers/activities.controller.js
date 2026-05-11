@@ -13,7 +13,8 @@ async function addActivity(req, res) {
 
   const activity = await prisma.activity.create({
     data: {
-      contactId,
+      entityType: 'contact',
+      entityId:   contactId,
       type,
       note: note || '',
       by:   by   || '',

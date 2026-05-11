@@ -81,13 +81,28 @@ export const VALID_ACTIVITY_TYPES = [
   ACTIVITY_TYPE.MEETING_SCHEDULED, ACTIVITY_TYPE.MEETING_HELD,
 ];
 
-// ── Client Activity Actions ───────────────────────────────────────────────────
-export const CLIENT_ACTION = Object.freeze({
+// ── Entity Types (for Activity.entityType) ────────────────────────────────────
+export const ENTITY_TYPE = Object.freeze({
+  CONTACT:  'contact',
+  CLIENT:   'client',
+  CAMPAIGN: 'campaign',
+  TEMPLATE: 'template',
+  DOMAIN:   'domain',
+});
+
+// ── Activity Actions (shared across all entity types) ─────────────────────────
+export const ACTION = Object.freeze({
   CREATE:  'CREATE',
   UPDATE:  'UPDATE',
   CANCEL:  'CANCEL',
   RESTORE: 'RESTORE',
+  SEND:    'SEND',
+  RESEND:  'RESEND',
+  VERIFY:  'VERIFY',
 });
+
+// ── Client Activity Actions (legacy alias) ────────────────────────────────────
+export const CLIENT_ACTION = ACTION;
 
 // ── Client Plans ──────────────────────────────────────────────────────────────
 export const VALID_CLIENT_PLANS = Object.freeze(['Starter', 'Pro', 'Enterprise']);
