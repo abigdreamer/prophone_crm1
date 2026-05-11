@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"; // Added useEffect
+import { useState, useRef, useEffect } from "react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import ContactModal from "./modals/ContactModal";
@@ -8,10 +8,19 @@ import { useClientById } from "../context/ClientsContext";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
+import { SkeletonContactCard } from "./ui/Loader";
+
+function SidebarSkeleton() {
+  return (
+    <div>
+      {Array.from({ length: 9 }).map((_, i) => <SkeletonContactCard key={i} />)}
+    </div>
+  );
+}
 
 export default function Sidebar({
   pool, clientId, viewMode, selected, onSelect,
-  search, setSearch, searchRef, contacts, setContacts, currentUser,
+  search, setSearch, searchRef, contacts, setContacts, currentUser, loading,
 }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
@@ -28,13 +37,24 @@ export default function Sidebar({
   // --- NEW: Auto-focus logic on mount ---
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchRef?.current) {
-        searchRef.current.focus();
-      }
-    }, 150); // Small delay to ensure route transition is smooth
+      if (searchRef?.current) searchRef.current.focus();
+    }, 150);
     return () => clearTimeout(timer);
   }, [searchRef]);
-  // ---------------------------------------
+
+  // Auto-select first visible result when search changes
+  useEffect(() => {
+    if (!search.trim()) return;
+    // Use a short delay so the filtered list is computed first
+    const t = setTimeout(() => {
+      const first = filtered[0];
+      if (first && (!selected || selected.id !== first.id)) {
+        onSelect(first);
+      }
+    }, 80);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const modeFiltered = contacts.filter(c => {
     if (viewMode === "leads") return LEAD_STAGES.includes(c.lifecycleStage);
@@ -61,40 +81,24 @@ export default function Sidebar({
       );
     })
     .sort((a, b) => {
-      if (sortF === "name") return a.firstName.localeCompare(b.firstName);
-      if (sortF === "score") return b.leadScore - a.leadScore;
+      if (sortF === "name")      return (a.firstName + " " + a.lastName).localeCompare(b.firstName + " " + b.lastName);
+      if (sortF === "firstName") return a.firstName.localeCompare(b.firstName);
+      if (sortF === "lastName")  return (a.lastName || "").localeCompare(b.lastName || "");
+      if (sortF === "score")     return b.leadScore - a.leadScore;
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
-  function handleSearchKeyDown(e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (selected) setEditContact(selected);
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
-    e.preventDefault();
+  function navigateDir(dir) {
     const visible = filtered.slice(0, 150);
     if (visible.length === 0) return;
     const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
 
     let nextIdx;
-    if (e.key === "ArrowDown") {
+    if (dir === "down") {
       nextIdx = currentIdx === -1 ? 0 : Math.min(currentIdx + 1, visible.length - 1);
-    } else if (e.key === "ArrowUp") {
+    } else {
       if (currentIdx <= 0) return;
       nextIdx = currentIdx - 1;
-    } else {
-      const container = listRef.current;
-      const firstRow = container?.querySelector("[data-contact-id]");
-      const pageSize = (container && firstRow)
-        ? Math.max(1, Math.floor(container.clientHeight / firstRow.offsetHeight))
-        : 10;
-      if (e.key === "PageDown") {
-        nextIdx = currentIdx === -1 ? pageSize - 1 : Math.min(currentIdx + pageSize, visible.length - 1);
-      } else {
-        nextIdx = currentIdx === -1 ? 0 : Math.max(currentIdx - pageSize, 0);
-      }
     }
 
     const next = visible[nextIdx];
@@ -102,8 +106,45 @@ export default function Sidebar({
     requestAnimationFrame(() => {
       const el = listRef.current?.querySelector(`[data-contact-id="${next.id}"]`);
       el?.scrollIntoView({ block: "nearest" });
+      listRef.current?.focus();
     });
   }
+
+  function navigate(e) {
+    const NAV_KEYS = ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Enter"];
+    if (!NAV_KEYS.includes(e.key)) return;
+    e.preventDefault();
+
+    if (e.key === "Enter") {
+      if (selected) setEditContact(selected);
+      return;
+    }
+
+    if (e.key === "ArrowDown") { navigateDir("down"); return; }
+    if (e.key === "ArrowUp")   { navigateDir("up");   return; }
+
+    const visible = filtered.slice(0, 150);
+    if (visible.length === 0) return;
+    const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
+    const container = listRef.current;
+    const firstRow = container?.querySelector("[data-contact-id]");
+    const pageSize = (container && firstRow)
+      ? Math.max(1, Math.floor(container.clientHeight / firstRow.offsetHeight))
+      : 10;
+    const nextIdx = e.key === "PageDown"
+      ? (currentIdx === -1 ? pageSize - 1 : Math.min(currentIdx + pageSize, visible.length - 1))
+      : (currentIdx === -1 ? 0 : Math.max(currentIdx - pageSize, 0));
+    const next = visible[nextIdx];
+    onSelect(next);
+    requestAnimationFrame(() => {
+      const el = listRef.current?.querySelector(`[data-contact-id="${next.id}"]`);
+      el?.scrollIntoView({ block: "nearest" });
+      listRef.current?.focus();
+    });
+  }
+
+  function handleSearchKeyDown(e) { navigate(e); }
+  function handleListKeyDown(e)   { navigate(e); }
 
   async function handleAdd(nc) {
     try {
@@ -155,6 +196,33 @@ export default function Sidebar({
             {pool === "prospect" ? "PROSPECT POOL" : (client?.name?.toUpperCase() || "CLIENT")}
           </span>
           <span style={{ fontSize: 9, color: T.muted }}>{filtered.length} visible</span>
+        </div>
+
+        {/* Prev / Next navigation arrows */}
+        <div style={{ display: "flex", gap: 2, marginRight: 4 }}>
+          {(["up", "down"]).map(dir => {
+            const visible = filtered.slice(0, 150);
+            const idx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
+            const disabled = dir === "up" ? idx <= 0 : (visible.length === 0 || idx === visible.length - 1);
+            return (
+              <button
+                key={dir}
+                onClick={() => navigateDir(dir)}
+                disabled={disabled}
+                title={dir === "up" ? "Previous lead (↑)" : "Next lead (↓)"}
+                style={{
+                  background: disabled ? "transparent" : col + "18",
+                  border: "1px solid " + (disabled ? T.border : col + "55"),
+                  borderRadius: 5, cursor: disabled ? "default" : "pointer",
+                  color: disabled ? T.muted : col,
+                  fontSize: 11, fontWeight: 700, padding: "2px 6px",
+                  lineHeight: 1, transition: "all 0.15s",
+                }}
+              >
+                {dir === "up" ? "▲" : "▼"}
+              </button>
+            );
+          })}
         </div>
         <button
           onClick={() => setAddModal(true)}
@@ -209,8 +277,10 @@ export default function Sidebar({
             }}
           >
             <option value="recent">Recent</option>
-            <option value="name">Name</option>
-            <option value="score">Score</option>
+            <option value="score">Score (High → Low)</option>
+            <option value="firstName">First Name (A–Z)</option>
+            <option value="lastName">Last Name (A–Z)</option>
+            <option value="name">Name (A–Z)</option>
           </select>
 
           <StageFilterBtn T={T} label="All" active={stageF === "all"} color={col} onClick={() => setStageF("all")} />
@@ -221,8 +291,15 @@ export default function Sidebar({
       </div>
 
       {/* List */}
-      <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
-        {filtered.length === 0 ? (
+      <div
+        ref={listRef}
+        tabIndex={-1}
+        onKeyDown={handleListKeyDown}
+        style={{ flex: 1, overflowY: "auto", outline: "none" }}
+      >
+        {loading ? (
+          <SidebarSkeleton />
+        ) : filtered.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 12 }}>No results found</div>
         ) : (
           filtered.slice(0, 150).map(c => {
@@ -230,7 +307,8 @@ export default function Sidebar({
             const isSel = selected?.id === c.id;
             return (
               <div
-                key={c.id} data-contact-id={c.id} onClick={() => onSelect(c)}
+                key={c.id} data-contact-id={c.id}
+                onClick={() => { onSelect(c); requestAnimationFrame(() => listRef.current?.focus()); }}
                 style={{
                   padding: "12px 14px", borderBottom: "1px solid " + T.border, cursor: "pointer",
                   background: isSel ? col + "14" : "transparent",

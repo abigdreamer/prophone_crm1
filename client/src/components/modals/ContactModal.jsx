@@ -130,6 +130,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
           value={form.description || ""}
           onChange={e => set("description", e.target.value)}
           placeholder="Brief description of this contact or company…"
+          className="crm-input"
           style={{
             width: "100%", marginTop: 4,
             background: T.surface, border: "1px solid " + T.border,
@@ -172,6 +173,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         <textarea
           value={form.notes}
           onChange={e => set("notes", e.target.value)}
+          className="crm-input"
           style={{
             width: "100%", marginTop: 4,
             background: T.surface, border: "1px solid " + T.border,

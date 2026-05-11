@@ -15,7 +15,7 @@ export default function Modal({ title, onClose, children, width = 520, noHeader 
       style={{
         position: "fixed", inset: 0,
         background: "rgba(0,0,0,0.65)",
-        zIndex: 1000,
+        zIndex: 9000,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 20,
       }}

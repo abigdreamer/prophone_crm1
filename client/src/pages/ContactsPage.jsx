@@ -7,6 +7,7 @@ import ScoreBar from "../components/ui/ScoreBar";
 import Avatar from "../components/ui/Avatar";
 import Hi from "../components/ui/Hi";
 import Btn from "../components/ui/Btn";
+import { SkeletonRow } from "../components/ui/Loader";
 import ContactModal from "../components/modals/ContactModal";
 import ImportModal from "../components/modals/ImportModal";
 import { RestoreModal } from "../components/modals/RestoreModal";
@@ -311,11 +312,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
             </thead>
             <tbody>
               {localLoading ? (
-                <tr>
-                  <td colSpan={9} style={{ padding: 28, textAlign: "center", color: T.muted, fontSize: 12 }}>
-                    Loading…
-                  </td>
-                </tr>
+                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={showingCanceled ? 8 : 10} />)
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={{ padding: 24, textAlign: "center", color: T.muted }}>

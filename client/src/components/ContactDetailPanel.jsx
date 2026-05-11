@@ -11,6 +11,9 @@ import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 import { useAppToast } from "../context/ToastContext";
+import { SkeletonActivityRow } from "./ui/Loader";
+
+const DESC_LIMIT = 260;
 
 const ACTION_CFG = {
   CREATE:  { label: "Created",  color: "#22c55e", icon: "✦" },
@@ -44,15 +47,22 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   const T = useTheme();
   const [modal,          setModal]          = useState(null);
   const [auditLog,       setAuditLog]       = useState([]);
+  const [auditLoading,   setAuditLoading]   = useState(false);
   const [auditOpen,      setAuditOpen]      = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [fieldVis,       setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
+  const [descExpanded,   setDescExpanded]   = useState(false);
   const toast = useAppToast();
 
   useEffect(() => {
     if (!contact?.id) return;
     setAuditLog([]);
-    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
+    setDescExpanded(false);
+    setAuditLoading(true);
+    db.getContactClientActivities(contact.id)
+      .then(setAuditLog)
+      .catch(() => {})
+      .finally(() => setAuditLoading(false));
   }, [contact?.id]);
 
   useEffect(() => {
@@ -94,9 +104,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
 
   async function handleStageChange(updated) {
     try {
-      const newAct = updated.activities[updated.activities.length - 1];
       await db.updateContact(updated.id, updated);
-      await db.addActivity(updated.id, newAct);
       const refreshed = await db.getContact(updated.id);
       onUpdate(refreshed);
       setModal(null);
@@ -290,11 +298,31 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       {/* Description */}
       {show("description") && (
         <Section title="Description" style={{ marginBottom: 12 }}>
-          {contact.description ? (
-            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-              {contact.description}
-            </div>
-          ) : (
+          {contact.description ? (() => {
+            const isLong = contact.description.length > DESC_LIMIT;
+            const visible = isLong && !descExpanded
+              ? contact.description.slice(0, DESC_LIMIT).trimEnd()
+              : contact.description;
+            return (
+              <>
+                <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+                  {visible}{isLong && !descExpanded ? "…" : ""}
+                </div>
+                {isLong && (
+                  <button
+                    onClick={() => setDescExpanded(x => !x)}
+                    style={{
+                      marginTop: 8, background: "none", border: "none",
+                      color: T.accent, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", padding: 0, fontFamily: "inherit",
+                    }}
+                  >
+                    {descExpanded ? "Show Less ▲" : "Load More ▼"}
+                  </button>
+                )}
+              </>
+            );
+          })() : (
             <span style={{ fontSize: 12, color: T.muted }}>—</span>
           )}
         </Section>
@@ -448,14 +476,22 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
           }}
         >
           <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Audit Log <span style={{ color: T.dim, fontWeight: 500 }}>({auditLog.length})</span>
+            Audit Log{" "}
+            {auditLoading
+              ? <span style={{ color: T.muted, fontWeight: 400 }}>…</span>
+              : <span style={{ color: T.dim, fontWeight: 500 }}>({auditLog.length})</span>
+            }
           </span>
           <span style={{ fontSize: 12, color: T.muted, transform: auditOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▾</span>
         </button>
 
         {auditOpen && (
           <div style={{ borderTop: "1px solid " + T.border }}>
-            {auditLog.length === 0 ? (
+            {auditLoading ? (
+              <div style={{ padding: "10px 16px" }}>
+                {Array.from({ length: 3 }).map((_, i) => <SkeletonActivityRow key={i} />)}
+              </div>
+            ) : auditLog.length === 0 ? (
               <div style={{ padding: "14px 16px", fontSize: 12, color: T.muted, fontStyle: "italic" }}>
                 No audit events yet.
               </div>
