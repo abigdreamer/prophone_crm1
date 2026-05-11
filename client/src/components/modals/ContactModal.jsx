@@ -82,8 +82,8 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   }
 
   async function handleSave() {
-    if (!form.firstName || !form.email) {
-      toast.warning("First name and email are required.");
+    if (!form.email) {
+      toast.warning("Email are required.");
       return;
     }
     await doSave();

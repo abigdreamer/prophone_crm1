@@ -67,8 +67,8 @@ export default function ContactFormPanel({ mode, contact, pool, clientId, curren
   }
 
   async function handleSave() {
-    if (!form.firstName || !form.email) {
-      toast.warning("First name and email are required.");
+    if (!form.email) {
+      toast.warning("Email are required.");
       return;
     }
     setSaving(true);
