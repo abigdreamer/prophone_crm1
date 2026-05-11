@@ -50,7 +50,14 @@ export async function restoreCampaign(id) {
 
 export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
-  if (status)    where.status    = status;
+  if (status) {
+    const tsFilter = TIMESTAMP_FILTERS[status];
+    if (tsFilter) {
+      Object.assign(where, tsFilter);
+    } else {
+      where.status = status;
+    }
+  }
   if (abVariant) where.abVariant = abVariant;
   if (search) {
     where.contact = {
@@ -99,6 +106,18 @@ export async function removeAllRecipients(campaignId) {
   const result = await prisma.campaignRecipient.deleteMany({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: 0 } });
   return result;
+}
+
+export async function countByTimestamp(campaignId, field) {
+  return prisma.campaignRecipient.count({
+    where: { campaignId, [field]: { not: null } },
+  });
+}
+
+export async function countByStatus(campaignId, status) {
+  return prisma.campaignRecipient.count({
+    where: { campaignId, status },
+  });
 }
 
 export async function countPendingRecipients(campaignId) {
@@ -159,12 +178,19 @@ export async function resetRecipientsForResend(campaignId, statuses) {
   });
 }
 
+export async function updateRecipientStatus(id, status) {
+  return prisma.campaignRecipient.update({
+    where: { id },
+    data:  { status },
+  });
+}
+
 // ── Webhook event helpers ─────────────────────────────────────────────────────
 
 export async function findRecipientByMessageId(messageId) {
   return prisma.campaignRecipient.findFirst({
     where:  { messageId },
-    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true },
+    select: { id: true, campaignId: true, status: true, deliveredAt: true, openedAt: true, clickedAt: true },
   });
 }
 
@@ -172,7 +198,12 @@ const STATUS_RANK = { pending: 0, sent: 1, delivered: 2, opened: 3, clicked: 4 }
 
 export async function applyEmailEvent(messageId, event) {
   const recipient = await findRecipientByMessageId(messageId);
-  if (!recipient) return;
+  if (!recipient) {
+    console.warn(`[applyEmailEvent] No recipient found for messageId=${messageId} (event=${event})`);
+    return;
+  }
+
+  console.log(`[applyEmailEvent] Found recipient=${recipient.id}, campaign=${recipient.campaignId}, currentStatus=${recipient.status}, event=${event}`);
 
   const recipientData = {};
   const campaignData  = {};
@@ -180,20 +211,51 @@ export async function applyEmailEvent(messageId, event) {
 
   switch (event) {
     case 'delivered':
-      if ((STATUS_RANK[recipient.status] ?? 0) >= STATUS_RANK.delivered) return;
-      recipientData.status = 'delivered';
+      if (recipient.deliveredAt) {
+        console.log(`[applyEmailEvent] Skipping delivered — already delivered`);
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
+        return;
+      }
+      recipientData.deliveredAt = now;
+      // Only update status if it hasn't progressed past delivered
+      if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.delivered) {
+        recipientData.status = 'delivered';
+      }
       campaignData.deliveredCount = { increment: 1 };
       break;
     case 'opened':
-      if (recipient.openedAt) return; // de-dupe multiple open events
-      recipientData.status   = 'opened';
+      if (recipient.openedAt) {
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
+        return;
+      }
+      // Only update status if it hasn't progressed past opened (e.g., already clicked)
+      if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.opened) {
+        recipientData.status = 'opened';
+      }
       recipientData.openedAt = now;
+      // Open implies delivered
+      if (!recipient.deliveredAt) {
+        recipientData.deliveredAt = now;
+        campaignData.deliveredCount = { increment: 1 };
+      }
       campaignData.openedCount = { increment: 1 };
       break;
     case 'clicked':
-      if (recipient.clickedAt) return; // de-dupe
+      if (recipient.clickedAt) {
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
+        return;
+      }
       recipientData.status    = 'clicked';
       recipientData.clickedAt = now;
+      // Click implies open + delivered
+      if (!recipient.openedAt) {
+        recipientData.openedAt = now;
+        campaignData.openedCount = { increment: 1 };
+      }
+      if (!recipient.deliveredAt) {
+        recipientData.deliveredAt = now;
+        campaignData.deliveredCount = { increment: 1 };
+      }
       campaignData.clickedCount = { increment: 1 };
       break;
     case 'bounced':
@@ -212,7 +274,10 @@ export async function applyEmailEvent(messageId, event) {
   await Promise.all([
     prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
     prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
+    logEvent(recipient.id, recipient.campaignId, event),
   ]);
+
+  console.log(`[applyEmailEvent] Updated recipient=${recipient.id} to status=${recipientData.status || 'unchanged'}`);
 }
 
 export async function logEvent(recipientId, campaignId, event, metadata = null) {
@@ -256,7 +321,7 @@ export async function applyTrackingEvent(recipientId, event) {
       where:  { id: recipientId },
       select: {
         id: true, campaignId: true, contactId: true,
-        openedAt: true, clickedAt: true,
+        deliveredAt: true, openedAt: true, clickedAt: true,
       },
     });
 
@@ -291,9 +356,15 @@ export async function applyTrackingEvent(recipientId, event) {
       ? { status: 'opened',  openedAt:  now }
       : { status: 'clicked', clickedAt: now };  // status 'clicked' supersedes 'opened'
 
+    // Open/click implies delivered — backfill if missing
+    if (!recipient.deliveredAt) {
+      recipientData.deliveredAt = now;
+    }
+
     const campaignData = {
       ...(isClick ? { clickedCount: { increment: 1 } } : { openedCount: { increment: 1 } }),
       ...(openBackfilled ? { openedCount: { increment: 1 } } : {}),
+      ...(!recipient.deliveredAt ? { deliveredCount: { increment: 1 } } : {}),
     };
 
     const contactData = {
@@ -337,12 +408,22 @@ export async function applyTrackingEvent(recipientId, event) {
 
 // Return set of contactIds that have ever bounced or unsubscribed
 export async function findSuppressedContactIds(contactIds) {
-  const rows = await prisma.campaignRecipient.findMany({
+  // Check campaign_recipients for bounced/unsubscribed status
+  const recipientRows = await prisma.campaignRecipient.findMany({
     where:  { contactId: { in: contactIds }, status: { in: ['bounced', 'unsubscribed'] } },
     select: { contactId: true },
     distinct: ['contactId'],
   });
-  return new Set(rows.map(r => r.contactId));
+
+  // Also check contacts table for globally unsubscribed contacts
+  const unsubRows = await prisma.contact.findMany({
+    where:  { id: { in: contactIds }, isUnsubscribed: true },
+    select: { id: true },
+  });
+
+  const set = new Set(recipientRows.map(r => r.contactId));
+  unsubRows.forEach(r => set.add(r.id));
+  return set;
 }
 
 export async function getContactsForFilter(clientId, filter) {

@@ -99,6 +99,7 @@ model Contact {
   cancelReason   String     @default("") @map("cancel_reason")
   restoredAt     DateTime?  @map("restored_at")
   restoredBy     String     @default("") @map("restored_by")
+  isUnsubscribed Boolean    @default(false) @map("is_unsubscribed")
   createdAt      DateTime   @default(now()) @map("created_at")
   client         Client?    @relation(fields: [clientId], references: [id])
   campaignRecipients CampaignRecipient[]
@@ -264,10 +265,11 @@ model CampaignRecipient {
   abVariant  String?   @map("ab_variant")
   status     String    @default("pending")
   messageId  String?   @map("message_id")
-  sentAt     DateTime? @map("sent_at")
-  openedAt   DateTime? @map("opened_at")
-  clickedAt  DateTime? @map("clicked_at")
-  bouncedAt  DateTime? @map("bounced_at")
+  sentAt      DateTime? @map("sent_at")
+  deliveredAt DateTime? @map("delivered_at")
+  openedAt    DateTime? @map("opened_at")
+  clickedAt   DateTime? @map("clicked_at")
+  bouncedAt   DateTime? @map("bounced_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

@@ -168,6 +168,13 @@ async function handleWebhook(req, res) {
   try { event = JSON.parse(rawBody.toString()); }
   catch { return res.status(400).json({ error: 'Invalid JSON' }); }
 
+  console.log(`[webhook] Received event: ${event.type}`, JSON.stringify({
+    email_id: event?.data?.email_id,
+    domain_id: event?.data?.id,
+    to: event?.data?.to,
+    subject: event?.data?.subject,
+  }));
+
   const resendDomainId = event?.data?.id;
 
   // Domain lifecycle events
@@ -188,6 +195,7 @@ async function handleWebhook(req, res) {
   const emailEventType = EMAIL_EVENT_MAP[event.type];
   const emailId = event?.data?.email_id;
   if (emailEventType && emailId) {
+    console.log(`[webhook] Processing ${emailEventType} for email_id=${emailId}`);
     await applyEmailEvent(emailId, emailEventType).catch(e =>
       console.error('[webhook] email event error:', e.message),
     );

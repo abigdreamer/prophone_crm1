@@ -36,6 +36,12 @@ app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHan
 
 app.use(express.json({ limit: '10mb' }));
 
+// Bypass ngrok browser warning for all requests
+app.use((req, res, next) => {
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  next();
+});
+
 // Public interactive pages — no auth, served as HTML
 app.get('/i/:token',          asyncHandler(servePage));
 app.post('/i/:token/respond', asyncHandler(handleRespond));

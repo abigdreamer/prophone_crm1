@@ -392,7 +392,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                   </td>
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
-                  <RecipientStatusBadge status={r.status} />
+                  <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.contact?.lifecycleStage
