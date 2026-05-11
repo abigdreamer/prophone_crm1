@@ -57,7 +57,7 @@ export default function Sidebar({
         (c.firstName + " " + c.lastName).toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
         (c.company || "").toLowerCase().includes(q) ||
-        (c.city || "").toLowerCase().includes(q)
+        (c.address || "").toLowerCase().includes(q)
       );
     })
     .sort((a, b) => {
@@ -256,9 +256,9 @@ export default function Sidebar({
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, alignItems: "center" }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    {c.city && <span style={{ fontSize: 10, color: T.muted }}>📍 {c.city}</span>}
-                    {c.trucks && <span style={{ fontSize: 10, color: T.orange, fontWeight: 600 }}>🚛 {c.trucks}</span>}
+                  <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
+                    {c.address && <span style={{ fontSize: 10, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>📍 {c.address}</span>}
+                    {c.trucks > 0 && <span style={{ fontSize: 10, color: T.orange, fontWeight: 600, flexShrink: 0 }}>🚛 {c.trucks}</span>}
                   </div>
                   <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt)}</span>
                 </div>

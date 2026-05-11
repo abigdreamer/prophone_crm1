@@ -3,12 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock, Pencil,
+  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
+  cancelCampaign, restoreCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
@@ -32,10 +33,11 @@ function fmtRelTime(ts) {
 function StatusBadge({ status }) {
   const T = useTheme();
   const map = {
-    draft:   { label: "Draft",   color: T.muted  },
-    sending: { label: "Sending", color: T.amber  },
-    sent:    { label: "Sent",    color: T.green  },
-    paused:  { label: "Paused",  color: T.orange },
+    draft:    { label: "Draft",    color: T.muted  },
+    sending:  { label: "Sending",  color: T.amber  },
+    sent:     { label: "Sent",     color: T.green  },
+    paused:   { label: "Paused",   color: T.orange },
+    canceled: { label: "Canceled", color: T.red    },
   };
   const { label, color } = map[status] ?? { label: status, color: T.muted };
   return (
@@ -979,6 +981,125 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   );
 }
 
+// ── Cancel Campaign Modal ─────────────────────────────────────────────────────
+
+function CancelCampaignModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  const [reason, setReason] = useState("");
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        padding: 28, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: "50%", background: T.red + "18",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <Ban size={16} color={T.red} />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Cancel Campaign</div>
+            <div style={{ fontSize: 12, color: T.muted }}>"{campaign.name}"</div>
+          </div>
+        </div>
+        <label style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 6 }}>
+          Reason for cancellation <span style={{ color: T.red }}>*</span>
+        </label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Explain why this campaign is being canceled…"
+          rows={3}
+          style={{
+            width: "100%", padding: "8px 10px", borderRadius: 7,
+            border: "1px solid " + T.border, background: T.surface, color: T.text,
+            fontSize: 13, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+          }}
+        />
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{
+            padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border,
+            background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+          }}>Back</button>
+          <button
+            onClick={() => onConfirm(reason.trim())}
+            disabled={!reason.trim() || loading}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: T.red, color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: !reason.trim() || loading ? "default" : "pointer",
+              fontFamily: "inherit", opacity: !reason.trim() || loading ? 0.5 : 1,
+            }}
+          >
+            {loading
+              ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Canceling…</>
+              : <><Ban size={13} /> Cancel Campaign</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Restore Campaign Modal ────────────────────────────────────────────────────
+
+function RestoreCampaignModal({ campaign, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        padding: 28, width: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginBottom: 24 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: "50%", background: T.green + "18",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <RotateCcw size={22} color={T.green} />
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>
+              Restore Campaign?
+            </div>
+            <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+              "<strong style={{ color: T.text }}>{campaign.name}</strong>" will be restored to its previous state.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button onClick={onClose} style={{
+            padding: "9px 20px", borderRadius: 7, border: "1px solid " + T.border,
+            background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+          }}>Back</button>
+          <button onClick={onConfirm} disabled={loading} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "9px 22px", borderRadius: 7, border: "none",
+            background: T.green, color: "#fff", fontSize: 13, fontWeight: 600,
+            cursor: loading ? "default" : "pointer", fontFamily: "inherit",
+            opacity: loading ? 0.7 : 1,
+          }}>
+            {loading
+              ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Restoring…</>
+              : <><RotateCcw size={13} /> Restore</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CampaignDetailPage() {
@@ -993,6 +1114,10 @@ export default function CampaignDetailPage() {
   const [showSendModal,     setShowSendModal]     = useState(false);
   const [showResendModal,   setShowResendModal]   = useState(false);
   const [showEditModal,     setShowEditModal]     = useState(false);
+  const [showCancelModal,   setShowCancelModal]   = useState(false);
+  const [showRestoreModal,  setShowRestoreModal]  = useState(false);
+  const [menuOpen,          setMenuOpen]          = useState(false);
+  const [cancelActing,      setCancelActing]      = useState(false);
   const [sending,           setSending]           = useState(false);
   const [statusFilter,      setStatusFilter]      = useState("all");
   const [search,            setSearch]            = useState("");
@@ -1077,6 +1202,32 @@ export default function CampaignDetailPage() {
     setShowEditModal(false);
   }, []);
 
+  const handleCancelCampaign = useCallback(async (reason) => {
+    setCancelActing(true);
+    try {
+      const updated = await cancelCampaign(id, reason);
+      setCampaign(updated);
+      setShowCancelModal(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCancelActing(false);
+    }
+  }, [id]);
+
+  const handleRestoreCampaign = useCallback(async () => {
+    setCancelActing(true);
+    try {
+      const updated = await restoreCampaign(id);
+      setCampaign(updated);
+      setShowRestoreModal(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCancelActing(false);
+    }
+  }, [id]);
+
   const handleAdded = useCallback(updated => {
     setCampaign(updated);
     setShowAddModal(false);
@@ -1140,17 +1291,73 @@ export default function CampaignDetailPage() {
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>{campaign.name}</span>
-          <button
-            onClick={() => setShowEditModal(true)}
-            title="Edit campaign"
-            style={{
-              display: "flex", alignItems: "center",
-              padding: "4px 8px", borderRadius: 6, border: "1px solid " + T.border,
-              background: "transparent", color: T.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <Pencil size={12} />
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              title="Actions"
+              style={{
+                display: "flex", alignItems: "center",
+                padding: "4px 8px", borderRadius: 6, border: "1px solid " + T.border,
+                background: menuOpen ? T.surface : "transparent", color: T.muted,
+                fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <MoreVertical size={14} />
+            </button>
+            {menuOpen && (
+              <>
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 200 }}
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 201,
+                  background: T.card, border: "1px solid " + T.border, borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.5)", minWidth: 160, overflow: "hidden",
+                }}>
+                  <button
+                    onClick={() => { setMenuOpen(false); setShowEditModal(true); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, width: "100%",
+                      padding: "10px 14px", border: "none", background: "transparent",
+                      color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.surface}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <Pencil size={13} /> Edit Campaign
+                  </button>
+                  {campaign.isCanceled ? (
+                    <button
+                      onClick={() => { setMenuOpen(false); setShowRestoreModal(true); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, width: "100%",
+                        padding: "10px 14px", border: "none", background: "transparent",
+                        color: T.green, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = T.surface}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <RotateCcw size={13} /> Restore Campaign
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setMenuOpen(false); setShowCancelModal(true); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, width: "100%",
+                        padding: "10px 14px", border: "none", background: "transparent",
+                        color: T.red, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = T.surface}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <Ban size={13} /> Cancel Campaign
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           {campaign.subject && (
             <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
               · Subject: {campaign.subject}
@@ -1436,6 +1643,22 @@ export default function CampaignDetailPage() {
           campaign={campaign}
           onClose={() => setShowEditModal(false)}
           onSaved={handleEditSaved}
+        />
+      )}
+      {showCancelModal && (
+        <CancelCampaignModal
+          campaign={campaign}
+          onClose={() => setShowCancelModal(false)}
+          onConfirm={handleCancelCampaign}
+          loading={cancelActing}
+        />
+      )}
+      {showRestoreModal && (
+        <RestoreCampaignModal
+          campaign={campaign}
+          onClose={() => setShowRestoreModal(false)}
+          onConfirm={handleRestoreCampaign}
+          loading={cancelActing}
         />
       )}
     </div>

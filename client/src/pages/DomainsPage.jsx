@@ -5,18 +5,19 @@ import {
   Copy,
   Check,
   RefreshCw,
-  Trash2,
   X,
   AlertTriangle,
   ExternalLink,
-  Search
+  Search,
+  Ban,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import { useTheme } from '../context/ThemeContext';
 import * as db from '../services/api';
 import { usePool } from '../context/PoolContext';
 import { useClients } from '../context/ClientsContext';
-import { useConfirmDialog } from '../context/ConfirmContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtDate = (d) =>
@@ -35,13 +36,15 @@ function parseRec(json) {
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
-function StatusBadge({ status, small }) {
+function StatusBadge({ status, canceled, small }) {
   const T = useTheme();
-  const cfg = {
-    verified: { color: T.green, icon: '✓', label: 'VERIFIED' },
-    pending: { color: T.amber, icon: '●', label: 'PENDING' },
-    failed: { color: T.red, icon: '✗', label: 'FAILED' },
-  }[status] || { color: T.muted, icon: '●', label: 'UNKNOWN' };
+  const cfg = canceled
+    ? { color: T.red, icon: '✗', label: 'CANCELED' }
+    : ({
+        verified: { color: T.green, icon: '✓', label: 'VERIFIED' },
+        pending: { color: T.amber, icon: '●', label: 'PENDING' },
+        failed: { color: T.red, icon: '✗', label: 'FAILED' },
+      }[status] || { color: T.muted, icon: '●', label: 'UNKNOWN' });
 
   return (
     <span
@@ -226,18 +229,136 @@ function DnsBlock({ label, recordJson, status }) {
   );
 }
 
+// ── Cancel Domain Modal ───────────────────────────────────────────────────────
+function CancelDomainModal({ domain, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 3100, background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: '1px solid ' + T.border, borderRadius: 12,
+        padding: 28, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', background: T.red + '18',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Ban size={16} color={T.red} />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Cancel Domain</div>
+            <div style={{ fontSize: 12, color: T.muted }}>{domain.domainName}</div>
+          </div>
+        </div>
+        <label style={{ display: 'block', fontSize: 12, color: T.muted, marginBottom: 6 }}>
+          Reason for cancellation <span style={{ color: T.red }}>*</span>
+        </label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Explain why this domain is being canceled…"
+          rows={3}
+          style={{
+            width: '100%', padding: '8px 10px', borderRadius: 7,
+            border: '1px solid ' + T.border, background: T.surface, color: T.text,
+            fontSize: 13, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} style={{
+            padding: '8px 18px', borderRadius: 7, border: '1px solid ' + T.border,
+            background: 'transparent', color: T.text, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+          }}>Back</button>
+          <button
+            onClick={() => onConfirm(reason.trim())}
+            disabled={!reason.trim() || loading}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 20px', borderRadius: 7, border: 'none',
+              background: T.red, color: '#fff', fontSize: 13, fontWeight: 600,
+              cursor: !reason.trim() || loading ? 'default' : 'pointer',
+              fontFamily: 'inherit', opacity: !reason.trim() || loading ? 0.5 : 1,
+            }}
+          >
+            {loading
+              ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Canceling…</>
+              : <><Ban size={13} /> Cancel Domain</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Restore Domain Modal ──────────────────────────────────────────────────────
+function RestoreDomainModal({ domain, onClose, onConfirm, loading }) {
+  const T = useTheme();
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 3100, background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: '1px solid ' + T.border, borderRadius: 12,
+        padding: 28, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12, marginBottom: 24 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%', background: T.green + '18',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <RotateCcw size={22} color={T.green} />
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>
+              Restore Domain?
+            </div>
+            <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+              "<strong style={{ color: T.text }}>{domain.domainName}</strong>" will be restored and active again.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <button onClick={onClose} style={{
+            padding: '9px 20px', borderRadius: 7, border: '1px solid ' + T.border,
+            background: 'transparent', color: T.text, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+          }}>Back</button>
+          <button onClick={onConfirm} disabled={loading} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '9px 22px', borderRadius: 7, border: 'none',
+            background: T.green, color: '#fff', fontSize: 13, fontWeight: 600,
+            cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit',
+            opacity: loading ? 0.7 : 1,
+          }}>
+            {loading
+              ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Restoring…</>
+              : <><RotateCcw size={13} /> Restore</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail panel ──────────────────────────────────────────────────────────────
-function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
+function DetailPanel({ domain, onClose, onDeleted, onUpdated, onCanceled, onRestored }) {
   const T = useTheme();
   const { clients } = useClients();
   const [verifying, setVerifying] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [acting, setActing] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [fromEmail, setFromEmail] = useState(domain.defaultFromEmail || '');
   const [savingFrom, setSavingFrom] = useState(false);
   const c = domain.clientId
     ? clients.find((cl) => cl.id === domain.clientId) || null
     : null;
-  const confirm = useConfirmDialog();
 
   async function handleVerify() {
     setVerifying(true);
@@ -250,21 +371,27 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
     }
   }
 
-  async function handleDelete() {
-    const ok = await confirm({
-      title: `Remove ${domain.domainName}?`,
-      description: 'This cannot be undone.',
-      confirmText: 'Delete domain',
-      cancelText: 'Cancel',
-      type: 'danger',
-    });
-    if (!ok) return;
-    setDeleting(true);
+  async function handleCancelConfirm(reason) {
+    setActing(true);
     try {
-      await db.deleteDomain(domain.id);
-      onDeleted(domain.id);
+      const updated = await db.cancelDomain(domain.id, reason);
+      setShowCancelModal(false);
+      onCanceled(updated);
     } catch {
-      setDeleting(false);
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function handleRestoreConfirm() {
+    setActing(true);
+    try {
+      const updated = await db.restoreDomain(domain.id);
+      setShowRestoreModal(false);
+      onRestored(updated);
+    } catch {
+    } finally {
+      setActing(false);
     }
   }
 
@@ -331,7 +458,7 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
               {domain.domainName}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <StatusBadge status={domain.status} small />
+              <StatusBadge status={domain.status} canceled={domain.isCanceled} small />
               <span style={{ fontSize: 11, color: T.muted }}>
                 Added {fmtDate(domain.createdAt)}
               </span>
@@ -386,7 +513,7 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
               <span style={{ fontSize: 12, color: T.muted }}>Unassigned</span>
             ),
           },
-          { key: 'STATUS', val: <StatusBadge status={domain.status} small /> },
+          { key: 'STATUS', val: <StatusBadge status={domain.status} canceled={domain.isCanceled} small /> },
           {
             key: 'RESEND ID',
             val: (
@@ -606,30 +733,53 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated }) {
           />
           {verifying ? 'Checking…' : 'Re-verify Now'}
         </button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 7,
-            padding: '9px 0',
-            borderRadius: 7,
-            background: T.red + '12',
-            border: `1px solid ${T.red}30`,
-            color: T.red,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          <Trash2 size={13} />
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
+        {domain.isCanceled ? (
+          <button
+            onClick={() => setShowRestoreModal(true)}
+            disabled={acting}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              padding: '9px 0', borderRadius: 7,
+              background: T.green + '12', border: `1px solid ${T.green}30`,
+              color: T.green, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <RotateCcw size={13} />
+            {acting ? 'Restoring…' : 'Restore Domain'}
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowCancelModal(true)}
+            disabled={acting}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              padding: '9px 0', borderRadius: 7,
+              background: T.red + '12', border: `1px solid ${T.red}30`,
+              color: T.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <Ban size={13} />
+            {acting ? 'Canceling…' : 'Cancel Domain'}
+          </button>
+        )}
       </div>
+
+      {showCancelModal && (
+        <CancelDomainModal
+          domain={domain}
+          onClose={() => setShowCancelModal(false)}
+          onConfirm={handleCancelConfirm}
+          loading={acting}
+        />
+      )}
+      {showRestoreModal && (
+        <RestoreDomainModal
+          domain={domain}
+          onClose={() => setShowRestoreModal(false)}
+          onConfirm={handleRestoreConfirm}
+          loading={acting}
+        />
+      )}
     </div>
   );
 }
@@ -713,7 +863,7 @@ function DomainRow({ domain, selected, onClick }) {
           flexShrink: 0,
         }}
       >
-        <StatusBadge status={domain.status} />
+        <StatusBadge status={domain.status} canceled={domain.isCanceled} />
         <span
           style={{
             display: 'flex',
@@ -727,11 +877,6 @@ function DomainRow({ domain, selected, onClick }) {
           }}
         >
           <ExternalLink size={11} /> View Details
-        </span>
-        <span
-          style={{ color: T.muted, opacity: 0.5, display: 'flex', padding: 2 }}
-        >
-          <Trash2 size={14} />
         </span>
       </div>
     </div>
@@ -1120,6 +1265,14 @@ export default function DomainsPage() {
     setDomains((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
     setSelected(updated);
   }
+  function handleCanceled(updated) {
+    setDomains((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    setSelected(updated);
+  }
+  function handleRestored(updated) {
+    setDomains((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    setSelected(updated);
+  }
 
   // Filter — server already pre-filters by active client; just apply local search
   const filtered = domains.filter(
@@ -1156,6 +1309,7 @@ export default function DomainsPage() {
         margin: '-20px',
       }}
     >
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {/* ── Left: list ─────────────────────────────────────────────────────── */}
       <div
         style={{
@@ -1451,6 +1605,8 @@ export default function DomainsPage() {
           onClose={() => setSelected(null)}
           onDeleted={handleDeleted}
           onUpdated={handleUpdated}
+          onCanceled={handleCanceled}
+          onRestored={handleRestored}
         />
       )}
 

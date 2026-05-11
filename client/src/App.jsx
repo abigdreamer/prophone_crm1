@@ -23,10 +23,10 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ContactsPage from './pages/ContactsPage';
 import DomainsPage from './pages/DomainsPage';
-import ClientsPage from './pages/ClientsPage';
 import TemplatesPage from './pages/TemplatesPage';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
+import SettingsPage from './pages/SettingsPage';
 import ContactDetailPanel from './components/ContactDetailPanel';
 
 import { useAuth } from './hooks/useAuth';
@@ -550,9 +550,8 @@ function AppLayout({ currentUser, onSignOut }) {
                 />
                 <Route
                   path="/settings"
-                  element={<ComingSoon page="settings" />}
+                  element={<SettingsPage />}
                 />
-                <Route path="/clients" element={<ClientsPage />} />
                 <Route
                   path="*"
                   element={<Navigate to="/dashboard" replace />}

@@ -2,6 +2,8 @@ import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
+import { logActivity } from '../lib/activityLogger.js';
+import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
@@ -42,7 +44,6 @@ export const createCampaign = async (req, res) => {
   if (!name) return sendError(res, 'name is required', 400);
 
   try {
-    // If templateId provided, pull subject from template if not given
     let resolvedSubject = subject || '';
     if (templateId && !resolvedSubject) {
       const tmpl = await templateRepo.findById(templateId);
@@ -50,9 +51,7 @@ export const createCampaign = async (req, res) => {
     }
 
     const row = await repo.createCampaign({
-      name,
-      type,
-      status:      'draft',
+      name, type, status: 'draft',
       clientId:    clientId    || null,
       templateId:  templateId  || null,
       templateIdB: templateIdB || null,
@@ -61,6 +60,10 @@ export const createCampaign = async (req, res) => {
       fromName:    fromName  || '',
       fromEmail:   fromEmail || '',
     });
+
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, row.id, ACTION.CREATE, `Campaign created: ${row.name}`, by);
+
     sendSuccess(res, row, 201);
   } catch (err) {
     sendServerError(res, err, 'createCampaign');
@@ -74,16 +77,20 @@ export const updateCampaign = async (req, res) => {
 
     const { name, status, templateId, templateIdB, subject, subjectB, fromName, fromEmail } = req.body ?? {};
     const data = {};
-    if (name       !== undefined) data.name       = name;
-    if (status     !== undefined) data.status     = status;
-    if (templateId !== undefined) data.templateId = templateId;
+    if (name        !== undefined) data.name        = name;
+    if (status      !== undefined) data.status      = status;
+    if (templateId  !== undefined) data.templateId  = templateId;
     if (templateIdB !== undefined) data.templateIdB = templateIdB;
-    if (subject    !== undefined) data.subject    = subject;
-    if (subjectB   !== undefined) data.subjectB   = subjectB;
-    if (fromName   !== undefined) data.fromName   = fromName;
-    if (fromEmail  !== undefined) data.fromEmail  = fromEmail;
+    if (subject     !== undefined) data.subject     = subject;
+    if (subjectB    !== undefined) data.subjectB    = subjectB;
+    if (fromName    !== undefined) data.fromName    = fromName;
+    if (fromEmail   !== undefined) data.fromEmail   = fromEmail;
 
     const row = await repo.updateCampaign(req.params.id, data);
+
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, row.id, ACTION.UPDATE, `Campaign updated: ${row.name}`, by);
+
     sendSuccess(res, row);
   } catch (err) {
     sendServerError(res, err, 'updateCampaign');
@@ -95,11 +102,38 @@ export const deleteCampaign = async (req, res) => {
     const existing = await repo.findById(req.params.id);
     if (!existing) return sendError(res, 'Campaign not found', 404);
     if (existing.status === 'sending') return sendError(res, 'Cannot delete a campaign that is currently sending', 400);
-
     await repo.removeCampaign(req.params.id);
     sendSuccess(res, { ok: true });
   } catch (err) {
     sendServerError(res, err, 'deleteCampaign');
+  }
+};
+
+export const cancelCampaign = async (req, res) => {
+  try {
+    const existing = await repo.findById(req.params.id);
+    if (!existing) return sendError(res, 'Campaign not found', 404);
+    if (existing.status === 'sending') return sendError(res, 'Cannot cancel a campaign that is currently sending', 400);
+    const cancelReason = (req.body?.cancelReason || '').trim();
+    const row = await repo.cancelCampaign(req.params.id, cancelReason);
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, row.id, ACTION.CANCEL, cancelReason || 'Campaign canceled', by);
+    sendSuccess(res, row);
+  } catch (err) {
+    sendServerError(res, err, 'cancelCampaign');
+  }
+};
+
+export const restoreCampaign = async (req, res) => {
+  try {
+    const existing = await repo.findById(req.params.id);
+    if (!existing) return sendError(res, 'Campaign not found', 404);
+    const row = await repo.restoreCampaign(req.params.id);
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, row.id, ACTION.RESTORE, 'Campaign restored', by);
+    sendSuccess(res, row);
+  } catch (err) {
+    sendServerError(res, err, 'restoreCampaign');
   }
 };
 
@@ -314,9 +348,11 @@ export const sendCampaign = async (req, res) => {
       completedAt: new Date(),
     });
 
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND, `Campaign sent to ${totalSent} recipients`, by);
+
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
-    // Roll status back so user can retry
     await repo.updateCampaign(campaignId, { status: 'draft' }).catch(() => {});
     sendServerError(res, err, 'sendCampaign');
   }

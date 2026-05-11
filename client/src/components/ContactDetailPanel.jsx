@@ -19,12 +19,34 @@ const ACTION_CFG = {
   RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
 };
 
+const SOCIAL_META = {
+  facebook:  { label: "Facebook",   color: "#1877f2" },
+  instagram: { label: "Instagram",  color: "#e1306c" },
+  linkedin:  { label: "LinkedIn",   color: "#0a66c2" },
+  twitter:   { label: "Twitter / X", color: "#1da1f2" },
+  youtube:   { label: "YouTube",    color: "#ff0000" },
+  yelp:      { label: "Yelp",       color: "#d32323" },
+  pinterest: { label: "Pinterest",  color: "#e60023" },
+  tiktok:    { label: "TikTok",     color: "#010101" },
+};
+
+const DEFAULT_FIELD_SETTINGS = {
+  email: true, phone: true, website: true, address: true, city: true,
+  description: true,
+  company: true, title: true, accountSize: true, source: true, campaign: true,
+  notes: true, tags: true, trucks: true, contractValue: true, leadScore: true,
+  social_facebook: true, social_instagram: true, social_linkedin: true,
+  social_twitter: true, social_youtube: true, social_yelp: true,
+  social_pinterest: true, social_tiktok: true,
+};
+
 export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
   const T = useTheme();
   const [modal,          setModal]          = useState(null);
   const [auditLog,       setAuditLog]       = useState([]);
   const [auditOpen,      setAuditOpen]      = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [fieldVis,       setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
   const toast = useAppToast();
 
   useEffect(() => {
@@ -32,6 +54,16 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     setAuditLog([]);
     db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
   }, [contact?.id]);
+
+  useEffect(() => {
+    db.getSettings(contact?.clientId || null, 'contact_fields')
+      .then(res => {
+        if (res?.config && Object.keys(res.config).length > 0) {
+          setFieldVis({ ...DEFAULT_FIELD_SETTINGS, ...res.config });
+        }
+      })
+      .catch(() => {});
+  }, [contact?.clientId]);
 
   if (!contact) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: T.muted, fontSize: 13 }}>
@@ -41,6 +73,12 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
 
   const d    = STAGE_DEF[contact.lifecycleStage] || STAGE_DEF.new;
   const tags = parseTags(contact.tags);
+  const socialLinks = contact.socialLinks || {};
+  const enabledSocials = Object.entries(SOCIAL_META).filter(
+    ([k]) => fieldVis[`social_${k}`] !== false
+  );
+
+  const show = (key) => fieldVis[key] !== false;
 
   async function handleLogActivity(act) {
     try {
@@ -68,18 +106,16 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     }
   }
 
-async function handleEdit(updated) {
-  try {
-    const refreshed = await db.updateContact(updated.id, updated);
-
-    onUpdate(refreshed);
-    setModal(null);
-
-    toast.success("Contact saved.");
-  } catch (err) {
-    toast.error(err.message || "Failed to update contact.");
+  async function handleEdit(updated) {
+    try {
+      const refreshed = await db.updateContact(updated.id, updated);
+      onUpdate(refreshed);
+      setModal(null);
+      toast.success("Contact saved.");
+    } catch (err) {
+      toast.error(err.message || "Failed to update contact.");
+    }
   }
-}
 
   async function handleCancel(reason) {
     const refreshed = await db.cancelContact(contact.id, reason);
@@ -164,8 +200,8 @@ async function handleEdit(updated) {
             {contact.isCanceled && (
               <Pill color={T.red} small>CANCELED</Pill>
             )}
-            {contact.trucks > 0 && <Pill color={T.orange} small>🚛 {contact.trucks} trucks</Pill>}
-            {contact.city && <span style={{ fontSize: 11, color: T.muted }}>📍 {contact.city}</span>}
+            {show("trucks") && contact.trucks > 0 && <Pill color={T.orange} small>🚛 {contact.trucks} trucks</Pill>}
+            {contact.address && <span style={{ fontSize: 11, color: T.muted }}>📍 {contact.address}</span>}
           </div>
         </div>
 
@@ -196,55 +232,116 @@ async function handleEdit(updated) {
 
       {/* Metrics strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
-        <MetricCard label="Lead Score" color={T.amber}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color: T.amber, lineHeight: 1 }}>
-              {contact.leadScore}
-            </span>
-            <div style={{ flex: 1, height: 5, background: T.border, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: `${contact.leadScore}%`, height: "100%", background: T.amber, borderRadius: 3 }} />
+        {show("leadScore") && (
+          <MetricCard label="Lead Score" color={T.amber}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ fontSize: 22, fontWeight: 800, color: T.amber, lineHeight: 1 }}>
+                {contact.leadScore}
+              </span>
+              <div style={{ flex: 1, height: 5, background: T.border, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${contact.leadScore}%`, height: "100%", background: T.amber, borderRadius: 3 }} />
+              </div>
             </div>
-          </div>
-        </MetricCard>
-
-        <MetricCard label="Contract Value" color={T.green}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: contact.contractValue > 0 ? T.green : T.muted, lineHeight: 1 }}>
-            {contact.contractValue > 0 ? "$" + contact.contractValue.toLocaleString() : "—"}
-          </span>
-        </MetricCard>
-
-        <MetricCard label="Fleet Size" color={T.orange}>
-          <span style={{ fontSize: 20, fontWeight: 800, color: contact.trucks > 0 ? T.orange : T.muted, lineHeight: 1 }}>
-            {contact.trucks > 0 ? contact.trucks : "—"}
-          </span>
-          {contact.trucks > 0 && (
-            <span style={{ fontSize: 10, color: T.muted, marginLeft: 5 }}>trucks</span>
-          )}
-        </MetricCard>
-
-        <MetricCard label="Account Size" color={T.blue}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: contact.accountSize ? T.blue : T.muted, lineHeight: 1 }}>
-            {contact.accountSize || "—"}
-          </span>
-        </MetricCard>
+          </MetricCard>
+        )}
+        {show("contractValue") && (
+          <MetricCard label="Contract Value" color={T.green}>
+            <span style={{ fontSize: 22, fontWeight: 800, color: contact.contractValue > 0 ? T.green : T.muted, lineHeight: 1 }}>
+              {contact.contractValue > 0 ? "$" + contact.contractValue.toLocaleString() : "—"}
+            </span>
+          </MetricCard>
+        )}
+        {show("trucks") && (
+          <MetricCard label="Fleet Size" color={T.orange}>
+            <span style={{ fontSize: 20, fontWeight: 800, color: contact.trucks > 0 ? T.orange : T.muted, lineHeight: 1 }}>
+              {contact.trucks > 0 ? contact.trucks : "—"}
+            </span>
+            {contact.trucks > 0 && (
+              <span style={{ fontSize: 10, color: T.muted, marginLeft: 5 }}>trucks</span>
+            )}
+          </MetricCard>
+        )}
+        {show("accountSize") && (
+          <MetricCard label="Account Size" color={T.blue}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: contact.accountSize ? T.blue : T.muted, lineHeight: 1 }}>
+              {contact.accountSize || "—"}
+            </span>
+          </MetricCard>
+        )}
       </div>
 
       {/* Info sections */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <Section title="Contact Info">
-          <Field label="Email"   value={contact.email}   href={contact.email   ? `mailto:${contact.email}` : null} color={T.accent} />
-          <Field label="Phone"   value={contact.phone}   href={contact.phone   ? `tel:${contact.phone}`    : null} color={T.text}   />
-          <Field label="Website" value={contact.website} href={contact.website}                                     color={T.blue}   />
-          <Field label="City"    value={contact.city} />
+          {show("email")   && <Field label="Email"   value={contact.email}   href={contact.email   ? `mailto:${contact.email}` : null} color={T.accent} />}
+          {show("phone")   && <Field label="Phone"   value={contact.phone}   href={contact.phone   ? `tel:${contact.phone}`    : null} color={T.text}   />}
+          {show("website") && <Field label="Website" value={contact.website} href={contact.website || null}                            color={T.blue}   />}
+          {show("address") && <Field label="Address" value={contact.address} />}
         </Section>
 
         <Section title="Company & Acquisition">
-          <Field label="Company"      value={contact.company}  />
-          <Field label="Account Size" value={contact.accountSize} />
-          <Field label="Source"       value={contact.source}   />
-          <Field label="Campaign"     value={contact.campaign} />
+          {show("company")     && <Field label="Company"      value={contact.company}     />}
+          {show("accountSize") && <Field label="Account Size" value={contact.accountSize} />}
+          {show("source")      && <Field label="Source"       value={contact.source}      />}
+          {show("campaign")    && <Field label="Campaign"     value={contact.campaign}    />}
         </Section>
       </div>
+
+      {/* Description */}
+      {show("description") && (
+        <Section title="Description" style={{ marginBottom: 12 }}>
+          {contact.description ? (
+            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+              {contact.description}
+            </div>
+          ) : (
+            <span style={{ fontSize: 12, color: T.muted }}>—</span>
+          )}
+        </Section>
+      )}
+
+      {/* Social Links */}
+      {enabledSocials.length > 0 && (
+        <Section title="Social Media" style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {enabledSocials.map(([key, meta]) => {
+              const url = socialLinks[key];
+              return (
+                <div key={key} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "6px 0", borderBottom: "1px solid " + T.border + "55",
+                }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, color: url ? meta.color : T.muted,
+                    minWidth: 90, flexShrink: 0,
+                  }}>
+                    {meta.label}
+                  </span>
+                  {url ? (
+                    <a
+                      href={url.startsWith("http") ? url : `https://${url}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 12, color: meta.color, textDecoration: "none",
+                        fontWeight: 500, textAlign: "right",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        maxWidth: 220,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.textDecoration = "underline")}
+                      onMouseLeave={e => (e.currentTarget.style.textDecoration = "none")}
+                    >
+                      {url}
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: 12, color: T.muted }}>—</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       {/* CRM metadata */}
       <div style={{
@@ -302,35 +399,41 @@ async function handleEdit(updated) {
       )}
 
       {/* Notes */}
-      <Section title="Notes" style={{ marginBottom: 12 }}>
-        {contact.notes ? (
-          <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-            {contact.notes}
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>
-            No notes yet — use Edit to add notes.
-          </div>
-        )}
-      </Section>
+      {show("notes") && (
+        <Section title="Notes" style={{ marginBottom: 12 }}>
+          {contact.notes ? (
+            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+              {contact.notes}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>
+              No notes yet — use Edit to add notes.
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* Tags */}
-      {tags.length > 0 && (
+      {show("tags") && (
         <Section title="Tags" style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {tags.map(tag => (
-              <span
-                key={tag}
-                style={{
-                  padding: "4px 11px", borderRadius: 12, fontSize: 11,
-                  background: T.accent + "15", color: T.accent,
-                  border: "1px solid " + T.accent + "30", fontWeight: 500,
-                }}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
+          {tags.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {tags.map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                    padding: "4px 11px", borderRadius: 12, fontSize: 11,
+                    background: T.accent + "15", color: T.accent,
+                    border: "1px solid " + T.accent + "30", fontWeight: 500,
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span style={{ fontSize: 12, color: T.muted }}>—</span>
+          )}
         </Section>
       )}
 
@@ -368,7 +471,6 @@ async function handleEdit(updated) {
                       borderBottom: i < auditLog.length - 1 ? "1px solid " + T.border + "66" : "none",
                     }}
                   >
-                    {/* Icon */}
                     <div style={{
                       width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
                       background: cfg.color + "18", border: "1px solid " + cfg.color + "40",
@@ -378,7 +480,6 @@ async function handleEdit(updated) {
                       {cfg.icon}
                     </div>
 
-                    {/* Body */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
                         <span style={{
@@ -394,7 +495,6 @@ async function handleEdit(updated) {
                         </span>
                       </div>
 
-                      {/* Metadata detail */}
                       {entry.action === "CREATE" && (
                         <div style={{ fontSize: 11, color: T.dim }}>
                           {meta.name}{meta.company ? ` · ${meta.company}` : ""}

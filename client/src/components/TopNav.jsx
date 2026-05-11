@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Megaphone, FolderOpen,
+  LayoutDashboard, Users, Megaphone,
   BarChart2, Settings, ChevronDown,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
@@ -13,7 +13,6 @@ const NAV = [
   { label: "Dashboard", id: "dashboard", Icon: LayoutDashboard },
   { label: "Contacts",  id: "contacts",  Icon: Users },
   { label: "Marketing", id: "marketing", Icon: Megaphone, isSidebar: true },
-  { label: "Clients",   id: "clients",   Icon: FolderOpen },
   { label: "Reports",   id: "reports",   Icon: BarChart2 },
   { label: "Settings",  id: "settings",  Icon: Settings },
 ];

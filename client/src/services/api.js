@@ -163,6 +163,14 @@ export async function verifyDomain(id) {
   return request('POST', `/api/domains/${id}/verify`);
 }
 
+export async function cancelDomain(id, cancelReason = '') {
+  return request('POST', `/api/domains/${id}/cancel`, { cancelReason });
+}
+
+export async function restoreDomain(id) {
+  return request('POST', `/api/domains/${id}/restore`);
+}
+
 // ── Clients ───────────────────────────────────────────────────────────────────
 
 export async function getClients(includeCanceled = false) {
@@ -227,6 +235,16 @@ export async function deleteTemplate(id) {
   return request('DELETE', `/api/email-templates/${id}`);
 }
 
+export async function cancelTemplate(id, cancelReason = '') {
+  const r = await request('POST', `/api/email-templates/${id}/cancel`, { cancelReason });
+  return r.data ?? r;
+}
+
+export async function restoreTemplate(id) {
+  const r = await request('POST', `/api/email-templates/${id}/restore`);
+  return r.data ?? r;
+}
+
 export async function duplicateTemplate(id) {
   const r = await request('POST', `/api/email-templates/${id}/duplicate`);
   return r.data ?? r;
@@ -278,6 +296,16 @@ export async function deleteCampaign(id) {
   return request('DELETE', `/api/campaigns/${id}`);
 }
 
+export async function cancelCampaign(id, cancelReason = '') {
+  const r = await request('POST', `/api/campaigns/${id}/cancel`, { cancelReason });
+  return r.data ?? r;
+}
+
+export async function restoreCampaign(id) {
+  const r = await request('POST', `/api/campaigns/${id}/restore`);
+  return r.data ?? r;
+}
+
 export async function getCampaignRecipients(id, params = {}) {
   const q = new URLSearchParams(params).toString();
   const r = await request('GET', `/api/campaigns/${id}/recipients${q ? '?' + q : ''}`);
@@ -320,4 +348,16 @@ export async function getPublishedTemplates() {
   if (clientId) params.set('clientId', clientId);
   const r = await request('GET', `/api/campaigns/templates/published?${params}`);
   return r.data ?? r;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export async function getSettings(clientId, module) {
+  const params = new URLSearchParams({ module });
+  if (clientId) params.set('clientId', clientId);
+  return request('GET', `/api/settings?${params}`);
+}
+
+export async function saveSettings(clientId, module, config) {
+  return request('PUT', '/api/settings', { clientId: clientId || null, module, config });
 }

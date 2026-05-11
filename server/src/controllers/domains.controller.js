@@ -14,6 +14,9 @@ import crypto from 'crypto';
 import { Resend } from 'resend';
 import prisma from '../lib/prisma.js';
 import { applyEmailEvent } from '../repositories/campaignRepository.js';
+import * as domainRepo from '../repositories/domainRepository.js';
+import { logActivity } from '../lib/activityLogger.js';
+import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 
 // ── Resend SDK helpers ────────────────────────────────────────────────────────
 
@@ -111,6 +114,9 @@ async function addDomain(req, res) {
     update: { clientId: clientId || null, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
     create: { clientId: clientId || null, domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
   });
+
+  const by = req.user?.name || req.user?.email || 'system';
+  logActivity(ENTITY_TYPE.DOMAIN, domain.id, ACTION.CREATE, `Domain added: ${domain.domainName}`, by);
 
   res.status(201).json(domain);
 }
@@ -221,7 +227,40 @@ async function updateDomain(req, res) {
     where: { id },
     data: { defaultFromEmail: defaultFromEmail ?? domain.defaultFromEmail },
   });
+
+  const by = req.user?.name || req.user?.email || 'system';
+  logActivity(ENTITY_TYPE.DOMAIN, id, ACTION.UPDATE, `Domain updated: ${domain.domainName}`, by);
+
   res.json(updated);
 }
 
-export { listDomains, addDomain, deleteDomain, handleWebhook, verifyDomain, updateDomain };
+async function cancelDomain(req, res) {
+  const { id } = req.params;
+  const domain = await prisma.domain.findUnique({ where: { id } });
+  if (!domain) return res.status(404).json({ error: 'Domain not found' });
+  if (domain.isCanceled) return res.status(400).json({ error: 'Domain is already canceled' });
+
+  const cancelReason = (req.body?.cancelReason || '').trim();
+  const updated = await domainRepo.cancelDomain(id, cancelReason);
+
+  const by = req.user?.name || req.user?.email || 'system';
+  logActivity(ENTITY_TYPE.DOMAIN, id, ACTION.CANCEL, cancelReason || 'Domain canceled', by);
+
+  res.json(updated);
+}
+
+async function restoreDomain(req, res) {
+  const { id } = req.params;
+  const domain = await prisma.domain.findUnique({ where: { id } });
+  if (!domain) return res.status(404).json({ error: 'Domain not found' });
+  if (!domain.isCanceled) return res.status(400).json({ error: 'Domain is not canceled' });
+
+  const updated = await domainRepo.restoreDomain(id);
+
+  const by = req.user?.name || req.user?.email || 'system';
+  logActivity(ENTITY_TYPE.DOMAIN, id, ACTION.RESTORE, 'Domain restored', by);
+
+  res.json(updated);
+}
+
+export { listDomains, addDomain, deleteDomain, handleWebhook, verifyDomain, updateDomain, cancelDomain, restoreDomain };

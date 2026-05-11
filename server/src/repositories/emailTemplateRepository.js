@@ -12,6 +12,9 @@ export async function findMany(where) {
       htmlOutput: true,
       trackedLinks: true,
       status: true,
+      isCanceled: true,
+      canceledAt: true,
+      restoredAt: true,
       createdAt: true,
       updatedAt: true
     },
@@ -51,5 +54,19 @@ export async function updateTemplate(id, data) {
 export async function removeTemplate(id) {
   return prisma.emailTemplate.delete({
     where: { id }
+  });
+}
+
+export async function cancelTemplate(id, cancelReason = '') {
+  return prisma.emailTemplate.update({
+    where: { id },
+    data:  { isCanceled: true, canceledAt: new Date(), cancelReason, restoredAt: null },
+  });
+}
+
+export async function restoreTemplate(id, previousStatus) {
+  return prisma.emailTemplate.update({
+    where: { id },
+    data:  { isCanceled: false, restoredAt: new Date(), status: previousStatus || 'draft' },
   });
 }

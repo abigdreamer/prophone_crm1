@@ -88,6 +88,8 @@ model Contact {
   contractValue  Int        @default(0) @map("contract_value")
   accountSize    String     @default("1-5") @map("account_size")
   tags           String[]   @default([])
+  description    String     @default("")
+  socialLinks    Json       @default("{}") @map("social_links")
   notes          String     @default("")
   ownedBy        String     @default("") @map("owned_by")
   addedBy        String     @default("") @map("added_by")
@@ -99,7 +101,6 @@ model Contact {
   restoredBy     String     @default("") @map("restored_by")
   createdAt      DateTime   @default(now()) @map("created_at")
   client         Client?    @relation(fields: [clientId], references: [id])
-  activities     Activity[]
   campaignRecipients CampaignRecipient[]
 
   contactGroupId String? @map("contact_group_id")
@@ -109,30 +110,34 @@ model Contact {
 }
 
 model Activity {
-  id        String   @id @default(uuid())
-  contactId String   @map("contact_id")
-  type      String
-  note      String   @default("")
-  by        String   @default("")
-  points    Int      @default(0)
-  ts        DateTime @default(now())
-  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  entityType String   @default("contact") @map("entity_type")
+  entityId   String   @default("") @map("entity_id")
+  type       String
+  note       String   @default("")
+  by         String   @default("")
+  points     Int      @default(0)
+  ts         DateTime @default(now())
 
-  @@index([contactId, ts(sort: Desc)])
+  @@index([entityType, entityId, ts(sort: Desc)])
   @@map("activities")
 }
 
 model Domain {
-  id                String   @id @default(uuid())
-  clientId          String?  @map("client_id")
-  domainName        String   @unique @map("domain_name")
-  resendDomainId    String   @map("resend_domain_id")
-  status            String   @default("pending")
-  defaultFromEmail  String   @default("") @map("default_from_email")
-  spfRecord         String   @default("") @map("spf_record")
-  dkimRecord        String   @default("") @map("dkim_record")
-  dmarcRecord       String   @default("") @map("dmarc_record")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  clientId          String?   @map("client_id")
+  domainName        String    @unique @map("domain_name")
+  resendDomainId    String    @map("resend_domain_id")
+  status            String    @default("pending")
+  defaultFromEmail  String    @default("") @map("default_from_email")
+  spfRecord         String    @default("") @map("spf_record")
+  dkimRecord        String    @default("") @map("dkim_record")
+  dmarcRecord       String    @default("") @map("dmarc_record")
+  isCanceled        Boolean   @default(false) @map("is_canceled")
+  canceledAt        DateTime? @map("canceled_at")
+  cancelReason      String    @default("") @map("cancel_reason")
+  restoredAt        DateTime? @map("restored_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   @@map("domains")
 }
@@ -182,6 +187,10 @@ model EmailTemplate {
   htmlOutput   String   @default("") @map("html_output")
   trackedLinks Json     @default("[]") @map("tracked_links")
   status       String   @default("draft")
+  isCanceled   Boolean   @default(false) @map("is_canceled")
+  canceledAt   DateTime? @map("canceled_at")
+  cancelReason String    @default("") @map("cancel_reason")
+  restoredAt   DateTime? @map("restored_at")
 
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -233,6 +242,10 @@ model Campaign {
   clickedCount      Int       @default(0) @map("clicked_count")
   bouncedCount      Int       @default(0) @map("bounced_count")
   unsubscribedCount Int       @default(0) @map("unsubscribed_count")
+  isCanceled        Boolean   @default(false) @map("is_canceled")
+  canceledAt        DateTime? @map("canceled_at")
+  cancelReason      String    @default("") @map("cancel_reason")
+  restoredAt        DateTime? @map("restored_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -293,4 +306,16 @@ model CampaignRecipientEvent {
   @@index([recipientId])
   @@index([campaignId])
   @@map("campaign_recipient_events")
+}
+
+model TenantSettings {
+  id        String   @id @default(uuid())
+  clientId  String?  @map("client_id")
+  module    String
+  config    Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([clientId, module])
+  @@index([clientId])
+  @@map("tenant_settings")
 }

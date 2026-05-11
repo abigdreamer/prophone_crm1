@@ -425,7 +425,10 @@ export default function DashboardPage({
                       color: T.text,
                     }}
                   >
-                    {c.firstName} {c.lastName}
+                    {`${c.firstName || ""} ${c.lastName || ""}`.trim() ||
+                      c.email ||
+                      c.phone ||
+                      "Unknown Contact"}
                   </div>
                   <div
                     style={{

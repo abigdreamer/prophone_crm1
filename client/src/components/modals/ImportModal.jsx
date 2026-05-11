@@ -8,40 +8,148 @@ import * as db from "../../services/api";
 
 // ── Contact field definitions ─────────────────────────────────────────────────
 const CONTACT_FIELDS = [
-  { key: "fullName",      label: "Full Name (auto-split)", required: false },
-  { key: "firstName",     label: "First Name",       required: true  },
-  { key: "lastName",      label: "Last Name",         required: false },
-  { key: "email",         label: "Email",             required: true },
-  { key: "phone",         label: "Phone",             required: false },
-  { key: "company",       label: "Company",           required: false },
-  { key: "title",         label: "Job Title",         required: false },
-  { key: "website",       label: "Website",           required: false },
-  { key: "address",       label: "Address",           required: false },
-  { key: "city",          label: "City",              required: false },
-  { key: "trucks",        label: "# of Trucks",       required: false },
+  { key: "fullName", label: "Full Name (auto-split)", required: false },
+  { key: "firstName", label: "First Name", required: true },
+  { key: "lastName", label: "Last Name", required: false },
+  { key: "email", label: "Email", required: true },
+  { key: "phone", label: "Phone", required: false },
+  { key: "company", label: "Company", required: false },
+  { key: "title", label: "Job Title", required: false },
+  { key: "website", label: "Website", required: false },
+  { key: "address", label: "Address", required: false },
+  { key: "description", label: "Description", required: false },
+  { key: "trucks", label: "# of Trucks", required: false },
   { key: "contractValue", label: "Contract Value ($)", required: false },
-  { key: "source",        label: "Source",            required: false },
-  { key: "notes",         label: "Notes",             required: false },
-  { key: "__skip__",      label: "— Skip column —",  required: false },
+  { key: "source", label: "Source", required: false },
+  { key: "notes", label: "Notes", required: false },
+  { key: "facebook", label: "Facebook", required: false },
+  { key: "instagram", label: "Instagram", required: false },
+  { key: "linkedin", label: "LinkedIn", required: false },
+  { key: "twitter", label: "Twitter / X", required: false },
+  { key: "youtube", label: "YouTube", required: false },
+  { key: "yelp", label: "Yelp", required: false },
+  { key: "pinterest", label: "Pinterest", required: false },
+  { key: "tiktok", label: "TikTok", required: false },
+  { key: "__skip__", label: "— Skip column —", required: false },
 ];
 
+const SOCIAL_KEYS = new Set(["facebook", "instagram", "linkedin", "twitter", "youtube", "yelp", "pinterest", "tiktok"]);
+
 // Common CSV header → contact field auto-detection
+// Common CSV header → contact field auto-detection (IMPROVED)
 const AUTO_MAP = {
-  "full name":   "fullName",  fullname:      "fullName",  full_name:    "fullName",
-  "contact name":"fullName",  name:          "fullName",
-  firstname:     "firstName", first_name:    "firstName", "first name": "firstName",
-  lastname:      "lastName",  last_name:     "lastName",  "last name":  "lastName",
-  email:         "email",     "e-mail":      "email",     "email address": "email",
-  phone:         "phone",     mobile:        "phone",     cell:           "phone",  "phone number": "phone",
-  company:       "company",   organization:  "company",   "company name": "company",
-  title:         "title",     "job title":   "title",     position:       "title",  role: "title",
-  website:       "website",   url:           "website",   "website url": "website", "web": "website",
-  address:       "address",   "street address": "address", "street": "address", "mailing address": "address",
-  city:          "city",      location:      "city",
-  trucks:        "trucks",    "# of trucks": "trucks",    "num trucks": "trucks", "number of trucks": "trucks",
-  "contract value": "contractValue", contract: "contractValue", value: "contractValue", mrr: "contractValue",
-  source:        "source",
-  notes:         "notes",     comments: "notes",
+  // ── NAME ─────────────────────────────────────────────
+  "full name": "fullName",
+  fullname: "fullName",
+  full_name: "fullName",
+  "contact name": "fullName",
+  name: "fullName",
+
+  firstname: "firstName",
+  first_name: "firstName",
+  "first name": "firstName",
+
+  lastname: "lastName",
+  last_name: "lastName",
+  "last name": "lastName",
+
+  // ── EMAIL ────────────────────────────────────────────
+  email: "email",
+  "e-mail": "email",
+  "email address": "email",
+
+  // ── PHONE ────────────────────────────────────────────
+  phone: "phone",
+  mobile: "phone",
+  cell: "phone",
+  "phone number": "phone",
+
+  // ── COMPANY ──────────────────────────────────────────
+  company: "company",
+  organization: "company",
+  "company name": "company",
+
+  // ── TITLE ────────────────────────────────────────────
+  title: "title",
+  "job title": "title",
+  position: "title",
+  role: "title",
+
+  // ── WEBSITE ──────────────────────────────────────────
+  website: "website",
+  url: "website",
+  "website url": "website",
+  web: "website",
+  domain: "website",
+  "web domain": "website",
+  "company domain": "website",
+  site: "website",
+
+  // ── ADDRESS ──────────────────────────────────────────
+  address: "address",
+  "street address": "address",
+  street: "address",
+  "mailing address": "address",
+
+  location: "address",
+
+  // ── DESCRIPTION ──────────────────────────────────────
+  description: "description",
+  bio: "description",
+  about: "description",
+
+  // ── TRUCKS ───────────────────────────────────────────
+  trucks: "trucks",
+  "# of trucks": "trucks",
+  "num trucks": "trucks",
+  "number of trucks": "trucks",
+
+  // ── CONTRACT ─────────────────────────────────────────
+  "contract value": "contractValue",
+  contract: "contractValue",
+  value: "contractValue",
+  mrr: "contractValue",
+
+  source: "source",
+
+  notes: "notes",
+  comments: "notes",
+
+  // ── SOCIAL (IMPROVED + CONSISTENT) ───────────────────
+  facebook: "facebook",
+  "facebook url": "facebook",
+  "facebook link": "facebook",
+
+  instagram: "instagram",
+  "instagram url": "instagram",
+  "instagram handle": "instagram",
+
+  linkedin: "linkedin",
+  "linkedin url": "linkedin",
+  "linkedin profile": "linkedin",
+  "linked in": "linkedin",
+
+  twitter: "twitter",
+  x: "twitter",
+  "twitter / x": "twitter",
+  "twitter/x": "twitter",
+  "twitter url": "twitter",
+  "twitter handle": "twitter",
+
+  youtube: "youtube",
+  "youtube url": "youtube",
+  "youtube channel": "youtube",
+
+  yelp: "yelp",
+  "yelp url": "yelp",
+  "yelp page": "yelp",
+
+  pinterest: "pinterest",
+  "pinterest url": "pinterest",
+
+  tiktok: "tiktok",
+  "tiktok url": "tiktok",
+  "tiktok handle": "tiktok",
 };
 
 function detectMapping(headers) {
@@ -55,7 +163,7 @@ function Steps({ current }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 24 }}>
       {steps.map((s, i) => {
-        const done   = i < current;
+        const done = i < current;
         const active = i === current;
         return (
           <div key={s} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
@@ -88,7 +196,7 @@ function Steps({ current }) {
 function StepUpload({ onParsed }) {
   const T = useTheme();
   const [dragging, setDragging] = useState(false);
-  const [error,    setError]    = useState("");
+  const [error, setError] = useState("");
   const inputRef = useRef(null);
 
   function parseFile(file) {
@@ -169,7 +277,7 @@ function StepUpload({ onParsed }) {
       <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 8, background: T.surface, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Expected columns (any order)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {["Full Name *", "First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "# of Trucks", "Contract Value"].map(f => (
+          {["First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "Description", "# of Trucks", "Contract Value", "Facebook", "Instagram", "LinkedIn", "Twitter", "YouTube", "Yelp", "TikTok"].map(f => (
             <span key={f} style={{
               fontSize: 10, padding: "2px 8px", borderRadius: 4,
               background: T.card, border: `1px solid ${T.border}`, color: T.dim,
@@ -337,10 +445,10 @@ function StepSummary({ result, onClose, onStartOver }) {
       {/* Stats grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
         {[
-          { label: "TOTAL",    value: total,    color: T.text  },
+          { label: "TOTAL", value: total, color: T.text },
           { label: "IMPORTED", value: imported, color: T.green },
-          { label: "UPDATED",  value: updated,  color: T.blue  },
-          { label: "SKIPPED",  value: skipped,  color: T.amber },
+          { label: "UPDATED", value: updated, color: T.blue },
+          { label: "SKIPPED", value: skipped, color: T.amber },
         ].map(s => (
           <div key={s.label} style={{
             padding: "14px 10px", borderRadius: 8,
@@ -411,15 +519,15 @@ function StepSummary({ result, onClose, onStartOver }) {
 // ── Main modal ────────────────────────────────────────────────────────────────
 export default function ImportModal({ onClose, clientId, pool, onImported }) {
   const T = useTheme();
-  const [step,            setStep]            = useState(0);
-  const [fileName,        setFileName]        = useState("");
-  const [headers,         setHeaders]         = useState([]);
-  const [rawRows,         setRawRows]         = useState([]);
-  const [mapping,         setMapping]         = useState([]);
+  const [step, setStep] = useState(0);
+  const [fileName, setFileName] = useState("");
+  const [headers, setHeaders] = useState([]);
+  const [rawRows, setRawRows] = useState([]);
+  const [mapping, setMapping] = useState([]);
   const [duplicateAction, setDuplicateAction] = useState("ignore");
-  const [importing,       setImporting]       = useState(false);
-  const [result,          setResult]          = useState(null);
-  const [importError,     setImportError]     = useState("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [importError, setImportError] = useState("");
 
   function handleParsed({ headers: h, rows, fileName: fn }) {
     setHeaders(h);
@@ -433,6 +541,7 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
   const mapRows = useCallback(() => {
     return rawRows.map(row => {
       const contact = {};
+      const socialLinks = {};
       headers.forEach((h, i) => {
         const field = mapping[i];
         if (!field || field === "__skip__") return;
@@ -441,14 +550,18 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
           const space = full.indexOf(" ");
           if (space !== -1) {
             contact.firstName = contact.firstName || full.slice(0, space).trim();
-            contact.lastName  = contact.lastName  || full.slice(space + 1).trim();
+            contact.lastName = contact.lastName || full.slice(space + 1).trim();
           } else {
             contact.firstName = contact.firstName || full;
           }
+        } else if (SOCIAL_KEYS.has(field)) {
+          const v = (row[h] ?? "").trim();
+          if (v) socialLinks[field] = v;
         } else {
           contact[field] = row[h] ?? "";
         }
       });
+      contact.socialLinks = socialLinks;
       return contact;
     });
   }, [rawRows, headers, mapping]);
@@ -458,7 +571,7 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
     setImportError("");
     try {
       const rows = mapRows();
-      const res  = await db.importContacts({ rows, clientId, pool, duplicateAction });
+      const res = await db.importContacts({ rows, clientId, pool, duplicateAction });
       setResult(res);
       setStep(3);
       onImported?.();

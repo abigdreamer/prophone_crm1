@@ -3,7 +3,7 @@ import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
-  MoreHorizontal, Pencil, Send, Copy, Trash2, X,
+  MoreHorizontal, Pencil, Send, Copy, Trash2, X, Ban, RotateCcw,
   Type as TypeIcon, RefreshCw, ChevronLeft, ChevronUp,
   GripVertical, Info, AlignLeft, AlignCenter, AlignRight,
   Tag as TagIcon, Eye, Layers, LayoutGrid, List as ListIcon,
@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
-import { useConfirmDialog } from "../context/ConfirmContext";
 
 const CCtx = createContext(null);
 function makeC(T) {
@@ -199,16 +198,19 @@ ${blocksHtml}
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const C = useContext(CCtx);
-  const pub = status === "published";
+  const map = {
+    published: { label: "Published", color: C.green,  bg: C.greenBg,  bdr: C.greenBdr  },
+    draft:     { label: "Draft",     color: C.amber,  bg: C.amberBg,  bdr: C.amberBdr  },
+    canceled:  { label: "Canceled",  color: C.red,    bg: C.red + "15", bdr: C.red + "40" },
+  };
+  const s = map[status] ?? map.draft;
   return (
     <span style={{
       fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
-      color: pub ? C.green : C.amber,
-      background: pub ? C.greenBg : C.amberBg,
-      border: `1px solid ${pub ? C.greenBdr : C.amberBdr}`,
+      color: s.color, background: s.bg, border: `1px solid ${s.bdr}`,
       display: "inline-block", whiteSpace: "nowrap",
     }}>
-      {pub ? "Published" : "Draft"}
+      {s.label}
     </span>
   );
 }
@@ -471,7 +473,88 @@ function MBtn({ children, onClick, disabled, variant = "primary" }) {
   );
 }
 
-// ─── Delete modal ─────────────────────────────────────────────────────────────
+// ─── Cancel template modal ────────────────────────────────────────────────────
+function CancelTemplateModal({ template, onClose, onConfirm }) {
+  const C = useContext(CCtx);
+  const T = useTheme();
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+  const canConfirm = reason.trim().length > 0 && !loading;
+  async function handleConfirm() {
+    setLoading(true);
+    await onConfirm(reason.trim());
+    setLoading(false);
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.red + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Ban size={16} color={T.red} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Cancel template?</div>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+          "<strong style={{ color: C.text }}>{template.name}</strong>" will be marked as canceled. You can restore it at any time.
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: C.sub, marginBottom: 6, letterSpacing: "0.03em" }}>
+            CANCELLATION REASON <span style={{ color: T.red }}>*</span>
+          </div>
+          <textarea
+            autoFocus value={reason} onChange={e => setReason(e.target.value)}
+            placeholder="Explain why this template is being canceled…"
+            rows={3}
+            style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 7, background: C.surface, border: `1px solid ${reason.trim() ? C.border : T.red + "60"}`, color: C.text, fontSize: 12, fontFamily: "inherit", outline: "none", resize: "vertical" }}
+            onFocus={e => e.target.style.borderColor = C.accent}
+            onBlur={e => e.target.style.borderColor = reason.trim() ? C.border : T.red + "60"}
+          />
+          {!reason.trim() && <div style={{ fontSize: 10, color: T.red, marginTop: 4 }}>Required before canceling.</div>}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Keep</button>
+          <button onClick={handleConfirm} disabled={!canConfirm} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: canConfirm ? T.red : C.border, color: canConfirm ? "#fff" : C.muted, fontSize: 13, fontWeight: 600, cursor: canConfirm ? "pointer" : "default", fontFamily: "inherit" }}>
+            {loading ? "Canceling…" : <><Ban size={12} /> Cancel Template</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Restore template modal ───────────────────────────────────────────────────
+function RestoreTemplateModal({ template, onClose, onConfirm }) {
+  const C = useContext(CCtx);
+  const T = useTheme();
+  const [loading, setLoading] = useState(false);
+  async function handleConfirm() {
+    setLoading(true);
+    await onConfirm();
+    setLoading(false);
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.green + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <RotateCcw size={16} color={T.green} />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Restore template?</div>
+        </div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 24, lineHeight: 1.6 }}>
+          "<strong style={{ color: C.text }}>{template.name}</strong>" will be restored to its previous status.
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button onClick={handleConfirm} disabled={loading} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: loading ? C.border : T.green, color: loading ? C.muted : "#fff", fontSize: 13, fontWeight: 600, cursor: loading ? "default" : "pointer", fontFamily: "inherit" }}>
+            {loading ? "Restoring…" : <><RotateCcw size={12} /> Restore Template</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Rename modal ─────────────────────────────────────────────────────────────
 function RenameModal({ template, onConfirm, onCancel }) {
   const C = useContext(CCtx);
@@ -612,19 +695,24 @@ function SendTestModal({ template, onClose }) {
 }
 
 // ─── Options dropdown ─────────────────────────────────────────────────────────
-function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onDeleteRequest, onSendTest }) {
+function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
-  const isPub = template.status === "published";
+  const isPub      = template.status === "published";
+  const isCanceled = template.isCanceled;
   const items = [
-    { label: "Continue editing",                   Icon: Pencil, action: () => { onEdit();          onClose(); } },
-    { label: "View details",                       Icon: Info,   action: () => { onDetails();       onClose(); } },
+    { label: "Continue editing",              Icon: Pencil,     action: () => { onEdit();           onClose(); } },
+    { label: "View details",                  Icon: Info,       action: () => { onDetails();        onClose(); } },
     null,
-    { label: isPub ? "Unpublish" : "Publish",      Icon: Send,   action: () => { onPublish();       onClose(); } },
-    ...(isPub ? [{ label: "Send test email", Icon: Send, action: () => { onSendTest(); onClose(); } }] : []),
-    { label: "Rename template",                    Icon: Pencil, action: () => { onRename();        onClose(); } },
-    { label: "Duplicate template",                 Icon: Copy,   action: () => { onDuplicate();     onClose(); } },
+    ...(!isCanceled ? [
+      { label: isPub ? "Unpublish" : "Publish", Icon: Send,   action: () => { onPublish();        onClose(); } },
+      ...(isPub ? [{ label: "Send test email",  Icon: Send,   action: () => { onSendTest();       onClose(); } }] : []),
+      { label: "Rename template",               Icon: Pencil, action: () => { onRename();         onClose(); } },
+      { label: "Duplicate template",            Icon: Copy,   action: () => { onDuplicate();      onClose(); } },
+    ] : []),
     null,
-    { label: "Delete template", Icon: Trash2, action: () => { onDeleteRequest(); onClose(); }, danger: true },
+    isCanceled
+      ? { label: "Restore template", Icon: RotateCcw, action: () => { onRestoreRequest(); onClose(); }, restore: true }
+      : { label: "Cancel template",  Icon: Ban,       action: () => { onCancelRequest();  onClose(); }, danger:  true },
   ];
 
   return (
@@ -634,10 +722,10 @@ function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, on
         if (!item) return <div key={`sep-${i}`} style={{ height: 1, background: C.borderSub, margin: "3px 0" }} />;
         return (
           <button key={item.label} onClick={item.action}
-            style={{ width: "100%", background: "transparent", border: "none", padding: "9px 14px", fontSize: 13, color: item.danger ? C.red : C.text, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 9 }}
-            onMouseEnter={e => { e.currentTarget.style.background = item.danger ? C.redBg : C.bg; }}
+            style={{ width: "100%", background: "transparent", border: "none", padding: "9px 14px", fontSize: 13, color: item.danger ? C.red : item.restore ? C.green : C.text, cursor: "pointer", fontFamily: "inherit", textAlign: "left", display: "flex", alignItems: "center", gap: 9 }}
+            onMouseEnter={e => { e.currentTarget.style.background = item.danger ? C.redBg : item.restore ? C.green + "12" : C.bg; }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-            <item.Icon size={13} style={{ flexShrink: 0, color: item.danger ? C.red : C.muted }} />
+            <item.Icon size={13} style={{ flexShrink: 0, color: item.danger ? C.red : item.restore ? C.green : C.muted }} />
             {item.label}
           </button>
         );
@@ -652,7 +740,7 @@ function fmtCardDate(iso) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
+function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
@@ -675,7 +763,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
         {isOpen && (
           <OptionsDropdown template={template} onClose={() => onMenuToggle(null)} onEdit={onEdit}
             onDetails={onDetails} onPublish={onPublish} onRename={onRename}
-            onDuplicate={onDuplicate} onDeleteRequest={onDeleteRequest} onSendTest={onSendTest} />
+            onDuplicate={onDuplicate} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
         )}
       </div>
 
@@ -688,7 +776,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
           {slugify(template.name)}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <StatusBadge status={template.status} small />
+          <StatusBadge status={template.isCanceled ? "canceled" : template.status} small />
           <span style={{ fontSize: 12, color: C.muted }}>{fmtCardDate(template.updatedAt || template.createdAt)}</span>
         </div>
       </div>
@@ -697,7 +785,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
 }
 
 // ─── Template row (list view) ─────────────────────────────────────────────────
-function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onDeleteRequest, onSendTest }) {
+function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
@@ -723,7 +811,7 @@ function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDup
       </div>
 
       {/* Status col */}
-      <div><StatusBadge status={template.status} /></div>
+      <div><StatusBadge status={template.isCanceled ? "canceled" : template.status} /></div>
 
       {/* Updated col */}
       <div style={{ fontSize: 13, color: C.muted }}>
@@ -743,7 +831,7 @@ function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDup
         {isOpen && (
           <OptionsDropdown template={template} onClose={() => onMenuToggle(null)} onEdit={onEdit}
             onDetails={onDetails} onPublish={onPublish} onRename={onRename}
-            onDuplicate={onDuplicate} onDeleteRequest={onDeleteRequest} onSendTest={onSendTest} />
+            onDuplicate={onDuplicate} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
         )}
       </div>
     </div>
@@ -2423,6 +2511,7 @@ const STATUS_OPTIONS = [
   { value: "all",       label: "All Statuses" },
   { value: "draft",     label: "Draft" },
   { value: "published", label: "Published" },
+  { value: "canceled",  label: "Canceled" },
 ];
 
 // ─── Template list ────────────────────────────────────────────────────────────
@@ -2439,9 +2528,10 @@ function TemplateList({ onOpenBuilder }) {
   const [renameTarget,   setRenameTarget]   = useState(null);
   const [detailsTarget,  setDetailsTarget]  = useState(null);
   const [sendTestTarget, setSendTestTarget] = useState(null);
+  const [cancelTarget,   setCancelTarget]   = useState(null);
+  const [restoreTarget,  setRestoreTarget]  = useState(null);
   const statusRef = useRef(null);
   const toast   = useAppToast();
-  const confirm = useConfirmDialog();
 
   useEffect(() => { load(); }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2461,21 +2551,35 @@ function TemplateList({ onOpenBuilder }) {
     finally { setLoading(false); }
   }
 
-  async function handleDelete(template) {
-    const ok = await confirm({
-      title: `Delete "${template.name}"?`,
-      description: "This cannot be undone.",
-      confirmText: "Delete template",
-      cancelText: "Cancel",
-      type: "danger",
-    });
-    if (!ok) return;
+  async function handleCancel(template) {
+    setCancelTarget(template);
+  }
+
+  async function handleCancelConfirm(reason) {
+    if (!cancelTarget) return;
     try {
-      await store.deleteTemplate(template.id);
-      setTemplates(p => p.filter(t => t.id !== template.id));
-      toast.success("Template deleted.");
+      const updated = await store.cancelTemplate(cancelTarget.id, reason);
+      setTemplates(p => p.map(t => t.id === updated.id ? updated : t));
+      toast.success("Template canceled.");
+      setCancelTarget(null);
     } catch {
-      toast.error("Failed to delete template.");
+      toast.error("Failed to cancel template.");
+    }
+  }
+
+  async function handleRestore(template) {
+    setRestoreTarget(template);
+  }
+
+  async function handleRestoreConfirm() {
+    if (!restoreTarget) return;
+    try {
+      const updated = await store.restoreTemplate(restoreTarget.id);
+      setTemplates(p => p.map(t => t.id === updated.id ? updated : t));
+      toast.success("Template restored.");
+      setRestoreTarget(null);
+    } catch {
+      toast.error("Failed to restore template.");
     }
   }
 
@@ -2512,9 +2616,10 @@ function TemplateList({ onOpenBuilder }) {
   }
 
   const filtered = templates.filter(t => {
+    const effectiveStatus = t.isCanceled ? "canceled" : t.status;
     const q = search.toLowerCase();
     return (!q || t.name.toLowerCase().includes(q) || (t.subject || "").toLowerCase().includes(q))
-        && (statusFilter === "all" || t.status === statusFilter);
+        && (statusFilter === "all" || effectiveStatus === statusFilter);
   });
 
   const currentLabel = STATUS_OPTIONS.find(o => o.value === statusFilter)?.label ?? "All Statuses";
@@ -2647,7 +2752,8 @@ function TemplateList({ onOpenBuilder }) {
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
               onPublish={() => handlePublishToggle(t)}
-              onDeleteRequest={() => handleDelete(t)}
+              onCancelRequest={() => handleCancel(t)}
+              onRestoreRequest={() => handleRestore(t)}
               onSendTest={() => setSendTestTarget(t)}
             />
           ))}
@@ -2673,7 +2779,8 @@ function TemplateList({ onOpenBuilder }) {
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
               onPublish={() => handlePublishToggle(t)}
-              onDeleteRequest={() => handleDelete(t)}
+              onCancelRequest={() => handleCancel(t)}
+              onRestoreRequest={() => handleRestore(t)}
               onSendTest={() => setSendTestTarget(t)}
             />
           ))}
@@ -2689,6 +2796,12 @@ function TemplateList({ onOpenBuilder }) {
       )}
       {sendTestTarget && (
         <SendTestModal template={sendTestTarget} onClose={() => setSendTestTarget(null)} />
+      )}
+      {cancelTarget && (
+        <CancelTemplateModal template={cancelTarget} onClose={() => setCancelTarget(null)} onConfirm={handleCancelConfirm} />
+      )}
+      {restoreTarget && (
+        <RestoreTemplateModal template={restoreTarget} onClose={() => setRestoreTarget(null)} onConfirm={handleRestoreConfirm} />
       )}
     </div>
   );

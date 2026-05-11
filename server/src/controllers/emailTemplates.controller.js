@@ -9,6 +9,8 @@ import {
   validateAndSyncLinks,
   extractLinksFromHtml,
 } from '../services/templateLinkService.js';
+import { logActivity } from '../lib/activityLogger.js';
+import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 
 // ── Guard: assert client exists ───────────────────────────────────────────────
 
@@ -110,6 +112,9 @@ export const createTemplate = async (req, res) => {
       links = await validateAndSyncLinks(row.id, row.clientId, linkData);
     }
 
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.TEMPLATE, row.id, ACTION.CREATE, `Template created: ${row.name}`, by);
+
     sendSuccess(res, { ...row, links }, 201);
   } catch (err) {
     if (err.status) return sendError(res, err.message, err.status);
@@ -151,6 +156,9 @@ export const updateTemplate = async (req, res) => {
       }
     }
 
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.TEMPLATE, row.id, ACTION.UPDATE, `Template updated: ${row.name}`, by);
+
     sendSuccess(res, { ...row, links });
   } catch (err) {
     if (err.status) return sendError(res, err.message, err.status);
@@ -162,11 +170,38 @@ export const deleteTemplate = async (req, res) => {
   try {
     const existing = await templateRepo.findById(req.params.id);
     if (!existing) return sendError(res, 'Template not found', 404);
-    // TemplateLinks are cascade-deleted by the DB constraint
     await templateRepo.removeTemplate(req.params.id);
     sendSuccess(res, { ok: true });
   } catch (err) {
     sendServerError(res, err, 'deleteTemplate');
+  }
+};
+
+export const cancelTemplate = async (req, res) => {
+  try {
+    const existing = await templateRepo.findById(req.params.id);
+    if (!existing) return sendError(res, 'Template not found', 404);
+    const cancelReason = (req.body?.cancelReason || '').trim();
+    const row = await templateRepo.cancelTemplate(req.params.id, cancelReason);
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.TEMPLATE, row.id, ACTION.CANCEL, cancelReason || 'Template canceled', by);
+    sendSuccess(res, row);
+  } catch (err) {
+    sendServerError(res, err, 'cancelTemplate');
+  }
+};
+
+export const restoreTemplate = async (req, res) => {
+  try {
+    const existing = await templateRepo.findById(req.params.id);
+    if (!existing) return sendError(res, 'Template not found', 404);
+    const previousStatus = existing.status === 'canceled' ? 'draft' : existing.status;
+    const row = await templateRepo.restoreTemplate(req.params.id, previousStatus);
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.TEMPLATE, row.id, ACTION.RESTORE, 'Template restored', by);
+    sendSuccess(res, row);
+  } catch (err) {
+    sendServerError(res, err, 'restoreTemplate');
   }
 };
 

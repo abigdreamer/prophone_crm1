@@ -32,6 +32,22 @@ export async function removeCampaign(id) {
   return prisma.campaign.delete({ where: { id } });
 }
 
+export async function cancelCampaign(id, cancelReason = '') {
+  return prisma.campaign.update({
+    where: { id },
+    data:  { isCanceled: true, canceledAt: new Date(), cancelReason, restoredAt: null },
+    include: { template: { select: { id: true, name: true, subject: true } } },
+  });
+}
+
+export async function restoreCampaign(id) {
+  return prisma.campaign.update({
+    where: { id },
+    data:  { isCanceled: false, restoredAt: new Date() },
+    include: { template: { select: { id: true, name: true, subject: true } } },
+  });
+}
+
 export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
   if (status)    where.status    = status;

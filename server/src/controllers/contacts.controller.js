@@ -1,17 +1,40 @@
 import prisma from '../lib/prisma.js';
 import { skipDups } from '../lib/db-compat.js';
-import { extractCity } from '../utils/cityExtractor.js';
 import {
   VALID_POOLS, VALID_STAGES, VALID_STATUSES, VALID_ACCOUNT_SIZES,
-  DASHBOARD_GROUPS, ACTIVITY_TYPE, CLIENT_ACTION,
+  DASHBOARD_GROUPS, ACTIVITY_TYPE, ACTION, ENTITY_TYPE,
   STAGE, STATUS, POOL,
   TRACKED_CONTACT_FIELDS,
 } from '../constants/index.js';
+import { logActivity } from '../lib/activityLogger.js';
 
-function logClientActivity(entityId, action, performedBy, metadata = {}) {
-  return prisma.clientActivity.create({
-    data: { entityId, action, performedBy, metadata, ts: new Date() },
+function normaliseDomain(raw) {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return 'https://' + trimmed;
+}
+
+async function fetchActivities(entityId) {
+  return prisma.activity.findMany({
+    where: { entityType: ENTITY_TYPE.CONTACT, entityId },
+    orderBy: { ts: 'asc' },
   });
+}
+
+async function fetchActivitiesBulk(entityIds) {
+  if (!entityIds.length) return {};
+  const rows = await prisma.activity.findMany({
+    where: { entityType: ENTITY_TYPE.CONTACT, entityId: { in: entityIds } },
+    orderBy: { ts: 'asc' },
+  });
+  const map = {};
+  for (const r of rows) {
+    if (!map[r.entityId]) map[r.entityId] = [];
+    map[r.entityId].push(r);
+  }
+  return map;
 }
 
 function formatContact(c) {
@@ -42,6 +65,8 @@ function formatContact(c) {
     lastActivityAt: c.lastActivityAt,
     contractValue: c.contractValue,
     accountSize: c.accountSize,
+    description: c.description,
+    socialLinks: c.socialLinks ?? {},
     tags: c.tags,
     notes: c.notes,
     ownedBy: c.ownedBy,
@@ -86,22 +111,20 @@ async function listContacts(req, res) {
 
   const contacts = await prisma.contact.findMany({
     where,
-    include: { activities: true },
     orderBy: status === STATUS.CANCELED
       ? { canceledAt: 'desc' }
       : { lastActivityAt: 'desc' },
   });
 
-  res.json(contacts.map(formatContact));
+  const actMap = await fetchActivitiesBulk(contacts.map(c => c.id));
+  res.json(contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })));
 }
 
 async function getContact(req, res) {
-  const contact = await prisma.contact.findUnique({
-    where: { id: req.params.id },
-    include: { activities: true },
-  });
+  const contact = await prisma.contact.findUnique({ where: { id: req.params.id } });
   if (!contact) return res.status(404).json({ error: 'Contact not found' });
-  res.json(formatContact(contact));
+  const activities = await fetchActivities(contact.id);
+  res.json(formatContact({ ...contact, activities }));
 }
 
 async function createContact(req, res) {
@@ -124,7 +147,6 @@ async function createContact(req, res) {
       title: b.title || '',
       website: b.website || '',
       address: (b.address || '').trim(),
-      city: (b.city || '').trim() || extractCity((b.address || '').trim()),
       trucks: parseInt(b.trucks) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
       leadScore: b.leadScore || 10,
@@ -133,6 +155,8 @@ async function createContact(req, res) {
       campaign: b.campaign || '',
       contractValue: parseInt(b.contractValue) || 0,
       accountSize: b.accountSize || '1-5',
+      description: b.description || '',
+      socialLinks: b.socialLinks || {},
       tags: b.tags || [],
       notes: b.notes || '',
       ownedBy: b.ownedBy || '',
@@ -141,10 +165,13 @@ async function createContact(req, res) {
     },
   });
 
+  const by = req.user?.name || req.user?.email || 'system';
+
   if (b.activities && b.activities.length > 0) {
     await prisma.activity.createMany({
       data: b.activities.map(a => ({
-        contactId: contact.id,
+        entityType: ENTITY_TYPE.CONTACT,
+        entityId:   contact.id,
         type: a.type,
         note: a.note || '',
         by: a.by || '',
@@ -153,20 +180,10 @@ async function createContact(req, res) {
     });
   }
 
-  const full = await prisma.contact.findUnique({
-    where: { id: contact.id },
-    include: { activities: true },
-  });
+  logActivity(ENTITY_TYPE.CONTACT, contact.id, ACTION.CREATE, `Contact created: ${contact.firstName} ${contact.lastName}`.trim(), by);
 
-  const by = req.user?.name || req.user?.email || 'system';
-  logClientActivity(contact.id, CLIENT_ACTION.CREATE, by, {
-    name: `${contact.firstName} ${contact.lastName}`.trim(),
-    email: contact.email,
-    company: contact.company,
-    pool: contact.pool,
-  }).catch(() => { });
-
-  res.status(201).json(formatContact(full));
+  const activities = await fetchActivities(contact.id);
+  res.status(201).json(formatContact({ ...contact, activities }));
 }
 
 async function updateContact(req, res) {
@@ -189,10 +206,7 @@ async function updateContact(req, res) {
     return res.status(400).json({ error: "Invalid accountSize" });
   }
 
-  const existing = await prisma.contact.findUnique({
-    where: { id },
-    include: { activities: true },
-  });
+  const existing = await prisma.contact.findUnique({ where: { id } });
 
   if (!existing) {
     return res.status(404).json({ error: "Contact not found" });
@@ -219,12 +233,6 @@ async function updateContact(req, res) {
       title: b.title ?? existing.title,
       website: b.website ?? existing.website,
       address: b.address !== undefined ? b.address.trim() : existing.address,
-      city:
-        b.city !== undefined
-          ? b.city
-          : b.address !== undefined && !existing.city
-            ? extractCity(b.address.trim())
-            : existing.city,
       trucks: b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
       lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
       leadScore: b.leadScore ?? existing.leadScore,
@@ -236,12 +244,13 @@ async function updateContact(req, res) {
           ? parseInt(b.contractValue)
           : existing.contractValue,
       accountSize: b.accountSize ?? existing.accountSize,
+      description: b.description !== undefined ? b.description : existing.description,
+      socialLinks: b.socialLinks !== undefined ? b.socialLinks : existing.socialLinks,
       tags: b.tags ?? existing.tags,
       notes: b.notes ?? existing.notes,
       ownedBy: b.ownedBy ?? existing.ownedBy,
       lastActivityAt: new Date(),
     },
-    include: { activities: true },
   });
 
   const changes = {};
@@ -259,25 +268,17 @@ async function updateContact(req, res) {
   const by = req.user?.name || req.user?.email || "system";
 
   if (Object.keys(changes).length > 0) {
-    await prisma.activity.create({
-      data: {
-        contactId: id,
-        type: ACTIVITY_TYPE.LEAD_UPDATED,
-        note: "Contact updated",
-        by,
-        ts: new Date(),
-      },
-    });
-
-    logClientActivity(id, CLIENT_ACTION.UPDATE, by, { changes }).catch(() => { });
+    logActivity(ENTITY_TYPE.CONTACT, id, ACTION.UPDATE, 'Contact updated', by);
   }
 
-  res.json(formatContact(updated));
+  const activities = await fetchActivities(id);
+  res.json(formatContact({ ...updated, activities }));
 }
 
 async function deleteContact(req, res) {
   const existing = await prisma.contact.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Contact not found' });
+  await prisma.activity.deleteMany({ where: { entityType: ENTITY_TYPE.CONTACT, entityId: req.params.id } });
   await prisma.contact.delete({ where: { id: req.params.id } });
   res.json({ success: true });
 }
@@ -338,11 +339,11 @@ async function importContacts(req, res) {
     const email = s('email');
     const phone = s('phone');
 
-    if (!email && !phone) {
-      invalid.push(i);
-      errors.push({ row: i + 1, reason: 'Missing both email and phone' });
-      continue;
-    }
+    // if (!email && !phone) {
+    //   invalid.push(i);
+    //   errors.push({ row: i + 1, reason: 'Missing both email and phone' });
+    //   continue;
+    // }
 
     let firstName = s('firstName') || s('first_name');
     let lastName = s('lastName') || s('last_name');
@@ -359,14 +360,19 @@ async function importContacts(req, res) {
       }
     }
 
-    if (!firstName) {
-      invalid.push(i);
-      errors.push({ row: i + 1, reason: 'Missing first name' });
-      continue;
-    }
+    // if (!firstName) {
+    //   invalid.push(i);
+    //   errors.push({ row: i + 1, reason: 'Missing first name' });
+    //   continue;
+    // }
 
     const address = s('address');
-    const city = s('city') || extractCity(address);
+
+    const socialLinks = {};
+    for (const k of ['facebook','instagram','linkedin','twitter','youtube','yelp','pinterest','tiktok']) {
+      const v = s(k) || s(`social_${k}`) || String(r.socialLinks?.[k] ?? '').trim();
+      if (v) socialLinks[k] = v;
+    }
 
     const data = {
       pool,
@@ -377,9 +383,10 @@ async function importContacts(req, res) {
       phone,
       company: s('company'),
       title: s('title'),
-      website: s('website'),
+      website: normaliseDomain(s('website')),
       address,
-      city,
+      description: s('description'),
+      socialLinks,
       trucks: parseInt(r.trucks) || 0,
       contractValue: parseInt(r.contractValue) || 0,
       lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : STAGE.NEW,
@@ -440,8 +447,8 @@ async function importContacts(req, res) {
 }
 
 async function getContactClientActivities(req, res) {
-  const activities = await prisma.clientActivity.findMany({
-    where: { entityId: req.params.id },
+  const activities = await prisma.activity.findMany({
+    where: { entityType: ENTITY_TYPE.CONTACT, entityId: req.params.id },
     orderBy: { ts: 'desc' },
   });
   res.json(activities);
@@ -457,11 +464,11 @@ async function listCanceledContacts(req, res) {
 
   const contacts = await prisma.contact.findMany({
     where,
-    include: { activities: true },
     orderBy: { canceledAt: 'desc' },
   });
 
-  res.json(contacts.map(formatContact));
+  const actMap = await fetchActivitiesBulk(contacts.map(c => c.id));
+  res.json(contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })));
 }
 
 async function cancelContact(req, res) {
@@ -477,23 +484,20 @@ async function cancelContact(req, res) {
     prisma.contact.update({
       where: { id },
       data: { isCanceled: true, status: STATUS.CANCELED, canceledAt: new Date(), canceledBy: by, cancelReason },
-      include: { activities: true },
     }),
     prisma.activity.create({
       data: {
-        contactId: id,
+        entityType: ENTITY_TYPE.CONTACT,
+        entityId:   id,
         type: ACTIVITY_TYPE.CANCEL_CONTACT,
         note: cancelReason ? `Contact canceled — ${cancelReason}` : 'Contact canceled',
         by,
-        ts: new Date(),
       },
-    }),
-    prisma.clientActivity.create({
-      data: { entityId: id, action: CLIENT_ACTION.CANCEL, performedBy: by, metadata: { reason: cancelReason }, ts: new Date() },
     }),
   ]);
 
-  res.json(formatContact(updated));
+  const activities = await fetchActivities(id);
+  res.json(formatContact({ ...updated, activities }));
 }
 
 async function restoreContact(req, res) {
@@ -508,17 +512,14 @@ async function restoreContact(req, res) {
     prisma.contact.update({
       where: { id },
       data: { isCanceled: false, status: STATUS.ACTIVE, restoredAt: new Date(), restoredBy: by },
-      include: { activities: true },
     }),
     prisma.activity.create({
-      data: { contactId: id, type: ACTIVITY_TYPE.UNCANCEL_CONTACT, note: 'Contact restored', by, ts: new Date() },
-    }),
-    prisma.clientActivity.create({
-      data: { entityId: id, action: CLIENT_ACTION.RESTORE, performedBy: by, metadata: { previousReason: existing.cancelReason }, ts: new Date() },
+      data: { entityType: ENTITY_TYPE.CONTACT, entityId: id, type: ACTIVITY_TYPE.UNCANCEL_CONTACT, note: 'Contact restored', by },
     }),
   ]);
 
-  res.json(formatContact(updated));
+  const activities = await fetchActivities(id);
+  res.json(formatContact({ ...updated, activities }));
 }
 
 async function getDashboardSummary(req, res) {
@@ -536,7 +537,7 @@ async function getDashboardSummary(req, res) {
       orderBy: { lastActivityAt: 'desc' },
       take: 3,
       select: {
-        id: true, firstName: true, lastName: true, company: true,
+        id: true, firstName: true, lastName: true, email: true, phone: true, company: true,
         lifecycleStage: true, lastActivityAt: true, leadScore: true,
       },
     }),

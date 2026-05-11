@@ -135,7 +135,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
         (c.firstName + " " + c.lastName).toLowerCase().includes(ql) ||
         c.email.toLowerCase().includes(ql) ||
         (c.company || "").toLowerCase().includes(ql) ||
-        (c.city || "").toLowerCase().includes(ql)
+        (c.address || "").toLowerCase().includes(ql)
       );
     })
     .sort((a, b) => {
@@ -302,8 +302,8 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
             <thead>
               <tr style={{ background: T.surface }}>
                 {(showingCanceled
-                  ? ["Name & Email", "Company", "City", "Status", "Canceled By", "Last Activity", "Value", "Owner", ""]
-                  : ["Name & Email", "Company", "City", "Stage", "Status", "Score", "Last Activity", "Value", "Owner", ""]
+                  ? ["Name & Email", "Company", "Address", "Status", "Canceled By", "Last Activity", "Value", "Owner", ""]
+                  : ["Name & Email", "Company", "Address", "Stage", "Status", "Score", "Last Activity", "Value", "Owner", ""]
                 ).map((h, i) => (
                   <th key={i} style={{ padding: "8px 11px", textAlign: "left", color: T.muted, fontSize: 9, textTransform: "uppercase" }}>{h}</th>
                 ))}
@@ -345,7 +345,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
                       <div style={{ color: T.dim }}><Hi text={c.company} q={q} /></div>
                       <div style={{ color: T.muted, fontSize: 9 }}>{c.title}</div>
                     </td>
-                    <td style={{ padding: "8px 11px", color: T.muted }}><Hi text={c.city || "—"} q={q} /></td>
+                    <td style={{ padding: "8px 11px", color: T.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Hi text={c.address || "—"} q={q} /></td>
 
                     {showingCanceled ? (
                       <td style={{ padding: "8px 11px" }}>
