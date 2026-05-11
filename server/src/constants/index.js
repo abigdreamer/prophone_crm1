@@ -101,6 +101,13 @@ export const ACTION = Object.freeze({
   VERIFY:  'VERIFY',
 });
 
+export const TIMESTAMP_FILTERS = {
+  delivered: { deliveredAt: { not: null } },
+  opened:    { openedAt:    { not: null } },
+  clicked:   { clickedAt:   { not: null } },
+  bounced:   { bouncedAt:   { not: null } },
+};
+
 // ── Client Activity Actions (legacy alias) ────────────────────────────────────
 export const CLIENT_ACTION = ACTION;
 
