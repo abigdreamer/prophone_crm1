@@ -8,7 +8,6 @@ import Avatar from "../components/ui/Avatar";
 import Hi from "../components/ui/Hi";
 import Btn from "../components/ui/Btn";
 import { SkeletonRow } from "../components/ui/Loader";
-import ContactModal from "../components/modals/ContactModal";
 import ImportModal from "../components/modals/ImportModal";
 import { RestoreModal } from "../components/modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
@@ -57,14 +56,12 @@ function getPageWindow(current, total) {
   return [1, "…", current - 1, current, current + 1, "…", total];
 }
 
-export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser, onRestoreContact }) {
+export default function ContactsPage({ pool, clientId, viewMode, onSelect, selected, search, contacts, setContacts, currentUser, onRestoreContact, onAddContact, onEditContact }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
   const [statusF, setStatusF] = useState("all");
   const [sortBy, setSortBy] = useState("lastActivityAt");
-  const [addModal, setAddModal] = useState(false);
   const [importModal, setImportModal] = useState(false);
-  const [editC, setEditC] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [restoreTarget, setRestoreTarget] = useState(null);
@@ -178,29 +175,6 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
     }
   }
 
-  async function handleAdd(nc) {
-    try {
-      const saved = await db.createContact(nc);
-      setContacts(prev => [saved, ...prev]);
-      setAddModal(false);
-      toast.success("Contact added.");
-    } catch {
-      toast.error("Failed to save contact.");
-    }
-  }
-
-  async function handleEdit(updated) {
-    try {
-      const refreshed = await db.updateContact(updated.id, updated);
-      setContacts(prev => prev.map(c => c.id === refreshed.id ? refreshed : c));
-      if (localContacts) setLocalContacts(prev => prev.map(c => c.id === refreshed.id ? refreshed : c));
-      setEditC(null);
-      toast.success("Contact saved.");
-    } catch {
-      toast.error("Failed to update contact.");
-    }
-  }
-
   async function handleRestoreConfirm() {
     if (!restoreTarget) return;
     setRestoreLoading(true);
@@ -225,8 +199,6 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {addModal && <ContactModal onSave={handleAdd} onClose={() => setAddModal(false)} pool={pool} clientId={clientId} currentUser={currentUser} />}
-      {editC && <ContactModal contact={editC} onSave={handleEdit} onClose={() => setEditC(null)} pool={pool} clientId={clientId} currentUser={currentUser} />}
       {importModal && (
         <ImportModal
           onClose={() => setImportModal(false)}
@@ -291,7 +263,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
           {!showingCanceled && (
             <>
               <Btn variant="secondary" onClick={() => setImportModal(true)}>↑ Import</Btn>
-              <Btn onClick={() => setAddModal(true)}>+ Add Contact</Btn>
+              <Btn onClick={() => onAddContact?.()}>+ Add Contact</Btn>
             </>
           )}
         </div>
@@ -370,7 +342,7 @@ export default function ContactsPage({ pool, clientId, viewMode, onSelect, selec
                       <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                         {!c.isCanceled && (
                           <button
-                            onClick={e => { e.stopPropagation(); setEditC(c); }}
+                            onClick={e => { e.stopPropagation(); onEditContact?.(c); }}
                             style={{ background: "transparent", border: "none", cursor: "pointer", color: T.muted, fontSize: 13 }}
                             title="Edit"
                           >✎</button>

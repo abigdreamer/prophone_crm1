@@ -82,7 +82,7 @@ export default function PoolSwitcher({
             border: `1px solid ${T.navBorder}`, // MATCH NAV BORDER
             borderRadius: 10,
             minWidth: 280,
-            zIndex: 500,
+            zIndex: 100001,
             overflow: "hidden",
             boxShadow: "0 12px 30px rgba(0,0,0,0.4)"
           }}

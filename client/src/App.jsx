@@ -28,6 +28,7 @@ import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import ContactDetailPanel from './components/ContactDetailPanel';
+import ContactFormPanel from './components/ContactFormPanel';
 
 import { useAuth } from './hooks/useAuth';
 import { useContacts } from './hooks/useContacts';
@@ -82,6 +83,7 @@ function AppLayout({ currentUser, onSignOut }) {
     () => localStorage.getItem('mktg-sidebar-collapsed') === 'true',
   );
   const [mktgMobileOpen, setMktgMobileOpen] = useState(false);
+  const [contactFormPanel, setContactFormPanel] = useState(null); // null | { mode: 'add' } | { mode: 'edit', contact }
 
   const { contacts, setContacts, contactCounts, loading, firstLoad } =
     useContacts(currentUser);
@@ -179,6 +181,29 @@ function AppLayout({ currentUser, onSignOut }) {
     },
     [setClientId, setPool],
   );
+
+  const handleOpenAddContact = useCallback(() => {
+    setSelected(null);
+    setCharted(null);
+    setContactFormPanel({ mode: 'add' });
+  }, []);
+
+  const handleOpenEditContact = useCallback((contact) => {
+    setContactFormPanel({ mode: 'edit', contact });
+  }, []);
+
+  const handleContactFormSaved = useCallback((result) => {
+    setContactFormPanel(prev => {
+      if (prev?.mode === 'edit') {
+        setContacts(c => c.map(x => x.id === result.id ? result : x));
+        setSelected(s => s?.id === result.id ? result : s);
+        setCharted(ch => ch?.id === result.id ? result : ch);
+      } else {
+        setContacts(c => [result, ...c]);
+      }
+      return null;
+    });
+  }, [setContacts]);
 
   useEffect(() => {
     function handler(e) {
@@ -387,6 +412,7 @@ function AppLayout({ currentUser, onSignOut }) {
             setContacts={setContacts}
             currentUser={currentUser}
             loading={loading}
+            onOpenPanel={handleOpenAddContact}
           />
         )}
 
@@ -492,6 +518,7 @@ function AppLayout({ currentUser, onSignOut }) {
                 contact={selected}
                 onUpdate={handleUpdate}
                 currentUser={currentUser}
+                onEditContact={handleOpenEditContact}
               />
             ) : (
               <Routes>
@@ -538,6 +565,8 @@ function AppLayout({ currentUser, onSignOut }) {
                       }
                       currentUser={currentUser}
                       onRestoreContact={handleRestoreContact}
+                      onAddContact={handleOpenAddContact}
+                      onEditContact={handleOpenEditContact}
                     />
                   }
                 />
@@ -560,9 +589,10 @@ function AppLayout({ currentUser, onSignOut }) {
               </Routes>
             )}
           </div>
+
         </div>
 
-        {charted && (
+        {(contactFormPanel || charted) && (
           <div
             style={{
               width: 420,
@@ -593,10 +623,12 @@ function AppLayout({ currentUser, onSignOut }) {
                   letterSpacing: '0.05em',
                 }}
               >
-                Lead Lifecycle
+                {contactFormPanel
+                  ? (contactFormPanel.mode === 'edit' ? 'Edit Contact' : 'Add Contact')
+                  : 'Lead Lifecycle'}
               </div>
               <button
-                onClick={() => setCharted(null)}
+                onClick={() => contactFormPanel ? setContactFormPanel(null) : setCharted(null)}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -610,11 +642,25 @@ function AppLayout({ currentUser, onSignOut }) {
               </button>
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
-              <LifecycleChart
-                contact={charted}
-                onUpdate={handleUpdate}
-                currentUser={currentUser}
-              />
+              {contactFormPanel ? (
+                <ContactFormPanel
+                  key={contactFormPanel.mode === 'edit' ? contactFormPanel.contact?.id : 'add'}
+                  mode={contactFormPanel.mode}
+                  contact={contactFormPanel.contact}
+                  pool={pool}
+                  clientId={clientId}
+                  currentUser={currentUser}
+                  onSaved={handleContactFormSaved}
+                  onClose={() => setContactFormPanel(null)}
+                />
+              ) : (
+                <LifecycleChart
+                  contact={charted}
+                  onUpdate={handleUpdate}
+                  currentUser={currentUser}
+                  onEditContact={handleOpenEditContact}
+                />
+              )}
             </div>
           </div>
         )}

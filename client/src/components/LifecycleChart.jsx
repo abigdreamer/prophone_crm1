@@ -5,7 +5,6 @@ import Avatar from "./ui/Avatar";
 import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
-import ContactModal from "./modals/ContactModal";
 import CancelModal from "./modals/CancelModal";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
@@ -16,7 +15,7 @@ import * as db from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 
 // ─── Right-panel: lead lifecycle + activity timeline ─────────────────────────
-export default function LifecycleChart({ contact, onUpdate, currentUser }) {
+export default function LifecycleChart({ contact, onUpdate, currentUser, onEditContact }) {
   const T = useTheme();
   const [filter, setFilter] = useState("all");
   const [modal, setModal] = useState(null);   // "log" | "stage" | "edit"
@@ -81,25 +80,6 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
             }
           }}
           onClose={() => setModal(null)}
-          currentUser={currentUser}
-        />
-      )}
-      {modal === "edit" && (
-        <ContactModal
-          contact={contact}
-          onSave={async updated => {
-            try {
-              const refreshed = await db.updateContact(updated.id, updated);
-              onUpdate(refreshed);
-              setModal(null);
-              toast.success("Contact saved.");
-            } catch (err) {
-              toast.error(err.message || "Failed to update contact.");
-            }
-          }}
-          onClose={() => setModal(null)}
-          pool={contact.pool}
-          clientId={contact.clientId}
           currentUser={currentUser}
         />
       )}
@@ -197,7 +177,7 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
             <Btn onClick={() => setModal("log")} style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
             <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
-            <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
+            <Btn onClick={() => onEditContact?.(contact)} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
             <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px", borderColor: T.red, color: T.red }}>✕ Cancel</Btn>
           </div>
         )}

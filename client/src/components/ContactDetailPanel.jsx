@@ -3,7 +3,6 @@ import { StagePill, Pill } from "./ui/Pill";
 import Btn from "./ui/Btn";
 import LogActivityModal from "./modals/LogActivityModal";
 import StageModal from "./modals/StageModal";
-import ContactModal from "./modals/ContactModal";
 import CancelModal from "./modals/CancelModal";
 import { RestoreModal } from "./modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
@@ -43,7 +42,7 @@ const DEFAULT_FIELD_SETTINGS = {
   social_pinterest: true, social_tiktok: true,
 };
 
-export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
+export default function ContactDetailPanel({ contact, onUpdate, currentUser, onEditContact }) {
   const T = useTheme();
   const [modal,          setModal]          = useState(null);
   const [auditLog,       setAuditLog]       = useState([]);
@@ -114,17 +113,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
     }
   }
 
-  async function handleEdit(updated) {
-    try {
-      const refreshed = await db.updateContact(updated.id, updated);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Contact saved.");
-    } catch (err) {
-      toast.error(err.message || "Failed to update contact.");
-    }
-  }
-
   async function handleCancel(reason) {
     const refreshed = await db.cancelContact(contact.id, reason);
     onUpdate(refreshed);
@@ -154,12 +142,6 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       )}
       {modal === "stage" && (
         <StageModal contact={contact} onSave={handleStageChange} onClose={() => setModal(null)} currentUser={currentUser} />
-      )}
-      {modal === "edit" && (
-        <ContactModal
-          contact={contact} onSave={handleEdit} onClose={() => setModal(null)}
-          pool={contact.pool} clientId={contact.clientId} currentUser={currentUser}
-        />
       )}
       {modal === "cancel" && (
         <CancelModal
@@ -222,7 +204,7 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
               <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
                 ⇢ Stage
               </Btn>
-              <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
+              <Btn onClick={() => onEditContact?.(contact)} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
                 ✎ Edit
               </Btn>
               <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.red, color: T.red }}>

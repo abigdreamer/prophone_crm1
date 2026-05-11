@@ -1,13 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
-import ContactModal from "./modals/ContactModal";
 import { useTheme } from "../context/ThemeContext";
-import { useAppToast } from "../context/ToastContext";
 import { useClientById } from "../context/ClientsContext";
 import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
-import * as db from "../services/api";
 import { SkeletonContactCard } from "./ui/Loader";
 
 function SidebarSkeleton() {
@@ -21,15 +18,13 @@ function SidebarSkeleton() {
 export default function Sidebar({
   pool, clientId, viewMode, selected, onSelect,
   search, setSearch, searchRef, contacts, setContacts, currentUser, loading,
+  onOpenPanel,
 }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
   const [sortF, setSortF] = useState("recent");
-  const [addModal, setAddModal] = useState(false);
-  const [editContact, setEditContact] = useState(null);
-  const [isFocused, setIsFocused] = useState(false); // Added for visual highlight
+  const [isFocused, setIsFocused] = useState(false);
   const listRef = useRef(null);
-  const toast = useAppToast();
 
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -116,7 +111,7 @@ export default function Sidebar({
     e.preventDefault();
 
     if (e.key === "Enter") {
-      if (selected) setEditContact(selected);
+      if (selected) onOpenPanel({ mode: "edit", contact: selected });
       return;
     }
 
@@ -146,45 +141,12 @@ export default function Sidebar({
   function handleSearchKeyDown(e) { navigate(e); }
   function handleListKeyDown(e)   { navigate(e); }
 
-  async function handleAdd(nc) {
-    try {
-      const saved = await db.createContact(nc);
-      setContacts(prev => [saved, ...prev]);
-      setAddModal(false);
-      toast.success("Contact added.");
-    } catch (err) {
-      toast.error("Failed to save contact.");
-    }
-  }
-
   return (
     <div style={{
       width: 290, flexShrink: 0,
       background: T.surface, borderRight: "1px solid " + T.border,
       display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
     }}>
-      {addModal && (
-        <ContactModal onSave={handleAdd} onClose={() => setAddModal(false)} pool={pool} clientId={clientId} currentUser={currentUser} />
-      )}
-      {editContact && (
-        <ContactModal
-          contact={editContact}
-          onSave={async (updated) => {
-            try {
-              const refreshed = await db.updateContact(updated.id, updated);
-              onSelect(refreshed);
-              setEditContact(null);
-              toast.success("Contact saved.");
-            } catch {
-              toast.error("Failed to save contact.");
-              setEditContact(null);
-            }
-          }}
-          onClose={() => setEditContact(null)}
-          pool={editContact.pool} clientId={editContact.clientId} currentUser={currentUser}
-        />
-      )}
-
       {/* Header */}
       <div style={{
         padding: "10px 14px", background: col + "0D", borderBottom: "1px solid " + T.border,
@@ -225,7 +187,7 @@ export default function Sidebar({
           })}
         </div>
         <button
-          onClick={() => setAddModal(true)}
+          onClick={() => onOpenPanel({ mode: "add" })}
           style={{
             background: col, border: "none", borderRadius: 6, color: "#fff",
             fontSize: 11, fontWeight: 700, padding: "5px 12px", cursor: "pointer",

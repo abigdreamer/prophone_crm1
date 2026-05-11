@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
 import { useTheme } from "../context/ThemeContext";
+import { usePanelWidth } from "../context/PanelContext";
 import { usePool } from "../context/PoolContext";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
@@ -443,14 +444,20 @@ function MiniEmailPreview({ template }) {
 }
 
 // ─── Modal utilities ──────────────────────────────────────────────────────────
-function ModalBackdrop({ children, onClose }) {
+function ModalBackdrop({ children, onClose, width = 480 }) {
   const C = useContext(CCtx);
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(width); return () => setPanelWidth(0); }, [width, setPanelWidth]);
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(3px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "28px", boxShadow: C.shadowLg, width: "100%", maxWidth: 460 }}>
+    <div style={{
+      position: "fixed", right: 0, top: 50, bottom: 0, width,
+      zIndex: 2000, background: C.surface, borderLeft: `1px solid ${C.border}`,
+      boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "12px 16px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
         {children}
       </div>
     </div>
@@ -478,6 +485,8 @@ function MBtn({ children, onClick, disabled, variant = "primary" }) {
 function CancelTemplateModal({ template, onClose, onConfirm }) {
   const C = useContext(CCtx);
   const T = useTheme();
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(480); return () => setPanelWidth(0); }, [setPanelWidth]);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const canConfirm = reason.trim().length > 0 && !loading;
@@ -487,8 +496,12 @@ function CancelTemplateModal({ template, onClose, onConfirm }) {
     setLoading(false);
   }
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+    <div style={{ position: "fixed", right: 0, top: 50, bottom: 0, width: 480, zIndex: 3100, background: C.card, borderLeft: `1px solid ${C.border}`, boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Cancel Template</div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.red + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Ban size={16} color={T.red} />
@@ -527,6 +540,8 @@ function CancelTemplateModal({ template, onClose, onConfirm }) {
 function RestoreTemplateModal({ template, onClose, onConfirm }) {
   const C = useContext(CCtx);
   const T = useTheme();
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(480); return () => setPanelWidth(0); }, [setPanelWidth]);
   const [loading, setLoading] = useState(false);
   async function handleConfirm() {
     setLoading(true);
@@ -534,8 +549,12 @@ function RestoreTemplateModal({ template, onClose, onConfirm }) {
     setLoading(false);
   }
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+    <div style={{ position: "fixed", right: 0, top: 50, bottom: 0, width: 480, zIndex: 3100, background: C.card, borderLeft: `1px solid ${C.border}`, boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Restore Template</div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.green + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <RotateCcw size={16} color={T.green} />
@@ -580,6 +599,8 @@ function RenameModal({ template, onConfirm, onCancel }) {
 // ─── Details modal ────────────────────────────────────────────────────────────
 function DetailsModal({ template, onClose, onEdit }) {
   const C = useContext(CCtx);
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(520); return () => setPanelWidth(0); }, [setPanelWidth]);
   const blocks = template.body?.blocks || [];
   const blockCounts = {};
   blocks.forEach(b => { blockCounts[b.type] = (blockCounts[b.type] || 0) + 1; });
@@ -594,9 +615,12 @@ function DetailsModal({ template, onClose, onEdit }) {
   ];
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(3px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, boxShadow: C.shadowLg, width: "100%", maxWidth: 520, overflow: "hidden" }}>
+    <div style={{ position: "fixed", right: 0, top: 50, bottom: 0, width: 520, zIndex: 2000, background: C.surface, borderLeft: `1px solid ${C.border}`, boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Template Details</div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto" }}>
         <div style={{ height: 170, position: "relative", overflow: "hidden", borderBottom: `1px solid ${C.border}` }}>
           <MiniEmailPreview template={template} />
         </div>
@@ -631,6 +655,8 @@ function DetailsModal({ template, onClose, onEdit }) {
 // ─── Send test email modal ────────────────────────────────────────────────────
 function SendTestModal({ template, onClose }) {
   const C = useContext(CCtx);
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(480); return () => setPanelWidth(0); }, [setPanelWidth]);
   const [email,   setEmail]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [error,   setError]   = useState(null);
@@ -651,26 +677,21 @@ function SendTestModal({ template, onClose }) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, backdropFilter: "blur(4px)" }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "28px", boxShadow: C.shadowLg, width: "100%", maxWidth: 440 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 6 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>Send test email</div>
-            <div style={{ fontSize: 13, color: C.sub, marginTop: 3 }}>Send <strong style={{ color: C.text }}>{template.name}</strong> to a test address.</div>
-          </div>
-          <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 7px", cursor: "pointer", color: C.sub, display: "flex", marginLeft: 12 }}>
-            <X size={14} />
-          </button>
-        </div>
+    <div style={{ position: "fixed", right: 0, top: 50, bottom: 0, width: 480, zIndex: 2000, background: C.surface, borderLeft: `1px solid ${C.border}`, boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Send Test Email</div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+        <div style={{ fontSize: 13, color: C.sub, marginBottom: 18 }}>Send <strong style={{ color: C.text }}>{template.name}</strong> to a test address.</div>
         {success ? (
-          <div style={{ marginTop: 20, background: C.greenBg, border: `1px solid ${C.greenBdr}`, borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ background: C.greenBg, border: `1px solid ${C.greenBdr}`, borderRadius: 10, padding: "14px 16px" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Email sent!</div>
             <div style={{ fontSize: 12, color: C.green, opacity: 0.8 }}>Test email delivered to {email.trim()}</div>
           </div>
         ) : (
           <>
-            <div style={{ marginTop: 18 }}>
+            <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.sub, marginBottom: 6 }}>Recipient email</label>
               <input autoFocus type="email" value={email} onChange={e => { setEmail(e.target.value); setError(null); }}
                 onKeyDown={e => { if (e.key === "Enter" && valid && !busy) handleSend(); if (e.key === "Escape") onClose(); }}
@@ -678,7 +699,7 @@ function SendTestModal({ template, onClose }) {
                 style={{ width: "100%", boxSizing: "border-box", background: C.surface, border: `1.5px solid ${error ? C.red : C.border}`, borderRadius: 9, padding: "10px 13px", fontSize: 13, color: C.text, outline: "none", fontFamily: "inherit" }} />
               {error && <div style={{ fontSize: 12, color: C.red, marginTop: 6 }}>{error}</div>}
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <MBtn onClick={onClose} variant="ghost">Cancel</MBtn>
               <button onClick={handleSend} disabled={!valid || busy}
                 style={{ flex: 1, border: "none", borderRadius: 9, padding: "10px 0", fontSize: 13, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: valid && !busy ? C.accent : C.accentLo, color: valid && !busy ? "#fff" : "#a5b4fc", cursor: valid && !busy ? "pointer" : "not-allowed" }}>
@@ -1381,9 +1402,15 @@ function InlinePreview({ body, name, onClose }) {
 // ─── Mode chooser ────────────────────────────────────────────────────────────
 function ChooseModeModal({ onChoose, onCancel }) {
   const C = useContext(CCtx);
+  const { setPanelWidth } = usePanelWidth();
+  useEffect(() => { setPanelWidth(520); return () => setPanelWidth(0); }, [setPanelWidth]);
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800, fontFamily: "inherit" }}>
-      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px 32px", maxWidth: 520, width: "90%", boxShadow: C.shadowLg, border: `1px solid ${C.border}` }}>
+    <div style={{ position: "fixed", right: 0, top: 50, bottom: 0, width: 520, zIndex: 800, background: C.surface, borderLeft: `1px solid ${C.border}`, boxShadow: "-4px 0 24px rgba(0,0,0,0.35)", display: "flex", flexDirection: "column", fontFamily: "inherit" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: "0.04em" }}>Create Template</div>
+        {onCancel && <button onClick={onCancel} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "32px 28px" }}>
         <div style={{ textAlign: "center", marginBottom: 30 }}>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>Choose how to create</h2>
           <p style={{ margin: "8px 0 0", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Start with the visual builder or write / import HTML directly</p>
@@ -1418,11 +1445,6 @@ function ChooseModeModal({ onChoose, onCancel }) {
             </div>
           </button>
         </div>
-        {onCancel && (
-          <div style={{ textAlign: "center", marginTop: 22 }}>
-            <button onClick={onCancel} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1618,7 +1640,7 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
 }
 
 // ─── Email builder view ───────────────────────────────────────────────────────
-function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
+function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml, sidebarLeft = 216 }) {
   const C = useContext(CCtx);
   const [name,       setName]       = useState("Untitled Template");
   const [subject,    setSubject]    = useState("");
@@ -1778,7 +1800,7 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 
   if (loading) {
     return (
-      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: C.bg, display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
+      <div style={{ position: "fixed", top: 50, left: sidebarLeft, right: 0, bottom: 0, background: C.bg, display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
         <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }} />
         <div style={{ flex: 1, display: "flex", gap: 0 }}>
           <div style={{ width: 260, background: C.surface, borderRight: `1px solid ${C.border}`, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1795,7 +1817,7 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
   }
 
   return (
-    <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", background: C.bg, fontFamily: "'Inter','DM Sans',system-ui,sans-serif", zIndex: 500, overflow: "hidden" }}>
+    <div style={{ position: "fixed", top: 50, left: sidebarLeft, right: 0, bottom: 0, display: "flex", flexDirection: "column", background: C.bg, fontFamily: "'Inter','DM Sans',system-ui,sans-serif", zIndex: 500, overflow: "hidden" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}input::placeholder{color:#94a3b8!important}textarea::placeholder{color:#94a3b8!important}textarea{font-family:inherit}`}</style>
 
       {/* Top bar */}
@@ -2210,7 +2232,7 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 }
 
 // ─── HTML email builder ───────────────────────────────────────────────────────
-function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
+function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual, sidebarLeft = 216 }) {
   const C = useContext(CCtx);
   const [name,          setName]          = useState("Untitled Template");
   const [subject,       setSubject]       = useState("");
@@ -2320,7 +2342,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
 
   if (loading) {
     return (
-      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: "#0d1117", display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
+      <div style={{ position: "fixed", top: 50, left: sidebarLeft, right: 0, bottom: 0, background: "#0d1117", display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
         <div style={{ height: 52, background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }} />
         <div style={{ flex: 1, display: "flex", gap: 0 }}>
           <div style={{ flex: 1, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2336,7 +2358,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   }
 
   return (
-    <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", fontFamily: "'Inter','DM Sans',system-ui,sans-serif", zIndex: 500, overflow: "hidden" }}>
+    <div style={{ position: "fixed", top: 50, left: sidebarLeft, right: 0, bottom: 0, display: "flex", flexDirection: "column", fontFamily: "'Inter','DM Sans',system-ui,sans-serif", zIndex: 500, overflow: "hidden" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}input::placeholder{color:#94a3b8!important}textarea::placeholder{color:#484f58!important}`}</style>
 
       {/* ── Header (matches EmailBuilder header style exactly) ── */}
@@ -2827,18 +2849,21 @@ function TemplateList({ onOpenBuilder }) {
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export default function TemplatesPage() {
+export default function TemplatesPage({ mktgCollapsed = false }) {
   const T = useTheme();
   const C = makeC(T);
   // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
 
+  const sidebarLeft = mktgCollapsed ? 52 : 216;
+
   if (view === "builder-visual") {
     return (
       <CCtx.Provider value={C}>
         <EmailBuilder
           templateId={editingId}
+          sidebarLeft={sidebarLeft}
           onBack={() => setView("list")}
           onSaved={() => {}}
           onSwitchToHtml={id => { setEditingId(id || null); setView("builder-html"); }}
@@ -2852,6 +2877,7 @@ export default function TemplatesPage() {
       <CCtx.Provider value={C}>
         <HtmlEmailBuilder
           templateId={editingId}
+          sidebarLeft={sidebarLeft}
           onBack={() => setView("list")}
           onSaved={() => {}}
           onSwitchToVisual={id => { setEditingId(id || null); setView("builder-visual"); }}
