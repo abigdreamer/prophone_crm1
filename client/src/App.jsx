@@ -110,6 +110,7 @@ function AppLayout({ currentUser, onSignOut }) {
     (p) => {
       setSelected(null);
       setCharted(null);
+      setContactFormPanel(null);
       navigate('/' + p);
     },
     [navigate],
@@ -131,6 +132,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleSelect = useCallback((c) => {
     setSelected(c);
     setCharted(c);
+    setContactFormPanel(null);
   }, []);
 
   const handleUpdate = useCallback(
@@ -214,6 +216,7 @@ function AppLayout({ currentUser, onSignOut }) {
         setSearch('');
         setSelected(null);
         setCharted(null);
+        setContactFormPanel(null);
         return;
       }
       if (e.key === 'Backspace') {
@@ -412,7 +415,13 @@ function AppLayout({ currentUser, onSignOut }) {
             setContacts={setContacts}
             currentUser={currentUser}
             loading={loading}
-            onOpenPanel={handleOpenAddContact}
+            onOpenPanel={(cfg) => {
+              if (cfg?.mode === 'edit' && cfg?.contact) {
+                handleOpenEditContact(cfg.contact);
+              } else {
+                handleOpenAddContact();
+              }
+            }}
           />
         )}
 
@@ -468,6 +477,9 @@ function AppLayout({ currentUser, onSignOut }) {
                   key={mode}
                   onClick={() => {
                     setViewMode(mode);
+                    setSelected(null);
+                    setCharted(null);
+                    setContactFormPanel(null);
                     navigate('/contacts');
                   }}
                   style={{
