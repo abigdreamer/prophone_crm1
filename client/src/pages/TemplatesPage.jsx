@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
+import { SkeletonBlock, SkeletonRow } from "../components/ui/Loader";
 
 const CCtx = createContext(null);
 function makeC(T) {
@@ -1777,8 +1778,18 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 
   if (loading) {
     return (
-      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500 }}>
-        <LoaderCircle size={28} color={C.accent} style={{ animation: "_tspin 0.8s linear infinite" }} />
+      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: C.bg, display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
+        <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", gap: 0 }}>
+          <div style={{ width: 260, background: C.surface, borderRight: `1px solid ${C.border}`, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonBlock key={i} h={40} radius={6} />)}
+          </div>
+          <div style={{ flex: 1, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+            <SkeletonBlock h={60} radius={8} />
+            <SkeletonBlock h={200} radius={8} />
+            <SkeletonBlock h={120} radius={8} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -2309,8 +2320,17 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
 
   if (loading) {
     return (
-      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: "#0d1117", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 500 }}>
-        <LoaderCircle size={28} color="#6366f1" style={{ animation: "_tspin 0.8s linear infinite" }} />
+      <div style={{ position: "fixed", top: 50, left: 0, right: 0, bottom: 0, background: "#0d1117", display: "flex", flexDirection: "column", zIndex: 500, overflow: "hidden" }}>
+        <div style={{ height: 52, background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", gap: 0 }}>
+          <div style={{ flex: 1, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            {Array.from({ length: 16 }).map((_, i) => <SkeletonBlock key={i} h={18} radius={3} style={{ width: `${70 + Math.random() * 30}%`, opacity: 0.4 }} />)}
+          </div>
+          <div style={{ width: "40%", background: "#0d1117", borderLeft: "1px solid #30363d", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+            <SkeletonBlock h={200} radius={6} style={{ opacity: 0.4 }} />
+            <SkeletonBlock h={100} radius={6} style={{ opacity: 0.4 }} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -2714,9 +2734,8 @@ function TemplateList({ onOpenBuilder }) {
 
       {/* Loading */}
       {loading && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "100px 20px", gap: 14 }}>
-          <LoaderCircle size={28} color={C.accent} style={{ animation: "_tspin 0.8s linear infinite" }} />
-          <span style={{ fontSize: 13, color: C.muted }}>Loading templates…</span>
+        <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonBlock key={i} h={64} radius={8} />)}
         </div>
       )}
 

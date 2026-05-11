@@ -73,6 +73,7 @@ export default function StageModal({ contact, onSave, onClose, currentUser }) {
           value={note}
           onChange={e => setNote(e.target.value)}
           placeholder="Optional note..."
+          className="crm-input"
           style={{
             width: "100%", marginTop: 4,
             background: T.surface, border: "1px solid " + T.border,

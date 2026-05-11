@@ -386,6 +386,7 @@ function AppLayout({ currentUser, onSignOut }) {
             contacts={contacts}
             setContacts={setContacts}
             currentUser={currentUser}
+            loading={loading}
           />
         )}
 
@@ -483,7 +484,7 @@ function AppLayout({ currentUser, onSignOut }) {
             }}
           >
             {!firstLoad && loading && (
-              <ContentLoader text="Loading contacts…" />
+              <ContentLoader rows={10} cols={9} />
             )}
 
             {isContacts && selected ? (

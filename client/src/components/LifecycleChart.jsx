@@ -70,10 +70,7 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           contact={contact}
           onSave={async updated => {
             try {
-              // Extract the stage_changed activity StageModal appended
-              const newAct = updated.activities[updated.activities.length - 1];
               await db.updateContact(updated.id, updated);
-              await db.addActivity(updated.id, newAct);
               const refreshed = await db.getContact(updated.id);
               onUpdate(refreshed);
               setModal(null);

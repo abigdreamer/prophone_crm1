@@ -267,8 +267,14 @@ async function updateContact(req, res) {
 
   const by = req.user?.name || req.user?.email || "system";
 
-  if (Object.keys(changes).length > 0) {
-    logActivity(ENTITY_TYPE.CONTACT, id, ACTION.UPDATE, 'Contact updated', by);
+  if (changes.lifecycleStage !== undefined) {
+    logActivity(
+      ENTITY_TYPE.CONTACT, id, ACTIVITY_TYPE.STAGE_CHANGED,
+      `Stage: ${existing.lifecycleStage} → ${b.lifecycleStage}`,
+      by,
+    );
+  } else if (Object.keys(changes).length > 0) {
+    logActivity(ENTITY_TYPE.CONTACT, id, ACTIVITY_TYPE.LEAD_UPDATED, 'Contact updated', by);
   }
 
   const activities = await fetchActivities(id);
