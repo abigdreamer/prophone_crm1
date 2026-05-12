@@ -17,9 +17,9 @@ import * as db from "../services/api";
 const PAGE_SIZE = 100;
 
 const STATUS_META = {
-  [STATUS.ACTIVE]:  { label: "Active"   },
-  [STATUS.PENDING]: { label: "Pending"  },
-  [STATUS.CANCELED]:{ label: "Canceled" },
+  [STATUS.ACTIVE]: { label: "Active" },
+  [STATUS.PENDING]: { label: "Pending" },
+  [STATUS.CANCELED]: { label: "Canceled" },
 };
 
 function contactDisplayName(c) {
@@ -30,8 +30,8 @@ function contactDisplayName(c) {
 function StatusBadge({ status }) {
   const T = useTheme();
   const colorMap = {
-    [STATUS.ACTIVE]:   T.green,
-    [STATUS.PENDING]:  T.amber,
+    [STATUS.ACTIVE]: T.green,
+    [STATUS.PENDING]: T.amber,
     [STATUS.INACTIVE]: T.muted,
     [STATUS.CANCELED]: T.red,
   };

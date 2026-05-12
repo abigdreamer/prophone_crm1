@@ -28,7 +28,6 @@ export default function ContactFormInline({ contact, onSave, onCancel, pool, cli
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", address: "", city: "",
-    description: "",
     socialLinks: {},
     trucks: 0, lifecycleStage: "new", source: "", campaign: "",
     tags: [], notes: "", contractValue: "", accountSize: "1-5",
@@ -57,13 +56,6 @@ export default function ContactFormInline({ contact, onSave, onCancel, pool, cli
       lastActivityAt: new Date().toISOString(),
       addedBy:  contact?.addedBy  || currentUser?.name || "Unknown",
       createdAt: contact?.createdAt || new Date().toISOString(),
-      activities: contact?.activities || [{
-        id: "a" + Date.now(),
-        type: "stage_changed",
-        note: "Contact created",
-        ts: new Date().toISOString(),
-        by: currentUser?.name || "Unknown",
-      }],
       trucks:        parseInt(form.trucks)        || 0,
       contractValue: parseInt(form.contractValue) || 0,
     };
@@ -71,14 +63,14 @@ export default function ContactFormInline({ contact, onSave, onCancel, pool, cli
 
   async function handleSave() {
     const hasName = !!(form.firstName?.trim() || form.lastName?.trim() || form.company?.trim());
-    if (!hasName) {
-      toast.warning("Please provide at least a first name, last name, or company.");
-      return;
-    }
-    if (!form.email?.trim()) {
-      toast.warning("Email address is required.");
-      return;
-    }
+    // if (!hasName) {
+    //   toast.warning("Please provide at least a first name, last name, or company.");
+    //   return;
+    // }
+    // if (!form.email?.trim()) {
+    //   toast.warning("Email address is required.");
+    //   return;
+    // }
     setSaving(true);
     try {
       await onSave(buildPayload());
@@ -150,21 +142,6 @@ export default function ContactFormInline({ contact, onSave, onCancel, pool, cli
             value={form.ownedBy}
             onChange={v => set("ownedBy", v)}
             options={USERS_DB.map(u => ({ value: u.name, label: `${u.name} (${u.role})` }))}
-          />
-        </div>
-
-        {/* Description */}
-        <div style={{ marginTop: 14 }}>
-          <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Description
-          </label>
-          <textarea
-            value={form.description || ""}
-            onChange={e => set("description", e.target.value)}
-            placeholder="Brief description of this contact or company…"
-            style={{ ...taStyle, minHeight: 54 }}
-            onFocus={e => (e.target.style.borderColor = T.accent)}
-            onBlur={e  => (e.target.style.borderColor = T.border)}
           />
         </div>
 

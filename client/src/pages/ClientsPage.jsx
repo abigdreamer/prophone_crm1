@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Building2, Plus, RefreshCw, Users, X, Pencil, History, Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
 import Sel from "../components/ui/Sel";
@@ -16,14 +17,14 @@ const PLANS = ["Starter", "Pro", "Enterprise"];
 const COLORS = ["#6366f1", "#38bdf8", "#fb923c", "#4ade80", "#f43f5e", "#fbbf24", "#c084fc", "#2dd4bf"];
 
 const ACTION_CFG = {
-  CREATE:  { label: "Created",  color: "#6366f1", icon: "✦" },
-  UPDATE:  { label: "Updated",  color: "#38bdf8", icon: "✎" },
-  CANCEL:  { label: "Canceled", color: "#f43f5e", icon: "✕" },
+  CREATE: { label: "Created", color: "#6366f1", icon: "✦" },
+  UPDATE: { label: "Updated", color: "#38bdf8", icon: "✎" },
+  CANCEL: { label: "Canceled", color: "#f43f5e", icon: "✕" },
   RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
 };
 
 const slugify = (str) => str.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-const fmtMrr  = v => v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`;
+const fmtMrr = v => v >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`;
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 
@@ -43,15 +44,15 @@ function PlanBadge({ plan }) {
 
 function ClientModal({ client, onSave, onClose }) {
   const T = useTheme();
-  const isEdit  = !!client;
+  const isEdit = !!client;
   const [saving, setSaving] = useState(false);
-  const [err,    setErr]    = useState("");
-  const [form,   setForm]   = useState(isEdit ? {
+  const [err, setErr] = useState("");
+  const [form, setForm] = useState(isEdit ? {
     name: client.name, domain: client.domain || "", color: client.color || COLORS[0],
     industry: client.industry || "", plan: client.plan || "Starter", mrr: client.mrr || "",
   } : { name: "", id: "", domain: "", color: COLORS[0], industry: "", plan: "Starter", mrr: "" });
 
-  const set    = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const autoId = slugify(form.name);
 
   async function handleSave() {
@@ -67,10 +68,10 @@ function ClientModal({ client, onSave, onClose }) {
     <Modal title={isEdit ? "Edit Client" : "Add Client"} onClose={onClose} width={600}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Input label={isEdit ? "Name *" : "Company Name *"} value={form.name} onChange={v => set("name", v)} placeholder="FoxTow" style={{ gridColumn: "1 / -1" }} />
-        <Input label="Domain"   value={form.domain}   onChange={v => set("domain", v)}   placeholder="foxtow.com" />
+        <Input label="Domain" value={form.domain} onChange={v => set("domain", v)} placeholder="foxtow.com" />
         <Input label="Industry" value={form.industry} onChange={v => set("industry", v)} placeholder="Towing SaaS" />
-        <Sel   label="Plan"     value={form.plan}     onChange={v => set("plan", v)}      options={PLANS.map(p => ({ value: p, label: p }))} />
-        <Input label="MRR ($)"  value={form.mrr}      onChange={v => set("mrr", v)}       placeholder="4800" type="number" />
+        <Sel label="Plan" value={form.plan} onChange={v => set("plan", v)} options={PLANS.map(p => ({ value: p, label: p }))} />
+        <Input label="MRR ($)" value={form.mrr} onChange={v => set("mrr", v)} placeholder="4800" type="number" />
       </div>
 
       <div style={{ marginTop: 14 }}>
@@ -118,7 +119,7 @@ function ClientModal({ client, onSave, onClose }) {
         <Btn variant="ghost" onClick={onClose} disabled={saving}>Cancel</Btn>
         <Btn onClick={handleSave} disabled={saving}>
           {saving ? <span style={{ display: "flex", alignItems: "center", gap: 7 }}><Spinner size={13} color="#fff" />{isEdit ? "Saving…" : "Adding…"}</span>
-                  : (isEdit ? "Save Changes" : "Add Client")}
+            : (isEdit ? "Save Changes" : "Add Client")}
         </Btn>
       </div>
     </Modal>
@@ -128,9 +129,9 @@ function ClientModal({ client, onSave, onClose }) {
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
 function activityDetail(a) {
-  if (a.action === "CANCEL")  return a.metadata?.reason || null;
+  if (a.action === "CANCEL") return a.metadata?.reason || null;
   if (a.action === "RESTORE") return a.metadata?.previousReason ? `Previously: "${a.metadata.previousReason}"` : null;
-  if (a.action === "CREATE")  return a.metadata?.plan ? `Plan: ${a.metadata.plan}` : null;
+  if (a.action === "CREATE") return a.metadata?.plan ? `Plan: ${a.metadata.plan}` : null;
   if (a.action === "UPDATE") {
     const changes = a.metadata?.changes;
     if (!changes) return null;
@@ -142,9 +143,9 @@ function activityDetail(a) {
 export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRestored }) {
   const T = useTheme();
   const toast = useAppToast();
-  const [activities,   setActivities]   = useState([]);
-  const [loadingAct,   setLoadingAct]   = useState(false);
-  const [cancelModal,  setCancelModal]  = useState(false);
+  const [activities, setActivities] = useState([]);
+  const [loadingAct, setLoadingAct] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
   const [restoreModal, setRestoreModal] = useState(false);
 
   useEffect(() => {
@@ -254,7 +255,7 @@ export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRest
           ) : (
             <div>
               {activities.map((a, i) => {
-                const cfg    = ACTION_CFG[a.action] || { label: a.action, color: T.muted, icon: "•" };
+                const cfg = ACTION_CFG[a.action] || { label: a.action, color: T.muted, icon: "•" };
                 const detail = activityDetail(a);
                 const isLast = i === activities.length - 1;
                 return (
@@ -306,14 +307,20 @@ export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRest
 
 export default function ClientsPage() {
   const T = useTheme();
-  const [clients,  setClients]  = useState([]);
-  const [counts,   setCounts]   = useState({});
-  const [loading,  setLoading]  = useState(true);
-  const [search,   setSearch]   = useState("");
-  const [planF,    setPlanF]    = useState("all");
-  const [statusF,  setStatusF]  = useState("all");
+  const [clients, setClients] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [planF, setPlanF] = useState("all");
+  const [statusF, setStatusF] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selected, setSelected] = useState(null);
-  const [modal,    setModal]    = useState(null);
+  const [modal, setModal] = useState(null);
+
+  // Helper to open/close "Add Client" via URL
+  const showAddModal = searchParams.get("action") === "add";
+  const openAddModal = () => setSearchParams({ tab: "clients", action: "add" });
+  const closeAddModal = () => setSearchParams({ tab: "clients" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -328,12 +335,12 @@ export default function ClientsPage() {
 
   const filtered = useMemo(() => clients.filter(c => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || (c.domain || "").toLowerCase().includes(search.toLowerCase());
-    const matchPlan   = planF   === "all" ? true : c.plan === planF;
+    const matchPlan = planF === "all" ? true : c.plan === planF;
     const matchStatus = statusF === "all" ? true : statusF === "canceled" ? c.isCanceled : !c.isCanceled;
     return matchSearch && matchPlan && matchStatus;
   }), [clients, search, planF, statusF]);
 
-  const totalMrr   = clients.reduce((s, c) => s + (c.mrr || 0), 0);
+  const totalMrr = clients.reduce((s, c) => s + (c.mrr || 0), 0);
   const activeCount = clients.filter(c => !c.isCanceled).length;
 
   const selStyle = {
@@ -375,7 +382,7 @@ export default function ClientsPage() {
           <button onClick={load} style={{ ...selStyle, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", fontFamily: "inherit", fontWeight: 500 }}>
             <RefreshCw size={13} /> Refresh
           </button>
-          <button onClick={() => setModal("add")} style={{ height: "100%", padding: "0 16px", background: T.accent, border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: "inherit" }}>
+          <button onClick={openAddModal} style={{ height: "100%", padding: "0 16px", background: T.accent, border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: "inherit" }}>
             <Plus size={14} /> Add Client
           </button>
         </div>
@@ -383,10 +390,10 @@ export default function ClientsPage() {
         {/* Stats row */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
           {[
-            ["Total Clients",  clients.length,                                         T.text],
-            ["Revenue (MRR)",  fmtMrr(totalMrr),                                       T.green],
-            ["Active",         activeCount,                                              T.accent],
-            ["Enterprise",     clients.filter(c => c.plan === "Enterprise").length,     T.blue],
+            ["Total Clients", clients.length, T.text],
+            ["Revenue (MRR)", fmtMrr(totalMrr), T.green],
+            ["Active", activeCount, T.accent],
+            ["Enterprise", clients.filter(c => c.plan === "Enterprise").length, T.blue],
           ].map(([label, value, color]) => (
             <div key={label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 16px" }}>
               <div style={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1, marginBottom: 4 }}>{value}</div>
@@ -435,7 +442,7 @@ export default function ClientsPage() {
                 <div style={{ flex: 1 }}><PlanBadge plan={c.plan} /></div>
                 <div style={{ flex: 1 }}>
                   {c.isCanceled
-                    ? <span style={{ fontSize: 9, fontWeight: 700, color: T.red,   background: T.red   + "12", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>Canceled</span>
+                    ? <span style={{ fontSize: 9, fontWeight: 700, color: T.red, background: T.red + "12", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>Canceled</span>
                     : <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + "12", padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>Active</span>
                   }
                 </div>
@@ -460,8 +467,8 @@ export default function ClientsPage() {
       )}
 
       {/* Modals */}
-      {modal === "add" && (
-        <ClientModal onSave={async data => { await db.createClient(data); await load(); setModal(null); }} onClose={() => setModal(null)} />
+      {showAddModal && (
+        <ClientModal onSave={async data => { await db.createClient(data); await load(); closeAddModal(); }} onClose={closeAddModal} />
       )}
       {modal === "edit" && selected && (
         <ClientModal client={selected} onSave={async data => { const u = await db.updateClient(selected.id, data); await load(); setSelected(u); setModal(null); }} onClose={() => setModal(null)} />

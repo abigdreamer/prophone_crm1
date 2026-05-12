@@ -17,7 +17,6 @@ const CONTACT_FIELDS = [
   { key: "title", label: "Job Title", required: false },
   { key: "website", label: "Website", required: false },
   { key: "address", label: "Address", required: false },
-  { key: "description", label: "Description", required: false },
   { key: "trucks", label: "# of Trucks", required: false },
   { key: "contractValue", label: "Contract Value ($)", required: false },
   { key: "source", label: "Source", required: false },
@@ -93,10 +92,9 @@ const AUTO_MAP = {
 
   location: "address",
 
-  // ── DESCRIPTION ──────────────────────────────────────
-  description: "description",
-  bio: "description",
-  about: "description",
+  // ── NOTES (also catches bio/about columns) ───────────
+  bio: "notes",
+  about: "notes",
 
   // ── TRUCKS ───────────────────────────────────────────
   trucks: "trucks",

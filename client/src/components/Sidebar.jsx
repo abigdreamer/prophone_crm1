@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { Plus, Upload } from "lucide-react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import { useTheme } from "../context/ThemeContext";
@@ -136,66 +135,21 @@ export default function Sidebar({
       background: T.surface, borderRight: "1px solid " + T.border,
       display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
     }}>
-      {/* Pool header + actions */}
+      {/* Pool header */}
       <div style={{
-        padding: "10px 12px", background: col + "0D", borderBottom: "1px solid " + T.border,
+        padding: "12px 14px", background: col + "0D", borderBottom: "1px solid " + T.border,
         flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66` }} />
-          <div style={{ flex: 1 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: "0.02em" }}>
-              {pool === "prospect" ? "PROSPECT POOL" : (client?.name?.toUpperCase() || "CLIENT")}
-            </span>
-            <span style={{ fontSize: 9, color: T.muted, marginLeft: 6 }}>
-              {filtered.length} visible
-            </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 9, height: 9, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66`, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: col, letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
+              {filtered.length.toLocaleString()} leads
+            </div>
           </div>
-          <button
-            onClick={onAddNew}
-            style={{
-              background: col, border: "none", borderRadius: 6, color: "#fff",
-              fontSize: 10, fontWeight: 700, padding: "4px 10px", cursor: "pointer",
-              boxShadow: `0 2px 4px ${col}44`,
-              display: "flex", alignItems: "center", gap: 4,
-            }}
-            title="Add new contact"
-          ><Plus size={11} strokeWidth={2.5} /> Add</button>
-          {!showingCanceled && (
-            <button
-              onClick={onImport}
-              style={{
-                background: "transparent", border: "1px solid " + T.border,
-                borderRadius: 6, color: T.dim, fontSize: 10,
-                fontWeight: 600, padding: "4px 9px", cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex", alignItems: "center", gap: 4,
-              }}
-              title="Import contacts"
-            ><Upload size={10} strokeWidth={2.5} /> Import</button>
-          )}
-        </div>
-
-        {/* View mode filter */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {VIEW_MODE_OPTIONS.map(({ mode, label, colorKey }) => {
-            const c = T[colorKey] || T.dim;
-            const active = viewMode === mode;
-            return (
-              <button
-                key={mode}
-                onClick={() => onViewModeChange(mode)}
-                style={{
-                  padding: "3px 8px", fontSize: 9, borderRadius: 12, cursor: "pointer",
-                  fontFamily: "inherit", fontWeight: active ? 700 : 400,
-                  background: active ? c + "20" : "transparent",
-                  border: "1px solid " + (active ? c : T.border),
-                  color: active ? c : T.muted,
-                  transition: "all 0.15s",
-                }}
-              >{label}</button>
-            );
-          })}
         </div>
       </div>
 
@@ -240,20 +194,21 @@ export default function Sidebar({
             <option value="score">Score</option>
           </select>
 
-          {!showingCanceled && (
+          {/* {!showingCanceled && ( */}
             <select value={stageF} onChange={e => setStageF(e.target.value)} style={selStyle}>
               <option value="all">All Stages</option>
               {stageOpts.map(s => <option key={s} value={s}>{STAGE_DEF[s]?.label}</option>)}
             </select>
-          )}
+          {/* )} */}
 
-          {!showingCanceled && (
+          {/* {!showingCanceled && ( */}
             <select value={statusF} onChange={e => setStatusF(e.target.value)} style={selStyle}>
               <option value="all">All Status</option>
               <option value={STATUS.ACTIVE}>Active</option>
               <option value={STATUS.PENDING}>Pending</option>
+                            <option value={STATUS.CANCELED}>Canceled</option>
             </select>
-          )}
+          {/* )} */}
         </div>
       </div>
 

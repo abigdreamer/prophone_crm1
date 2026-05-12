@@ -79,6 +79,8 @@ export const VALID_ACTIVITY_TYPES = [
   ACTIVITY_TYPE.STAGE_CHANGED, ACTIVITY_TYPE.NOTE_ADDED,
   ACTIVITY_TYPE.AD_CLICKED,    ACTIVITY_TYPE.AD_IMPRESSION,
   ACTIVITY_TYPE.MEETING_SCHEDULED, ACTIVITY_TYPE.MEETING_HELD,
+  ACTIVITY_TYPE.LEAD_UPDATED,
+  ACTIVITY_TYPE.CANCEL_CONTACT, ACTIVITY_TYPE.UNCANCEL_CONTACT,
 ];
 
 // ── Entity Types (for Activity.entityType) ────────────────────────────────────
@@ -110,6 +112,6 @@ export const VALID_CLIENT_PLANS = Object.freeze(['Starter', 'Pro', 'Enterprise']
 // ── Tracked Fields for Change Logging ────────────────────────────────────────
 export const TRACKED_CONTACT_FIELDS = Object.freeze([
   'firstName', 'lastName', 'email', 'phone', 'company', 'title',
-  'lifecycleStage', 'leadScore', 'status', 'contractValue', 'ownedBy',
+  'leadScore', 'status', 'contractValue', 'ownedBy',
 ]);
 export const TRACKED_CLIENT_FIELDS = Object.freeze(['name', 'domain', 'industry', 'plan', 'mrr', 'color']);

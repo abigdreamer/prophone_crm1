@@ -2,7 +2,7 @@ import prisma from '../lib/prisma.js';
 import { skipDups } from '../lib/db-compat.js';
 import {
   VALID_POOLS, VALID_STAGES, VALID_STATUSES, VALID_ACCOUNT_SIZES,
-  DASHBOARD_GROUPS, ACTIVITY_TYPE, ACTION, ENTITY_TYPE,
+  DASHBOARD_GROUPS, ACTIVITY_TYPE, ENTITY_TYPE,
   STAGE, STATUS, POOL,
   TRACKED_CONTACT_FIELDS,
 } from '../constants/index.js';
@@ -167,20 +167,16 @@ async function createContact(req, res) {
 
   const by = req.user?.name || req.user?.email || 'system';
 
-  if (b.activities && b.activities.length > 0) {
-    await prisma.activity.createMany({
-      data: b.activities.map(a => ({
-        entityType: ENTITY_TYPE.CONTACT,
-        entityId:   contact.id,
-        type: a.type,
-        note: a.note || '',
-        by: a.by || '',
-        ts: a.ts ? new Date(a.ts) : new Date(),
-      })),
-    });
-  }
-
-  logActivity(ENTITY_TYPE.CONTACT, contact.id, ACTION.CREATE, `Contact created: ${contact.firstName} ${contact.lastName}`.trim(), by);
+  await prisma.activity.create({
+    data: {
+      entityType: ENTITY_TYPE.CONTACT,
+      entityId:   contact.id,
+      type: ACTIVITY_TYPE.STAGE_CHANGED,
+      note: 'Contact created',
+      by,
+      ts: new Date(),
+    },
+  });
 
   const activities = await fetchActivities(contact.id);
   res.status(201).json(formatContact({ ...contact, activities }));
@@ -268,7 +264,7 @@ async function updateContact(req, res) {
   const by = req.user?.name || req.user?.email || "system";
 
   if (Object.keys(changes).length > 0) {
-    logActivity(ENTITY_TYPE.CONTACT, id, ACTION.UPDATE, 'Contact updated', by);
+    logActivity(ENTITY_TYPE.CONTACT, id, ACTIVITY_TYPE.LEAD_UPDATED, 'Contact updated', by);
   }
 
   const activities = await fetchActivities(id);

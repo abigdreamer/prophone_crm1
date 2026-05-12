@@ -30,7 +30,6 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
   const [form, setForm] = useState(contact || {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", address: "", city: "",
-    description: "",
     socialLinks: {},
     trucks: 0, lifecycleStage: "new", source: "", campaign: "",
     tags: [], notes: "", contractValue: "", accountSize: "1-5",
@@ -57,13 +56,6 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
       lastActivityAt: new Date().toISOString(),
       addedBy:  contact?.addedBy  || currentUser?.name || "Unknown",
       createdAt: contact?.createdAt || new Date().toISOString(),
-      activities: contact?.activities || [{
-        id: "a" + Date.now(),
-        type: "stage_changed",
-        note: "Contact created",
-        ts: new Date().toISOString(),
-        by: currentUser?.name || "Unknown",
-      }],
       trucks:        parseInt(form.trucks)        || 0,
       contractValue: parseInt(form.contractValue) || 0,
     };
@@ -118,28 +110,6 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
           value={form.ownedBy}
           onChange={v => set("ownedBy", v)}
           options={USERS_DB.map(u => ({ value: u.name, label: `${u.name} (${u.role})` }))}
-        />
-      </div>
-
-      {/* ── Description ── */}
-      <div style={{ marginTop: 14 }}>
-        <label style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Description
-        </label>
-        <textarea
-          value={form.description || ""}
-          onChange={e => set("description", e.target.value)}
-          placeholder="Brief description of this contact or company…"
-          style={{
-            width: "100%", marginTop: 4,
-            background: T.surface, border: "1px solid " + T.border,
-            borderRadius: 6, padding: "8px 11px",
-            color: T.text, fontSize: 12,
-            outline: "none", fontFamily: "inherit",
-            minHeight: 54, resize: "vertical", boxSizing: "border-box",
-          }}
-          onFocus={e => (e.target.style.borderColor = T.accent)}
-          onBlur={e  => (e.target.style.borderColor = T.border)}
         />
       </div>
 

@@ -10,7 +10,8 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight } from 'lucide-react';
+import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid } from 'lucide-react';
+import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
 import PoolSwitcher from './components/PoolSwitcher';
 import Sidebar from './components/Sidebar';
@@ -28,9 +29,6 @@ import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import ContactDetailPanel from './components/ContactDetailPanel';
-import ContactFormInline from './components/ContactFormInline';
-import LogActivityInline from './components/inline/LogActivityInline';
-import StageInline from './components/inline/StageInline';
 import CancelInline from './components/inline/CancelInline';
 import RestoreInline from './components/inline/RestoreInline';
 import ImportInline from './components/inline/ImportInline';
@@ -66,12 +64,17 @@ function AppLayout({ currentUser, onSignOut }) {
   const { pool, setPool, clientId, setClientId } = usePool();
   const [viewMode, setViewMode] = useState(VIEW_MODE.ALL);
   const [selected, setSelected] = useState(null);
-  // centerMode: null | 'add' | 'edit' | 'log' | 'stage' | 'cancel' | 'restore' | 'import'
+  // centerMode: null | 'add' | 'cancel' | 'restore' | 'import'
   const [centerMode, setCenterMode] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [search, setSearch] = useState('');
   const searchRef = useRef(null);
   const toast = useAppToast();
+
+  // live form data from center panel → feeds right-panel live preview
+  const [liveFormData, setLiveFormData] = useState(null);
+  // center panel dirty flag → prevents App-level Escape from deselecting while editing
+  const centerDirtyRef = useRef(false);
 
   const [lifecycleOpen, setLifecycleOpen] = useState(true);
   const [mktgCollapsed, setMktgCollapsed] = useState(
@@ -126,6 +129,8 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleSelect = useCallback((c) => {
     setSelected(c);
     setCenterMode(null);
+    setLiveFormData(null);
+    centerDirtyRef.current = false;
   }, []);
 
   const handleViewModeChange = useCallback((mode) => {
@@ -156,7 +161,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
   const handleEditInline = useCallback((contact) => {
     setSelected(contact);
-    setCenterMode('edit');
+    setCenterMode(null);
   }, []);
 
   const handleAddSave = useCallback(async (nc) => {
@@ -173,15 +178,27 @@ function AppLayout({ currentUser, onSignOut }) {
 
   const handleEditSave = useCallback(async (updated) => {
     try {
+      const stageChanged = selected?.lifecycleStage && updated.lifecycleStage !== selected.lifecycleStage;
       const refreshed = await db.updateContact(updated.id, updated);
-      setContacts((prev) => prev.map((c) => (c.id === refreshed.id ? refreshed : c)));
-      setSelected(refreshed);
+      if (stageChanged) {
+        await db.addActivity(updated.id, {
+          type: "stage_changed",
+          note: `Stage: ${STAGE_DEF[selected.lifecycleStage]?.label} → ${STAGE_DEF[updated.lifecycleStage]?.label}`,
+          by: currentUser?.name || "Unknown",
+        });
+        const withAct = await db.getContact(updated.id);
+        setContacts((prev) => prev.map((c) => (c.id === withAct.id ? withAct : c)));
+        setSelected(withAct);
+      } else {
+        setContacts((prev) => prev.map((c) => (c.id === refreshed.id ? refreshed : c)));
+        setSelected(refreshed);
+      }
       setCenterMode(null);
       toast.success('Contact saved.');
     } catch {
       toast.error('Failed to update contact.');
     }
-  }, [setContacts, toast]);
+  }, [selected, currentUser, setContacts, toast]);
 
   // ── Inline action handlers ─────────────────────────────────────────────────
 
@@ -279,20 +296,13 @@ function AppLayout({ currentUser, onSignOut }) {
   useEffect(() => {
     function handler(e) {
       const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const isFormEl = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'Escape') {
-        setSearch('');
-        if (centerMode) { setCenterMode(null); return; }
-        setSelected(null);
-        return;
-      }
-      if (e.key === 'Enter' && isContacts && selected && !centerMode) {
-        handleEditInline(selected);
-        return;
-      }
-      if (isContacts && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+
+      // Arrow navigation: works everywhere in contacts view except the sidebar search
+      if (isContacts && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target !== searchRef.current) {
         e.preventDefault();
+        if (isFormEl) e.target.blur();
         const pool = viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts;
         const stages = STAGE_GROUPS[viewMode];
         const list = (stages && stages.length > 0)
@@ -309,6 +319,15 @@ function AppLayout({ currentUser, onSignOut }) {
         }
         return;
       }
+
+      if (isFormEl) return;
+      if (e.key === 'Escape') {
+        setSearch('');
+        if (centerDirtyRef.current) return;
+        if (centerMode) { setCenterMode(null); return; }
+        setSelected(null);
+        return;
+      }
       if (e.key === 'Backspace') {
         setSearch((p) => p.slice(0, -1));
         searchRef.current?.focus();
@@ -323,21 +342,49 @@ function AppLayout({ currentUser, onSignOut }) {
     return () => window.removeEventListener('keydown', handler);
   }, [centerMode, isContacts, viewMode, contacts, canceledContacts, selected, handleEditInline]); // eslint-disable-line
 
+  // ── Live contact preview (merges unsaved form edits for right panel) ─────────
+
+  const liveContact = liveFormData && selected ? {
+    ...selected,
+    ...liveFormData,
+    trucks:        parseInt(liveFormData.trucks)        || selected.trucks        || 0,
+    contractValue: parseInt(liveFormData.contractValue) || selected.contractValue || 0,
+    tags: liveFormData.tags
+      ? liveFormData.tags.split(",").map(t => t.trim()).filter(Boolean)
+      : (selected.tags || []),
+  } : selected;
+
+  // ── View mode filter options ──────────────────────────────────────────────
+
+  const VIEW_MODE_OPTS = [
+    { mode: VIEW_MODE.ALL,        label: "All",        Icon: List,          colorKey: "dim"    },
+    { mode: VIEW_MODE.PROSPECTS,  label: "Prospects",  Icon: UserPlus,      colorKey: "amber"  },
+    { mode: VIEW_MODE.LEADS,      label: "Leads",      Icon: Users,         colorKey: "blue"   },
+    { mode: VIEW_MODE.WARM,       label: "Warm",       Icon: Flame,         colorKey: "orange" },
+    { mode: VIEW_MODE.HOT,        label: "Hot",        Icon: Zap,           colorKey: "red"    },
+    { mode: VIEW_MODE.CUSTOMER,   label: "Customer",   Icon: Star,          colorKey: "green"  },
+    { mode: VIEW_MODE.BACKBURNER, label: "Backburner", Icon: Clock,         colorKey: "purple" },
+    { mode: VIEW_MODE.LOST,       label: "Lost",       Icon: AlertTriangle, colorKey: "muted"  },
+    { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
+  ];
+
   // ── Render center panel content ────────────────────────────────────────────
 
   function renderCenter() {
     if (isContacts) {
       if (centerMode === 'add') {
-        return <ContactFormInline onSave={handleAddSave} onCancel={handleCancelForm} pool={pool} clientId={clientId} currentUser={currentUser} />;
-      }
-      if (centerMode === 'edit' && selected) {
-        return <ContactFormInline contact={selected} onSave={handleEditSave} onCancel={handleCancelForm} pool={pool} clientId={clientId} currentUser={currentUser} />;
-      }
-      if (centerMode === 'log' && selected) {
-        return <LogActivityInline contact={selected} onSave={handleLogActivity} onBack={handleCancelForm} currentUser={currentUser} />;
-      }
-      if (centerMode === 'stage' && selected) {
-        return <StageInline contact={selected} onSave={handleStageChange} onBack={handleCancelForm} currentUser={currentUser} />;
+        return (
+          <ContactDetailPanel
+            contact={null}
+            onSave={handleAddSave}
+            onAction={handleContactAction}
+            currentUser={currentUser}
+            pool={pool}
+            clientId={clientId}
+            onFormChange={setLiveFormData}
+            onDirtyChange={v => { centerDirtyRef.current = v; }}
+          />
+        );
       }
       if (centerMode === 'cancel' && selected) {
         return <CancelInline contact={selected} onSave={handleCancelContact} onBack={handleCancelForm} />;
@@ -352,10 +399,13 @@ function AppLayout({ currentUser, onSignOut }) {
         return (
           <ContactDetailPanel
             contact={selected}
-            onUpdate={handleUpdate}
-            onEdit={handleEditInline}
+            onSave={handleEditSave}
             onAction={handleContactAction}
             currentUser={currentUser}
+            pool={pool}
+            clientId={clientId}
+            onFormChange={setLiveFormData}
+            onDirtyChange={v => { centerDirtyRef.current = v; }}
           />
         );
       }
@@ -520,6 +570,68 @@ function AppLayout({ currentUser, onSignOut }) {
         )}
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {/* ── Center filter bar (contacts only, not in modal modes) ─────── */}
+          {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && (
+            <div style={{
+              flexShrink: 0, borderBottom: '1px solid ' + T.border,
+              background: T.surface, padding: '10px 16px',
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, flex: 1 }}>
+                {VIEW_MODE_OPTS.map(({ mode, label, Icon, colorKey }) => {
+                  const c = T[colorKey] || T.dim;
+                  const active = viewMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => handleViewModeChange(mode)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        padding: '4px 10px', fontSize: 10, borderRadius: 20, cursor: 'pointer',
+                        fontFamily: 'inherit', fontWeight: active ? 700 : 500,
+                        background: active ? c + '22' : 'transparent',
+                        border: '1px solid ' + (active ? c : T.border),
+                        color: active ? c : T.muted,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <Icon size={10} strokeWidth={2.5} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
+                <button
+                  onClick={handleAddNew}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 14px', background: T.accent, border: 'none',
+                    borderRadius: 7, color: '#fff', fontSize: 11, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    boxShadow: '0 2px 6px ' + T.accent + '44',
+                  }}
+                >
+                  <Plus size={12} strokeWidth={2.5} /> Add Contact
+                </button>
+                {viewMode !== VIEW_MODE.CANCELED && (
+                  <button
+                    onClick={() => { setCenterMode('import'); navigate('/contacts'); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      padding: '6px 13px', background: 'transparent',
+                      border: '1px solid ' + T.border, borderRadius: 7,
+                      color: T.dim, fontSize: 11, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <Upload size={12} strokeWidth={2} /> Import
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}>
             {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
             {renderCenter()}
@@ -557,10 +669,10 @@ function AppLayout({ currentUser, onSignOut }) {
             <div style={{ flex: 1, overflow: 'hidden' }}>
               {selected ? (
                 <LifecycleChart
-                  contact={selected}
-                  onUpdate={handleUpdate}
-                  onEdit={handleEditInline}
-                  onAction={handleContactAction}
+                  contact={liveContact}
+                  onLogActivity={handleLogActivity}
+                  onCancelContact={handleCancelContact}
+                  onRestoreContact={handleRestoreConfirm}
                   currentUser={currentUser}
                 />
               ) : (
