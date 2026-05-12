@@ -82,12 +82,15 @@ export default function ContactDetailPanel({
   const [auditOpen, setAuditOpen] = useState(false);
   const [fieldVis, setFieldVis]   = useState(DEFAULT_FIELD_SETTINGS);
   const [noteClicked, setNoteClicked] = useState(false);
+  const [editMode, setEditMode]       = useState(isNew); // new contacts start in edit mode
 
   const firstNameRef    = useRef(null);
   const statusTimerRef  = useRef(null);
   const formRef         = useRef(form);
   const dirtyRef        = useRef(false);  // true when form has unsaved changes
+  const editModeRef     = useRef(editMode);
   formRef.current       = form;
+  editModeRef.current   = editMode;
 
   // ── Auto-save implementation ──────────────────────────────────────────────
   const doSaveRef = useRef(null);
@@ -123,6 +126,7 @@ export default function ContactDetailPanel({
     setSaveStatus(null);
     setAuditLog([]);
     setAuditOpen(false);
+    setEditMode(!contact);
     onDirtyChange?.(false);
     onFormChange?.(next);
   }, [contact?.id]); // eslint-disable-line
@@ -150,16 +154,26 @@ export default function ContactDetailPanel({
       .catch(() => {});
   }, [contact?.clientId]);
 
-  // ── Escape → save immediately if dirty, then blur ────────────────────────
+  // ── Enter → edit mode | Escape → save + view mode ────────────────────────
   useEffect(() => {
     const handler = (e) => {
+      if (e.key === "Enter" && !isNew && !editModeRef.current) {
+        // only activate if not already typing in an input/textarea
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        e.preventDefault();
+        setEditMode(true);
+        setTimeout(() => firstNameRef.current?.focus(), 60);
+        return;
+      }
       if (e.key !== "Escape") return;
       if (isNew) {
         e.stopImmediatePropagation();
         handleAddNew();
-      } else if (dirtyRef.current) {
+      } else if (editModeRef.current) {
         e.stopImmediatePropagation();
-        doSaveRef.current?.();
+        if (dirtyRef.current) doSaveRef.current?.();
+        setEditMode(false);
       }
       document.activeElement?.blur?.();
     };
@@ -281,6 +295,12 @@ export default function ContactDetailPanel({
               <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>
             )}
             {isNew && saveStatus === null && (
+              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
+            )}
+            {!isNew && !editMode && saveStatus === null && (
+              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>
+            )}
+            {!isNew && editMode && saveStatus === null && (
               <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
             )}
           </div>
@@ -408,47 +428,83 @@ export default function ContactDetailPanel({
       <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
         <SectionHeader>Name &amp; Role</SectionHeader>
         <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <FieldInput ref={firstNameRef} label="First Name" value={form.firstName} onChange={v => set("firstName", v)} placeholder="First" />
-          <FieldInput label="Last Name"  value={form.lastName}  onChange={v => set("lastName",  v)} placeholder="Last" />
-          <FieldInput label="Job Title"  value={form.title}     onChange={v => set("title",     v)} placeholder="Owner / Manager" />
+          {editMode ? (
+            <>
+              <FieldInput ref={firstNameRef} label="First Name" value={form.firstName} onChange={v => set("firstName", v)} placeholder="First" />
+              <FieldInput label="Last Name"  value={form.lastName}  onChange={v => set("lastName",  v)} placeholder="Last" />
+              <FieldInput label="Job Title"  value={form.title}     onChange={v => set("title",     v)} placeholder="Owner / Manager" />
+            </>
+          ) : (
+            <>
+              <ViewRow label="First Name" value={form.firstName} />
+              <ViewRow label="Last Name"  value={form.lastName} />
+              <ViewRow label="Job Title"  value={form.title} />
+            </>
+          )}
         </div>
       </div>
 
       {/* ── Contact Info + Company & Acquisition ─────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <Section title="Contact Info">
-          {show("email")   && <InlineInput label="Email"   type="email" value={form.email}   onChange={v => set("email",   v)} placeholder="email@company.com"    color={T.accent} />}
-          {show("phone")   && <InlineInput label="Phone"   type="tel"   value={form.phone}   onChange={v => set("phone",   v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
-          {show("website") && <InlineInput label="Website"              value={form.website} onChange={v => set("website", v)} placeholder="https://..."          color={T.blue} />}
-          {show("address") && <InlineInput label="Address"              value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
+          {editMode ? (
+            <>
+              {show("email")   && <InlineInput label="Email"   type="email" value={form.email}   onChange={v => set("email",   v)} placeholder="email@company.com"    color={T.accent} />}
+              {show("phone")   && <InlineInput label="Phone"   type="tel"   value={form.phone}   onChange={v => set("phone",   v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
+              {show("website") && <InlineInput label="Website"              value={form.website} onChange={v => set("website", v)} placeholder="https://..."          color={T.blue} />}
+              {show("address") && <InlineInput label="Address"              value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
+            </>
+          ) : (
+            <>
+              {show("email")   && <ViewRow label="Email"   value={form.email}   color={T.accent} />}
+              {show("phone")   && <ViewRow label="Phone"   value={form.phone} />}
+              {show("website") && <ViewRow label="Website" value={form.website} color={T.blue} />}
+              {show("address") && <ViewRow label="Address" value={form.address} />}
+            </>
+          )}
         </Section>
 
         <Section title="Company &amp; Acquisition">
-          <InlineStageSelect value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
-          {show("company")       && <InlineInput label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="Acme Corp" />}
-          {show("accountSize")   && <InlineInput label="Account Size" value={form.accountSize}   onChange={v => set("accountSize",   v)} placeholder="1-5" />}
-          {show("source")        && <InlineInput label="Source"       value={form.source}        onChange={v => set("source",        v)} placeholder="Referral" />}
-          {show("campaign")      && <InlineInput label="Campaign"     value={form.campaign}      onChange={v => set("campaign",      v)} placeholder="Q1 Outreach" />}
-          {show("trucks")        && <InlineInput label="# of Trucks"  type="number" value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="0" onKeyDown={numKey} />}
-          {show("contractValue") && <InlineInput label="Contract ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} />}
+          {editMode ? (
+            <>
+              <InlineStageSelect value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
+              {show("company")       && <InlineInput label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="Acme Corp" />}
+              {show("accountSize")   && <InlineInput label="Account Size" value={form.accountSize}   onChange={v => set("accountSize",   v)} placeholder="1-5" />}
+              {show("source")        && <InlineInput label="Source"       value={form.source}        onChange={v => set("source",        v)} placeholder="Referral" />}
+              {show("campaign")      && <InlineInput label="Campaign"     value={form.campaign}      onChange={v => set("campaign",      v)} placeholder="Q1 Outreach" />}
+              {show("trucks")        && <InlineInput label="# of Trucks"  type="number" value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="0" onKeyDown={numKey} />}
+              {show("contractValue") && <InlineInput label="Contract ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} />}
+            </>
+          ) : (
+            <>
+              <ViewRow label="Stage"         value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
+              {show("company")       && <ViewRow label="Company"      value={form.company} />}
+              {show("accountSize")   && <ViewRow label="Account Size" value={form.accountSize} />}
+              {show("source")        && <ViewRow label="Source"       value={form.source} />}
+              {show("campaign")      && <ViewRow label="Campaign"     value={form.campaign} />}
+              {show("trucks")        && <ViewRow label="# of Trucks"  value={form.trucks} />}
+              {show("contractValue") && <ViewRow label="Contract ($)" value={form.contractValue} />}
+            </>
+          )}
         </Section>
       </div>
 
       {/* ── Social Media ─────────────────────────────────────────────────── */}
       {enabledSocials.length > 0 && (
         <Section title="Social Media" style={{ marginBottom: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-            {enabledSocials.map(({ key, label, color, placeholder }) => (
-              <InlineInput
-                key={key}
-                label={label}
-                value={form.socialLinks?.[key] || ""}
-                onChange={v => setSocial(key, v)}
-                placeholder={placeholder}
-                color={color}
-              />
-            ))}
-          </div>
+          {editMode ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              {enabledSocials.map(({ key, label, color, placeholder }) => (
+                <InlineInput key={key} label={label} value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={placeholder} color={color} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              {enabledSocials.map(({ key, label, color }) =>
+                form.socialLinks?.[key] ? <ViewRow key={key} label={label} value={form.socialLinks[key]} color={color} /> : null
+              )}
+            </div>
+          )}
         </Section>
       )}
 
@@ -496,64 +552,75 @@ export default function ContactDetailPanel({
       {/* ── Notes ────────────────────────────────────────────────────────── */}
       {show("notes") && (
         <Section title="Notes" style={{ marginBottom: 12 }}>
-          <div
-            onClick={() => setNoteClicked(v => !v)}
-            style={{ position: "relative" }}
-          >
-            {noteClicked && !isNew && contact?.lastActivityAt && (
-              <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit" }}>
-                {(() => {
-                  const d2 = new Date(contact.lastActivityAt);
-                  const mm = String(d2.getMonth() + 1).padStart(2, "0");
-                  const dd2 = String(d2.getDate()).padStart(2, "0");
-                  const yy = String(d2.getFullYear()).slice(2);
-                  const day = d2.toLocaleDateString("en-US", { weekday: "short" });
-                  const h = String(d2.getHours()).padStart(2, "0");
-                  const m = String(d2.getMinutes()).padStart(2, "0");
-                  return `${mm}/${dd2}/${yy} ${day} ${h}:${m}`;
-                })()}
-              </div>
-            )}
-            <textarea
-              value={form.notes}
-              onChange={e => set("notes", e.target.value)}
-              onFocus={e => (e.target.style.borderColor = T.accent)}
-              onBlur={e  => (e.target.style.borderColor = T.border)}
-              placeholder="Add notes about this contact…"
-              style={{ ...taStyle, minHeight: 80 }}
-            />
-          </div>
+          {editMode ? (
+            <div onClick={() => setNoteClicked(v => !v)} style={{ position: "relative" }}>
+              {noteClicked && !isNew && contact?.lastActivityAt && (
+                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit" }}>
+                  {(() => {
+                    const d2 = new Date(contact.lastActivityAt);
+                    const mm = String(d2.getMonth() + 1).padStart(2, "0");
+                    const dd2 = String(d2.getDate()).padStart(2, "0");
+                    const yy = String(d2.getFullYear()).slice(2);
+                    const day = d2.toLocaleDateString("en-US", { weekday: "short" });
+                    const h = String(d2.getHours()).padStart(2, "0");
+                    const m = String(d2.getMinutes()).padStart(2, "0");
+                    return `${mm}/${dd2}/${yy} ${day} ${h}:${m}`;
+                  })()}
+                </div>
+              )}
+              <textarea
+                value={form.notes}
+                onChange={e => set("notes", e.target.value)}
+                onFocus={e => (e.target.style.borderColor = T.accent)}
+                onBlur={e  => (e.target.style.borderColor = T.border)}
+                placeholder="Add notes about this contact…"
+                style={{ ...taStyle, minHeight: 80 }}
+              />
+            </div>
+          ) : (
+            form.notes
+              ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
+              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
+          )}
         </Section>
       )}
 
       {/* ── Tags ─────────────────────────────────────────────────────────── */}
       {show("tags") && (
         <Section title="Tags" style={{ marginBottom: 12 }}>
-          <input
-            type="text"
-            value={form.tags}
-            onChange={e => set("tags", e.target.value)}
-            onFocus={e => (e.target.style.borderColor = T.accent)}
-            onBlur={e  => (e.target.style.borderColor = T.border)}
-            placeholder="tag1, tag2, tag3  (comma-separated)"
-            style={{
-              width: "100%", background: T.surface, border: "1px solid " + T.border,
-              borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
-              outline: "none", fontFamily: "inherit", boxSizing: "border-box",
-            }}
-          />
-          {parsedTags.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
-              {parsedTags.map(tag => (
-                <span key={tag} style={{
-                  padding: "4px 11px", borderRadius: 12, fontSize: 11,
-                  background: T.accent + "15", color: T.accent,
-                  border: "1px solid " + T.accent + "30", fontWeight: 500,
-                }}>
-                  {tag}
-                </span>
-              ))}
-            </div>
+          {editMode ? (
+            <>
+              <input
+                type="text"
+                value={form.tags}
+                onChange={e => set("tags", e.target.value)}
+                onFocus={e => (e.target.style.borderColor = T.accent)}
+                onBlur={e  => (e.target.style.borderColor = T.border)}
+                placeholder="tag1, tag2, tag3  (comma-separated)"
+                style={{
+                  width: "100%", background: T.surface, border: "1px solid " + T.border,
+                  borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
+                  outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                }}
+              />
+              {parsedTags.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+                  {parsedTags.map(tag => (
+                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            parsedTags.length > 0
+              ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {parsedTags.map(tag => (
+                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                  ))}
+                </div>
+              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No tags</div>
           )}
         </Section>
       )}
@@ -665,6 +732,18 @@ function InlineStageSelect({ value, onChange }) {
           <option key={s} value={s} style={{ background: "#1a1a2e", color: "#e2e8f0" }}>{STAGE_DEF[s].label}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+
+function ViewRow({ label, value, color }) {
+  const T = useTheme();
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ padding: "7px 0", borderBottom: "1px solid " + T.border + "33" }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: color || T.text, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
     </div>
   );
 }
