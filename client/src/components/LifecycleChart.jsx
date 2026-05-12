@@ -1,26 +1,19 @@
 import { useState } from "react";
+import { Activity, ArrowRight, Pencil, XCircle, RotateCcw } from "lucide-react";
 import Card from "./ui/Card";
 import { Pill, StagePill } from "./ui/Pill";
 import Avatar from "./ui/Avatar";
 import Btn from "./ui/Btn";
-import LogActivityModal from "./modals/LogActivityModal";
-import StageModal from "./modals/StageModal";
-import ContactModal from "./modals/ContactModal";
-import CancelModal from "./modals/CancelModal";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { STAGE_DEF, LOST_STAGES } from "../data/stages";
 import { ACT_DEF, ACT_CATS } from "../data/activities";
 import fmt from "../utils/format";
-import * as db from "../services/api";
-import { useAppToast } from "../context/ToastContext";
 
 // ─── Right-panel: lead lifecycle + activity timeline ─────────────────────────
-export default function LifecycleChart({ contact, onUpdate, currentUser }) {
+export default function LifecycleChart({ contact, onUpdate, onEdit, onAction, currentUser }) {
   const T = useTheme();
   const [filter, setFilter] = useState("all");
-  const [modal, setModal] = useState(null);   // "log" | "stage" | "edit"
-  const toast = useAppToast();
 
   if (!contact) return null;
 
@@ -31,6 +24,14 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
   const isCustomer = contact.lifecycleStage === "customer";
   const isLost = LOST_STAGES.includes(contact.lifecycleStage);
   const addedByUser = USERS_DB.find(u => u.name === contact.addedBy) || USERS_DB[0];
+
+  const personName = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
+  const avatarText = personName
+    ? ((contact.firstName?.[0] || "") + (contact.lastName?.[0] || "")).toUpperCase()
+    : (contact.company?.[0] || contact.email?.[0] || "U").toUpperCase();
+  const displayName = personName || contact.company || contact.email || "Unknown Contact";
+
+  const btnSm = { fontSize: 10, padding: "5px 8px", display: "flex", alignItems: "center", gap: 4 };
 
   const filtered = filter === "all" ? acts : acts.filter(a => ACT_DEF[a.type]?.cat === filter);
 
@@ -45,84 +46,6 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* Modals */}
-      {modal === "log" && (
-        <LogActivityModal
-          contact={contact}
-          onSave={async act => {
-            try {
-              await db.addActivity(contact.id, act);
-              const refreshed = await db.getContact(contact.id);
-              onUpdate(refreshed);
-              setModal(null);
-              toast.success("Activity logged.");
-            } catch (err) {
-              console.error("Failed to log activity:", err);
-              toast.error("Failed to log activity.");
-            }
-          }}
-          onClose={() => setModal(null)}
-          currentUser={currentUser}
-        />
-      )}
-      {modal === "stage" && (
-        <StageModal
-          contact={contact}
-          onSave={async updated => {
-            try {
-              // Extract the stage_changed activity StageModal appended
-              const newAct = updated.activities[updated.activities.length - 1];
-              await db.updateContact(updated.id, updated);
-              await db.addActivity(updated.id, newAct);
-              const refreshed = await db.getContact(updated.id);
-              onUpdate(refreshed);
-              setModal(null);
-              toast.success("Stage updated.");
-            } catch (err) {
-              console.error("Failed to update stage:", err);
-              toast.error("Failed to update stage.");
-            }
-          }}
-          onClose={() => setModal(null)}
-          currentUser={currentUser}
-        />
-      )}
-      {modal === "edit" && (
-        <ContactModal
-          contact={contact}
-          onSave={async updated => {
-            try {
-              const refreshed = await db.updateContact(updated.id, updated);
-              onUpdate(refreshed);
-              setModal(null);
-              toast.success("Contact saved.");
-            } catch (err) {
-              toast.error(err.message || "Failed to update contact.");
-            }
-          }}
-          onClose={() => setModal(null)}
-          pool={contact.pool}
-          clientId={contact.clientId}
-          currentUser={currentUser}
-        />
-      )}
-      {modal === "cancel" && (
-        <CancelModal
-          contact={contact}
-          onSave={async reason => {
-            try {
-              const refreshed = await db.cancelContact(contact.id, reason);
-              onUpdate(refreshed);
-              setModal(null);
-              toast.success("Contact canceled.");
-            } catch {
-              toast.error("Failed to cancel contact.");
-            }
-          }}
-          onClose={() => setModal(null)}
-        />
-      )}
-
       <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
 
         {/* Contact header card */}
@@ -136,17 +59,22 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
             <div
               style={{
-                width: 40, height: 40, borderRadius: "50%",
+                width: 38, height: 38, borderRadius: 10,
                 background: d.color + "22", border: "1.5px solid " + d.color + "50",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 15, fontWeight: 700, color: d.color, flexShrink: 0,
+                fontSize: avatarText.length > 1 ? 13 : 16, fontWeight: 800, color: d.color,
+                flexShrink: 0, letterSpacing: "-0.03em",
               }}
             >
-              {(contact.firstName || "?")[0]}{(contact.lastName || "")[0]}
+              {avatarText}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{contact.firstName} {contact.lastName}</div>
-              <div style={{ fontSize: 11, color: T.muted }}>{contact.title} · {contact.company}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text, lineHeight: 1.3 }}>{displayName}</div>
+              {(contact.title || contact.company) && (
+                <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
+                  {[contact.title, contact.company].filter(Boolean).join(" · ")}
+                </div>
+              )}
               {contact.city && <div style={{ fontSize: 10, color: T.dim, marginTop: 1 }}>📍 {contact.city}</div>}
             </div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -181,27 +109,27 @@ export default function LifecycleChart({ contact, onUpdate, currentUser }) {
         {contact.isCanceled ? (
           <div style={{ marginBottom: 14 }}>
             <Btn
-              onClick={async () => {
-                try {
-                  const refreshed = await db.restoreContact(contact.id);
-                  onUpdate(refreshed);
-                  toast.success("Contact restored.");
-                } catch {
-                  toast.error("Failed to restore contact.");
-                }
-              }}
+              onClick={() => onAction?.("restore")}
               variant="secondary"
-              style={{ width: "100%", fontSize: 10, padding: "6px 8px", borderColor: T.green, color: T.green }}
+              style={{ width: "100%", ...btnSm, justifyContent: "center", borderColor: T.green, color: T.green }}
             >
-              ↩ Restore Contact
+              <RotateCcw size={11} /> Restore Contact
             </Btn>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
-            <Btn onClick={() => setModal("log")} style={{ fontSize: 10, padding: "6px 8px" }}>+ Log Activity</Btn>
-            <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>⇢ Stage</Btn>
-            <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px" }}>✎ Edit</Btn>
-            <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 10, padding: "6px 8px", borderColor: T.red, color: T.red }}>✕ Cancel</Btn>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 14 }}>
+            <Btn onClick={() => onAction?.("log")} style={{ ...btnSm, justifyContent: "center" }}>
+              <Activity size={11} /> Log Activity
+            </Btn>
+            <Btn onClick={() => onAction?.("stage")} variant="secondary" style={{ ...btnSm, justifyContent: "center" }}>
+              <ArrowRight size={11} /> Stage
+            </Btn>
+            <Btn onClick={() => onEdit?.(contact)} variant="secondary" style={{ ...btnSm, justifyContent: "center" }}>
+              <Pencil size={11} /> Edit
+            </Btn>
+            <Btn onClick={() => onAction?.("cancel")} variant="secondary" style={{ ...btnSm, justifyContent: "center", borderColor: T.red, color: T.red }}>
+              <XCircle size={11} /> Cancel
+            </Btn>
           </div>
         )}
 

@@ -1,16 +1,11 @@
 import { useState, useEffect } from "react";
+import { Activity, ArrowRight, Pencil, XCircle, RotateCcw } from "lucide-react";
 import { StagePill, Pill } from "./ui/Pill";
 import Btn from "./ui/Btn";
-import LogActivityModal from "./modals/LogActivityModal";
-import StageModal from "./modals/StageModal";
-import ContactModal from "./modals/ContactModal";
-import CancelModal from "./modals/CancelModal";
-import { RestoreModal } from "./modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
 import { STAGE_DEF } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
-import { useAppToast } from "../context/ToastContext";
 
 const ACTION_CFG = {
   CREATE:  { label: "Created",  color: "#22c55e", icon: "✦" },
@@ -40,14 +35,14 @@ const DEFAULT_FIELD_SETTINGS = {
   social_pinterest: true, social_tiktok: true,
 };
 
-export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
+export default function ContactDetailPanel({ contact, onUpdate, onEdit, onAction, currentUser }) {
   const T = useTheme();
-  const [modal,          setModal]          = useState(null);
-  const [auditLog,       setAuditLog]       = useState([]);
-  const [auditOpen,      setAuditOpen]      = useState(false);
-  const [restoreLoading, setRestoreLoading] = useState(false);
-  const [fieldVis,       setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
-  const toast = useAppToast();
+  const [auditLog,     setAuditLog]     = useState([]);
+  const [auditOpen,    setAuditOpen]    = useState(false);
+  const [fieldVis,     setFieldVis]     = useState(DEFAULT_FIELD_SETTINGS);
+  const [descExpanded, setDescExpanded] = useState(false);
+
+  useEffect(() => { setDescExpanded(false); }, [contact?.id]);
 
   useEffect(() => {
     if (!contact?.id) return;
@@ -80,95 +75,16 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
 
   const show = (key) => fieldVis[key] !== false;
 
-  async function handleLogActivity(act) {
-    try {
-      await db.addActivity(contact.id, act);
-      const refreshed = await db.getContact(contact.id);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Activity logged.");
-    } catch {
-      toast.error("Failed to log activity.");
-    }
-  }
+  const personName = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
+  const heroName   = personName || contact.company || contact.email || "Unknown Contact";
+  const avatarText = personName
+    ? ((contact.firstName?.[0] || "") + (contact.lastName?.[0] || "")).toUpperCase()
+    : (contact.company?.[0] || contact.email?.[0] || "U").toUpperCase();
 
-  async function handleStageChange(updated) {
-    try {
-      const newAct = updated.activities[updated.activities.length - 1];
-      await db.updateContact(updated.id, updated);
-      await db.addActivity(updated.id, newAct);
-      const refreshed = await db.getContact(updated.id);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Stage updated.");
-    } catch {
-      toast.error("Failed to update stage.");
-    }
-  }
-
-  async function handleEdit(updated) {
-    try {
-      const refreshed = await db.updateContact(updated.id, updated);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Contact saved.");
-    } catch (err) {
-      toast.error(err.message || "Failed to update contact.");
-    }
-  }
-
-  async function handleCancel(reason) {
-    const refreshed = await db.cancelContact(contact.id, reason);
-    onUpdate(refreshed);
-    setModal(null);
-    toast.success("Contact canceled.");
-  }
-
-  async function handleRestoreConfirm() {
-    setRestoreLoading(true);
-    try {
-      const refreshed = await db.restoreContact(contact.id);
-      onUpdate(refreshed);
-      setModal(null);
-      toast.success("Contact restored.");
-    } catch {
-      toast.error("Failed to restore contact.");
-    } finally {
-      setRestoreLoading(false);
-    }
-  }
+  const btnBase = { fontSize: 11, padding: "6px 13px", display: "flex", alignItems: "center", gap: 5 };
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
-
-      {modal === "log" && (
-        <LogActivityModal contact={contact} onSave={handleLogActivity} onClose={() => setModal(null)} currentUser={currentUser} />
-      )}
-      {modal === "stage" && (
-        <StageModal contact={contact} onSave={handleStageChange} onClose={() => setModal(null)} currentUser={currentUser} />
-      )}
-      {modal === "edit" && (
-        <ContactModal
-          contact={contact} onSave={handleEdit} onClose={() => setModal(null)}
-          pool={contact.pool} clientId={contact.clientId} currentUser={currentUser}
-        />
-      )}
-      {modal === "cancel" && (
-        <CancelModal
-          contact={contact}
-          onSave={handleCancel}
-          onClose={() => setModal(null)}
-        />
-      )}
-      {modal === "restore" && (
-        <RestoreModal
-          title="Restore Contact"
-          message={`Restore ${contact.firstName} ${contact.lastName} back to active contacts?`}
-          loading={restoreLoading}
-          onRestore={handleRestoreConfirm}
-          onClose={() => { if (!restoreLoading) setModal(null); }}
-        />
-      )}
 
       {/* Hero header */}
       <div style={{
@@ -178,53 +94,55 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
         borderRadius: 10, marginBottom: 16,
       }}>
         <div style={{
-          width: 64, height: 64, borderRadius: "50%", flexShrink: 0,
-          background: d.color + "20", border: "2px solid " + d.color + "55",
+          width: 60, height: 60, borderRadius: 14, flexShrink: 0,
+          background: d.color + "20", border: "2px solid " + d.color + "40",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 22, fontWeight: 800, color: d.color,
+          fontSize: avatarText.length > 1 ? 18 : 22, fontWeight: 800, color: d.color,
+          letterSpacing: "-0.03em",
         }}>
-          {(contact.firstName || "?")[0]}{(contact.lastName || "")[0]}
+          {avatarText}
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1.1, marginBottom: 5 }}>
-            {contact.firstName} {contact.lastName}
+          <div style={{ fontSize: 20, fontWeight: 800, color: T.text, lineHeight: 1.2, marginBottom: 4 }}>
+            {heroName}
           </div>
-          {(contact.title || contact.company) && (
-            <div style={{ fontSize: 13, color: T.dim, marginBottom: 8 }}>
+          {personName && contact.company && (
+            <div style={{ fontSize: 13, color: T.dim, marginBottom: 6 }}>
               {[contact.title, contact.company].filter(Boolean).join(" · ")}
             </div>
           )}
+          {!personName && contact.title && (
+            <div style={{ fontSize: 13, color: T.dim, marginBottom: 6 }}>{contact.title}</div>
+          )}
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
             <StagePill stage={contact.lifecycleStage} />
-            {contact.isCanceled && (
-              <Pill color={T.red} small>CANCELED</Pill>
-            )}
+            {contact.isCanceled && <Pill color={T.red} small>CANCELED</Pill>}
             {show("trucks") && contact.trucks > 0 && <Pill color={T.orange} small>🚛 {contact.trucks} trucks</Pill>}
             {contact.address && <span style={{ fontSize: 11, color: T.muted }}>📍 {contact.address}</span>}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 7, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {!contact.isCanceled && (
             <>
-              <Btn onClick={() => setModal("log")} style={{ fontSize: 11, padding: "7px 14px" }}>
-                + Log Activity
+              <Btn onClick={() => onAction?.("log")} style={btnBase}>
+                <Activity size={13} /> Log Activity
               </Btn>
-              <Btn onClick={() => setModal("stage")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
-                ⇢ Stage
+              <Btn onClick={() => onAction?.("stage")} variant="secondary" style={btnBase}>
+                <ArrowRight size={13} /> Stage
               </Btn>
-              <Btn onClick={() => setModal("edit")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px" }}>
-                ✎ Edit
+              <Btn onClick={() => onEdit?.(contact)} variant="secondary" style={btnBase}>
+                <Pencil size={13} /> Edit
               </Btn>
-              <Btn onClick={() => setModal("cancel")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.red, color: T.red }}>
-                ✕ Cancel
+              <Btn onClick={() => onAction?.("cancel")} variant="secondary" style={{ ...btnBase, borderColor: T.red, color: T.red }}>
+                <XCircle size={13} /> Cancel
               </Btn>
             </>
           )}
           {contact.isCanceled && (
-            <Btn onClick={() => setModal("restore")} variant="secondary" style={{ fontSize: 11, padding: "7px 14px", borderColor: T.green, color: T.green }}>
-              ↩ Restore
+            <Btn onClick={() => onAction?.("restore")} variant="secondary" style={{ ...btnBase, borderColor: T.green, color: T.green }}>
+              <RotateCcw size={13} /> Restore
             </Btn>
           )}
         </div>
@@ -291,11 +209,29 @@ export default function ContactDetailPanel({ contact, onUpdate, currentUser }) {
       {show("description") && (
         <Section title="Description" style={{ marginBottom: 12 }}>
           {contact.description ? (
-            <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
-              {contact.description}
-            </div>
+            <>
+              <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.75, whiteSpace: "pre-wrap" }}>
+                {descExpanded || contact.description.length <= 280
+                  ? contact.description
+                  : contact.description.slice(0, 280) + "…"}
+              </div>
+              {contact.description.length > 280 && (
+                <button
+                  onClick={() => setDescExpanded(e => !e)}
+                  style={{
+                    marginTop: 8, background: "none", border: "none",
+                    color: T.accent, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "inherit", padding: 0,
+                  }}
+                >
+                  {descExpanded ? "Show Less ↑" : "Show More ↓"}
+                </button>
+              )}
+            </>
           ) : (
-            <span style={{ fontSize: 12, color: T.muted }}>—</span>
+            <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic", minHeight: 40, display: "flex", alignItems: "center" }}>
+              No description — use Edit to add one.
+            </div>
           )}
         </Section>
       )}

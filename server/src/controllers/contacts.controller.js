@@ -129,7 +129,7 @@ async function getContact(req, res) {
 
 async function createContact(req, res) {
   const b = req.body;
-  if (!b.firstName) return res.status(400).json({ error: 'firstName is required' });
+  if (!b.firstName && !b.company) return res.status(400).json({ error: 'firstName or company is required' });
   if (b.pool && !VALID_POOLS.includes(b.pool)) return res.status(400).json({ error: 'Invalid pool' });
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
   if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
