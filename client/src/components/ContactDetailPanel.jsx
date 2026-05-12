@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, forwardRef } from "react";
-import { Save } from "lucide-react";
 import Btn from "./ui/Btn";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
@@ -155,7 +154,10 @@ export default function ContactDetailPanel({
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== "Escape") return;
-      if (!isNew && dirtyRef.current) {
+      if (isNew) {
+        e.stopImmediatePropagation();
+        handleAddNew();
+      } else if (dirtyRef.current) {
         e.stopImmediatePropagation();
         doSaveRef.current?.();
       }
@@ -163,7 +165,7 @@ export default function ContactDetailPanel({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isNew]);
+  }, [isNew]); // eslint-disable-line
 
   // ── Setters — only mark dirty, never auto-save on keystroke ─────────────
   const set = (k, v) => {
@@ -278,10 +280,8 @@ export default function ContactDetailPanel({
             {saveStatus === "saved" && (
               <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>
             )}
-            {isNew && (
-              <Btn onClick={handleAddNew} style={{ fontSize: 11, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5 }}>
-                <Save size={11} /> Add Contact
-              </Btn>
+            {isNew && saveStatus === null && (
+              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
             )}
           </div>
         </div>
