@@ -1,4 +1,4 @@
-import T from "../theme";
+import T from "../themes/theme";
 
 export const ACT_DEF = {
   email_sent:       { label: "Email Sent",       icon: "✉", color: T.blue,    cat: "email"    },

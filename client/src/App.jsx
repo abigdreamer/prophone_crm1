@@ -30,6 +30,7 @@ import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
+import ProfilePage from './pages/ProfilePage';
 import ContactDetailPanel from './components/ContactDetailPanel';
 import CancelInline from './components/inline/CancelInline';
 import RestoreInline from './components/inline/RestoreInline';
@@ -540,6 +541,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage currentUser={currentUser} />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     );
