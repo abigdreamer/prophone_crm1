@@ -131,9 +131,9 @@ export default function Sidebar({
 
   return (
     <div style={{
-      width: 290, flexShrink: 0,
-      background: T.surface, borderRight: "1px solid " + T.border,
-      display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
+      width: "100%", height: "100%",
+      background: T.surface,
+      display: "flex", flexDirection: "column", overflow: "hidden",
     }}>
       {/* Pool header */}
       <div style={{

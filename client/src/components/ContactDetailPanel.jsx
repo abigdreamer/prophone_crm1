@@ -2,27 +2,27 @@ import { useState, useEffect, useRef, forwardRef } from "react";
 import Btn from "./ui/Btn";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
-import { STAGE_DEF, ALL_STAGES } from "../data/stages";
+import { STAGE_DEF, ALL_STAGES, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 import { Spinner } from "./ui/Loader";
 
 const ACTION_CFG = {
-  CREATE:  { label: "Created",  color: "#22c55e", icon: "✦" },
-  UPDATE:  { label: "Updated",  color: "#6366f1", icon: "✎" },
-  CANCEL:  { label: "Canceled", color: "#ef4444", icon: "✕" },
+  CREATE: { label: "Created", color: "#22c55e", icon: "✦" },
+  UPDATE: { label: "Updated", color: "#6366f1", icon: "✎" },
+  CANCEL: { label: "Canceled", color: "#ef4444", icon: "✕" },
   RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
 };
 
 const SOCIAL_FIELDS = [
-  { key: "facebook",  label: "Facebook",    color: "#1877f2", placeholder: "https://facebook.com/yourpage"   },
-  { key: "instagram", label: "Instagram",   color: "#e1306c", placeholder: "https://instagram.com/yourhandle" },
-  { key: "linkedin",  label: "LinkedIn",    color: "#0a66c2", placeholder: "https://linkedin.com/in/profile"  },
-  { key: "twitter",   label: "Twitter / X", color: "#1da1f2", placeholder: "https://twitter.com/handle"       },
-  { key: "youtube",   label: "YouTube",     color: "#ff0000", placeholder: "https://youtube.com/@channel"     },
-  { key: "yelp",      label: "Yelp",        color: "#d32323", placeholder: "https://yelp.com/biz/name"        },
-  { key: "pinterest", label: "Pinterest",   color: "#e60023", placeholder: "https://pinterest.com/profile"    },
-  { key: "tiktok",    label: "TikTok",      color: "#010101", placeholder: "https://tiktok.com/@handle"       },
+  { key: "facebook", label: "Facebook", color: "#1877f2", placeholder: "https://facebook.com/yourpage" },
+  { key: "instagram", label: "Instagram", color: "#e1306c", placeholder: "https://instagram.com/yourhandle" },
+  { key: "linkedin", label: "LinkedIn", color: "#0a66c2", placeholder: "https://linkedin.com/in/profile" },
+  { key: "twitter", label: "Twitter / X", color: "#1da1f2", placeholder: "https://twitter.com/handle" },
+  { key: "youtube", label: "YouTube", color: "#ff0000", placeholder: "https://youtube.com/@channel" },
+  { key: "yelp", label: "Yelp", color: "#d32323", placeholder: "https://yelp.com/biz/name" },
+  { key: "pinterest", label: "Pinterest", color: "#e60023", placeholder: "https://pinterest.com/profile" },
+  { key: "tiktok", label: "TikTok", color: "#010101", placeholder: "https://tiktok.com/@handle" },
 ];
 
 const DEFAULT_FIELD_SETTINGS = {
@@ -36,24 +36,25 @@ const DEFAULT_FIELD_SETTINGS = {
 
 function contactToForm(c) {
   return {
-    firstName:      c.firstName      || "",
-    lastName:       c.lastName       || "",
-    company:        c.company        || "",
-    title:          c.title          || "",
-    email:          c.email          || "",
-    phone:          c.phone          || "",
-    website:        c.website        || "",
-    address:        c.address        || "",
-    socialLinks:    c.socialLinks    || {},
-    trucks:         c.trucks   != null ? String(c.trucks)         : "",
+    firstName: c.firstName || "",
+    lastName: c.lastName || "",
+    company: c.company || "",
+    title: c.title || "",
+    email: c.email || "",
+    phone: c.phone || "",
+    website: c.website || "",
+    address: c.address || "",
+    socialLinks: c.socialLinks || {},
+    trucks: c.trucks != null ? String(c.trucks) : "",
     lifecycleStage: c.lifecycleStage || "new",
-    source:         c.source         || "",
-    campaign:       c.campaign       || "",
-    tags:           Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
-    notes:          c.notes          || "",
-    contractValue:  c.contractValue != null ? String(c.contractValue) : "",
-    accountSize:    c.accountSize    || "",
-    ownedBy:        c.ownedBy        || "",
+    leadState: c.leadState || "prospect",
+    source: c.source || "",
+    campaign: c.campaign || "",
+    tags: Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
+    notes: c.notes || "",
+    contractValue: c.contractValue != null ? String(c.contractValue) : "",
+    accountSize: c.accountSize || "",
+    ownedBy: c.ownedBy || "",
   };
 }
 
@@ -62,7 +63,8 @@ function emptyForm(currentUser) {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", address: "",
     socialLinks: {},
-    trucks: "", lifecycleStage: "new", source: "", campaign: "",
+    trucks: "", lifecycleStage: "new", leadState: "prospect",
+    source: "", campaign: "",
     tags: "", notes: "", contractValue: "", accountSize: "",
     ownedBy: currentUser?.name || "",
   };
@@ -76,21 +78,21 @@ export default function ContactDetailPanel({
   const toast = useAppToast();
   const isNew = !contact;
 
-  const [form, setForm]           = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
+  const [form, setForm] = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
-  const [auditLog, setAuditLog]   = useState([]);
+  const [auditLog, setAuditLog] = useState([]);
   const [auditOpen, setAuditOpen] = useState(false);
-  const [fieldVis, setFieldVis]   = useState(DEFAULT_FIELD_SETTINGS);
+  const [fieldVis, setFieldVis] = useState(DEFAULT_FIELD_SETTINGS);
   const [noteClicked, setNoteClicked] = useState(false);
-  const [editMode, setEditMode]       = useState(isNew); // new contacts start in edit mode
+  const [editMode, setEditMode] = useState(isNew); // new contacts start in edit mode
 
-  const firstNameRef    = useRef(null);
-  const statusTimerRef  = useRef(null);
-  const formRef         = useRef(form);
-  const dirtyRef        = useRef(false);  // true when form has unsaved changes
-  const editModeRef     = useRef(editMode);
-  formRef.current       = form;
-  editModeRef.current   = editMode;
+  const firstNameRef = useRef(null);
+  const statusTimerRef = useRef(null);
+  const formRef = useRef(form);
+  const dirtyRef = useRef(false);  // true when form has unsaved changes
+  const editModeRef = useRef(editMode);
+  formRef.current = form;
+  editModeRef.current = editMode;
 
   // ── Auto-save implementation ──────────────────────────────────────────────
   const doSaveRef = useRef(null);
@@ -140,7 +142,7 @@ export default function ContactDetailPanel({
   // ── Audit log ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!contact?.id) return;
-    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
+    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => { });
   }, [contact?.id]);
 
   // ── Field visibility settings ─────────────────────────────────────────────
@@ -151,7 +153,7 @@ export default function ContactDetailPanel({
           setFieldVis({ ...DEFAULT_FIELD_SETTINGS, ...res.config });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [contact?.clientId]);
 
   // ── Enter → edit mode | Escape → save + view mode ────────────────────────
@@ -208,20 +210,20 @@ export default function ContactDetailPanel({
     return {
       ...(contact || {}),
       ...fd,
-      id:            contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
-      pool:          contact?.pool     || pool,
-      clientId:      contact?.clientId || clientId,
-      tags:          tagsArr,
-      trucks:        parseInt(fd.trucks)        || 0,
+      id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
+      pool: contact?.pool || pool,
+      clientId: contact?.clientId || clientId,
+      tags: tagsArr,
+      trucks: parseInt(fd.trucks) || 0,
       contractValue: parseInt(fd.contractValue) || 0,
-      leadScore:     contact?.leadScore     || 10,
-      emailsSent:    contact?.emailsSent    || 0,
-      emailsOpened:  contact?.emailsOpened  || 0,
+      leadScore: contact?.leadScore || 10,
+      emailsSent: contact?.emailsSent || 0,
+      emailsOpened: contact?.emailsOpened || 0,
       emailsClicked: contact?.emailsClicked || 0,
-      callsMade:     contact?.callsMade     || 0,
+      callsMade: contact?.callsMade || 0,
       callsAnswered: contact?.callsAnswered || 0,
       lastActivityAt: new Date().toISOString(),
-      addedBy:   contact?.addedBy   || currentUser?.name || "Unknown",
+      addedBy: contact?.addedBy || currentUser?.name || "Unknown",
       createdAt: contact?.createdAt || new Date().toISOString(),
     };
   }
@@ -241,13 +243,13 @@ export default function ContactDetailPanel({
   }
 
   // ── Derived display values ─────────────────────────────────────────────────
-  const personName   = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
-  const heroName     = personName || form.company || form.email || (isNew ? "New Contact" : "Unknown Contact");
+  const personName = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
+  const heroName = personName || form.company || form.email || (isNew ? "New Contact" : "Unknown Contact");
   const avatarLetter = personName
     ? ((form.firstName?.[0] || "") + (form.lastName?.[0] || "")).toUpperCase()
     : (form.company?.[0] || form.email?.[0] || (isNew ? "+" : "?")).toUpperCase();
 
-  const d    = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
+  const d = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
   // Use accent color if stage color is dim/muted (makes avatar pop more)
   const avatarColor = (d.color === T.muted || d.color === T.dim) ? T.accent : d.color;
   const show = (key) => fieldVis[key] !== false;
@@ -266,11 +268,11 @@ export default function ContactDetailPanel({
 
   // key handlers for number fields
   const numKey = (e) => {
-    if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
+    if (["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(e.key)) return;
     if (!/^[\d()]$/.test(e.key)) e.preventDefault();
   };
   const phoneKey = (e) => {
-    if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
+    if (["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(e.key)) return;
     if (!/^[\d()\-+ ]$/.test(e.key)) e.preventDefault();
   };
 
@@ -364,20 +366,20 @@ export default function ContactDetailPanel({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {form.email && heroName !== form.email && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.accent, background: T.accent + "0d", border: "1px solid " + T.accent + "25", borderRadius: 20, padding: "5px 13px", maxWidth: 240, overflow: "hidden" }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.email}</span>
               </span>
             )}
             {form.phone && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.dim, background: T.surface, border: "1px solid " + T.border, borderRadius: 20, padding: "5px 13px", flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.5a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.72h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.4a16 16 0 0 0 6.16 6.16l1.63-1.63a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.5a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.72h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.4a16 16 0 0 0 6.16 6.16l1.63-1.63a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
                 <span>{form.phone.split(/[|,]/)[0].trim()}</span>
                 {form.phone.split(/[|,]/).length > 1 && <span style={{ color: T.muted, fontSize: 10, marginLeft: 2 }}>+{form.phone.split(/[|,]/).length - 1}</span>}
               </span>
             )}
             {form.website && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.blue, background: T.blue + "0d", border: "1px solid " + T.blue + "25", borderRadius: 20, padding: "5px 13px", maxWidth: 200, overflow: "hidden", flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.website.replace(/^https?:\/\//, "")}</span>
               </span>
             )}
@@ -402,7 +404,7 @@ export default function ContactDetailPanel({
         <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "18px 20px" }}>
           <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Contract Value</div>
           <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: parseInt(form.contractValue) > 0 ? T.green : T.muted }}>
-            {parseInt(form.contractValue) > 0 ? "$" + (parseInt(form.contractValue) >= 1000 ? (parseInt(form.contractValue)/1000).toFixed(1) + "k" : parseInt(form.contractValue)) : "—"}
+            {parseInt(form.contractValue) > 0 ? "$" + (parseInt(form.contractValue) >= 1000 ? (parseInt(form.contractValue) / 1000).toFixed(1) + "k" : parseInt(form.contractValue)) : "—"}
           </span>
         </div>
         {/* Fleet Size */}
@@ -431,14 +433,32 @@ export default function ContactDetailPanel({
           {editMode ? (
             <>
               <FieldInput ref={firstNameRef} label="First Name" value={form.firstName} onChange={v => set("firstName", v)} placeholder="First" />
-              <FieldInput label="Last Name"  value={form.lastName}  onChange={v => set("lastName",  v)} placeholder="Last" />
-              <FieldInput label="Job Title"  value={form.title}     onChange={v => set("title",     v)} placeholder="Owner / Manager" />
+              <FieldInput label="Last Name" value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last" />
+              <FieldInput label="Job Title" value={form.title} onChange={v => set("title", v)} placeholder="Owner / Manager" />
             </>
           ) : (
             <>
               <ViewRow label="First Name" value={form.firstName} />
-              <ViewRow label="Last Name"  value={form.lastName} />
-              <ViewRow label="Job Title"  value={form.title} />
+              <ViewRow label="Last Name" value={form.lastName} />
+              <ViewRow label="Job Title" value={form.title} />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Pipeline Management ──────────────────────────────────────────── */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
+        <SectionHeader>Pipeline Management</SectionHeader>
+        <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {editMode ? (
+            <>
+              <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
+              <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
+            </>
+          ) : (
+            <>
+              <ViewRow label="Lead State" value={LEAD_STATE_OPTS.find(o => o.value === (form.leadState || "prospect"))?.label || "Prospect"} />
+              <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
             </>
           )}
         </div>
@@ -449,15 +469,15 @@ export default function ContactDetailPanel({
         <Section title="Contact Info">
           {editMode ? (
             <>
-              {show("email")   && <InlineInput label="Email"   type="email" value={form.email}   onChange={v => set("email",   v)} placeholder="email@company.com"    color={T.accent} />}
-              {show("phone")   && <InlineInput label="Phone"   type="tel"   value={form.phone}   onChange={v => set("phone",   v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
-              {show("website") && <InlineInput label="Website"              value={form.website} onChange={v => set("website", v)} placeholder="https://..."          color={T.blue} />}
-              {show("address") && <InlineInput label="Address"              value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
+              {show("email") && <InlineInput label="Email" type="email" value={form.email} onChange={v => set("email", v)} placeholder="email@company.com" color={T.accent} />}
+              {show("phone") && <InlineInput label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
+              {show("website") && <InlineInput label="Website" value={form.website} onChange={v => set("website", v)} placeholder="https://..." color={T.blue} />}
+              {show("address") && <InlineInput label="Address" value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
             </>
           ) : (
             <>
-              {show("email")   && <ViewRow label="Email"   value={form.email}   color={T.accent} />}
-              {show("phone")   && <ViewRow label="Phone"   value={form.phone} />}
+              {show("email") && <ViewRow label="Email" value={form.email} color={T.accent} />}
+              {show("phone") && <ViewRow label="Phone" value={form.phone} />}
               {show("website") && <ViewRow label="Website" value={form.website} color={T.blue} />}
               {show("address") && <ViewRow label="Address" value={form.address} />}
             </>
@@ -467,7 +487,6 @@ export default function ContactDetailPanel({
         <Section title="Company &amp; Acquisition">
           {editMode ? (
             <>
-              <InlineStageSelect value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
               {show("company")       && <InlineInput label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="Acme Corp" />}
               {show("accountSize")   && <InlineInput label="Account Size" value={form.accountSize}   onChange={v => set("accountSize",   v)} placeholder="1-5" />}
               {show("source")        && <InlineInput label="Source"       value={form.source}        onChange={v => set("source",        v)} placeholder="Referral" />}
@@ -477,7 +496,6 @@ export default function ContactDetailPanel({
             </>
           ) : (
             <>
-              <ViewRow label="Stage"         value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
               {show("company")       && <ViewRow label="Company"      value={form.company} />}
               {show("accountSize")   && <ViewRow label="Account Size" value={form.accountSize} />}
               {show("source")        && <ViewRow label="Source"       value={form.source} />}
@@ -516,9 +534,9 @@ export default function ContactDetailPanel({
           marginBottom: 12, overflow: "hidden",
         }}>
           {[
-            ["Owner",         contact.ownedBy || "—"],
-            ["Added By",      contact.addedBy || "—"],
-            ["Created",       fmt.date(contact.createdAt)],
+            ["Owner", contact.ownedBy || "—"],
+            ["Added By", contact.addedBy || "—"],
+            ["Created", fmt.date(contact.createdAt)],
             ["Last Activity", fmt.ago(contact.lastActivityAt)],
           ].map(([label, value], i, arr) => (
             <div key={label} style={{ padding: "12px 16px", borderRight: i < arr.length - 1 ? "1px solid " + T.border : "none" }}>
@@ -537,9 +555,9 @@ export default function ContactDetailPanel({
           borderRadius: 8, marginBottom: 12, overflow: "hidden",
         }}>
           {[
-            ["Canceled By", contact.canceledBy  || "—"],
+            ["Canceled By", contact.canceledBy || "—"],
             ["Canceled At", fmt.date(contact.canceledAt)],
-            ["Reason",      contact.cancelReason || "—"],
+            ["Reason", contact.cancelReason || "—"],
           ].map(([label, value], i, arr) => (
             <div key={label} style={{ padding: "10px 16px", borderRight: i < arr.length - 1 ? "1px solid " + T.red + "25" : "none" }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: T.red + "aa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
@@ -572,7 +590,7 @@ export default function ContactDetailPanel({
                 value={form.notes}
                 onChange={e => set("notes", e.target.value)}
                 onFocus={e => (e.target.style.borderColor = T.accent)}
-                onBlur={e  => (e.target.style.borderColor = T.border)}
+                onBlur={e => (e.target.style.borderColor = T.border)}
                 placeholder="Add notes about this contact…"
                 style={{ ...taStyle, minHeight: 80 }}
               />
@@ -595,7 +613,7 @@ export default function ContactDetailPanel({
                 value={form.tags}
                 onChange={e => set("tags", e.target.value)}
                 onFocus={e => (e.target.style.borderColor = T.accent)}
-                onBlur={e  => (e.target.style.borderColor = T.border)}
+                onBlur={e => (e.target.style.borderColor = T.border)}
                 placeholder="tag1, tag2, tag3  (comma-separated)"
                 style={{
                   width: "100%", background: T.surface, border: "1px solid " + T.border,
@@ -616,10 +634,10 @@ export default function ContactDetailPanel({
           ) : (
             parsedTags.length > 0
               ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                  {parsedTags.map(tag => (
-                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
-                  ))}
-                </div>
+                {parsedTags.map(tag => (
+                  <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                ))}
+              </div>
               : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No tags</div>
           )}
         </Section>
@@ -706,14 +724,52 @@ function Section({ title, children, style }) {
   );
 }
 
-function InlineStageSelect({ value, onChange }) {
+const LEAD_STATE_OPTS = [
+  { value: "prospect",   label: "Prospect"   },
+  { value: "lead",       label: "Lead"       },
+  { value: "warm",       label: "Warm Lead"  },
+  { value: "hot",        label: "Hot Lead"   },
+  { value: "customer",   label: "Customer"   },
+  { value: "backburner", label: "Backburner" },
+  { value: "lost",       label: "Lost"       },
+];
+
+function LeadStateSelect({ value, onChange }) {
+  const T = useTheme();
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
+      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>Lead State</label>
+      <select
+        value={value || "prospect"}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{
+          width: "100%", background: focused ? T.surface : "transparent",
+          border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
+          borderRadius: 5, padding: focused ? "5px 9px" : "3px 0",
+          color: T.text, fontSize: 12, fontFamily: "inherit",
+          outline: "none", cursor: "pointer", fontWeight: 500,
+          transition: "all 0.15s ease",
+          boxShadow: focused ? "0 0 0 2px " + T.accent + "18" : "none",
+        }}
+      >
+        {LEAD_STATE_OPTS.map(opt => (
+          <option key={opt.value} value={opt.value} style={{ background: "#1a1a2e", color: "#e2e8f0" }}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function InlineStageSelect({ label = "Stage", value, onChange }) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
   const d = STAGE_DEF[value] || STAGE_DEF.new;
   return (
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
-      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>Stage</label>
-      <select
+      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>      <select
         value={value}
         onChange={e => onChange(e.target.value)}
         onFocus={() => setFocused(true)}

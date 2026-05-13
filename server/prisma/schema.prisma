@@ -75,6 +75,7 @@ model Contact {
   city           String     @default("")
   trucks         Int        @default(0)
   lifecycleStage String     @default("new") @map("lifecycle_stage")
+  leadState      String     @default("prospect") @map("lead_state")
   leadScore      Int        @default(0) @map("lead_score")
   status         String     @default("active")
   source         String     @default("")

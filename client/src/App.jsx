@@ -10,7 +10,8 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid } from 'lucide-react';
+import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid, Menu } from 'lucide-react';
+import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
 import PoolSwitcher from './components/PoolSwitcher';
@@ -76,7 +77,26 @@ function AppLayout({ currentUser, onSignOut }) {
   // center panel dirty flag → prevents App-level Escape from deselecting while editing
   const centerDirtyRef = useRef(false);
 
-  const [lifecycleOpen, setLifecycleOpen] = useState(true);
+  const winWidth = useWindowWidth();
+  const isMobile = winWidth < 768;
+  const isTablet = winWidth >= 768 && winWidth < 1100;
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [lifecycleOpen, setLifecycleOpen] = useState(winWidth >= 1100);
+
+  // Resizable panel widths — persisted to localStorage
+  const [sidebarW, setSidebarW] = useState(() => {
+    const saved = localStorage.getItem('crm-sidebar-width');
+    return saved ? Math.max(160, Math.min(400, parseInt(saved))) : 248;
+  });
+  const [lifecycleW, setLifecycleW] = useState(() => {
+    const saved = localStorage.getItem('crm-lifecycle-width');
+    return saved ? Math.max(220, Math.min(480, parseInt(saved))) : 310;
+  });
+
+  // Auto-collapse/expand lifecycle as window resizes
+  useEffect(() => {
+    setLifecycleOpen(winWidth >= 1100);
+  }, [winWidth >= 1100]); // eslint-disable-line
   const [mktgCollapsed, setMktgCollapsed] = useState(
     () => localStorage.getItem('mktg-sidebar-collapsed') === 'true',
   );
@@ -368,6 +388,53 @@ function AppLayout({ currentUser, onSignOut }) {
     { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
   ];
 
+  // ── Panel resize drag handlers ─────────────────────────────────────────────
+
+  function startResizeSidebar(e) {
+    if (isMobile) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarW;
+    let currentW = startW;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    function onMove(ev) {
+      currentW = Math.max(160, Math.min(400, startW + (ev.clientX - startX)));
+      setSidebarW(currentW);
+    }
+    function onUp() {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      localStorage.setItem('crm-sidebar-width', String(currentW));
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  function startResizeLifecycle(e) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = lifecycleW;
+    let currentW = startW;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    function onMove(ev) {
+      currentW = Math.max(220, Math.min(480, startW - (ev.clientX - startX)));
+      setLifecycleW(currentW);
+    }
+    function onUp() {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      localStorage.setItem('crm-lifecycle-width', String(currentW));
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   // ── Render center panel content ────────────────────────────────────────────
 
   function renderCenter() {
@@ -490,6 +557,19 @@ function AppLayout({ currentUser, onSignOut }) {
         background: T.navBg, borderBottom: '1px solid ' + T.navBorder,
         display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10, zIndex: 2000,
       }}>
+        {/* Mobile hamburger */}
+        {isMobile && isContacts && (
+          <button
+            onClick={() => setMobileSidebarOpen(o => !o)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: T.navText,
+              display: 'flex', alignItems: 'center', padding: 4, borderRadius: 6, flexShrink: 0,
+            }}
+          >
+            <Menu size={18} />
+          </button>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginRight: 4, flexShrink: 0 }}>
           <div style={{
             width: 26, height: 26, borderRadius: 7, background: T.accent,
@@ -497,14 +577,16 @@ function AppLayout({ currentUser, onSignOut }) {
             fontSize: 13, fontWeight: 900, color: '#fff',
             boxShadow: `0 2px 6px ${T.accent}44`,
           }}>G</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: T.navText, lineHeight: 1, letterSpacing: '-0.02em' }}>
-              GeniusAI
+          {!isMobile && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: T.navText, lineHeight: 1, letterSpacing: '-0.02em' }}>
+                GeniusAI
+              </div>
+              <div style={{ fontSize: 8, color: T.navMuted, fontWeight: 700, letterSpacing: '0.05em' }}>
+                PROPHONE
+              </div>
             </div>
-            <div style={{ fontSize: 8, color: T.navMuted, fontWeight: 700, letterSpacing: '0.05em' }}>
-              PROPHONE
-            </div>
-          </div>
+          )}
         </div>
 
         <PoolSwitcher
@@ -546,19 +628,59 @@ function AppLayout({ currentUser, onSignOut }) {
       {firstLoad && loading && <PageLoader text="Loading CRM data…" />}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
-        {isContacts && (
-          <Sidebar
-            pool={pool} clientId={clientId}
-            viewMode={viewMode} onViewModeChange={handleViewModeChange}
-            selected={selected} onSelect={handleSelect}
-            onAddNew={handleAddNew} onEditInline={handleEditInline}
-            onImport={() => { setCenterMode('import'); navigate('/contacts'); }}
-            search={search} setSearch={setSearch} searchRef={searchRef}
-            contacts={viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts}
-            canceledContacts={canceledContacts}
-            setContacts={viewMode === VIEW_MODE.CANCELED ? setCanceledContacts : setContacts}
-            currentUser={currentUser}
+        {/* Mobile backdrop */}
+        {isMobile && mobileSidebarOpen && (
+          <div
+            onClick={() => setMobileSidebarOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+              zIndex: 200, backdropFilter: 'blur(2px)',
+            }}
           />
+        )}
+
+        {isContacts && (
+          <>
+            <div style={{
+              ...(isMobile ? {
+                position: 'fixed', left: 0, top: 50, bottom: 0, zIndex: 201,
+                transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
+                boxShadow: mobileSidebarOpen ? '4px 0 24px rgba(0,0,0,0.3)' : 'none',
+              } : { flexShrink: 0 }),
+              width: isMobile ? 280 : sidebarW,
+              background: T.surface,
+              display: 'flex', flexDirection: 'column', overflow: 'hidden', height: isMobile ? undefined : '100%',
+            }}>
+              <Sidebar
+                pool={pool} clientId={clientId}
+                viewMode={viewMode} onViewModeChange={e => { handleViewModeChange(e); setMobileSidebarOpen(false); }}
+                selected={selected} onSelect={c => { handleSelect(c); if (isMobile) setMobileSidebarOpen(false); }}
+                onAddNew={() => { handleAddNew(); setMobileSidebarOpen(false); }}
+                onEditInline={handleEditInline}
+                onImport={() => { setCenterMode('import'); navigate('/contacts'); setMobileSidebarOpen(false); }}
+                search={search} setSearch={setSearch} searchRef={searchRef}
+                contacts={viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts}
+                canceledContacts={canceledContacts}
+                setContacts={viewMode === VIEW_MODE.CANCELED ? setCanceledContacts : setContacts}
+                currentUser={currentUser}
+              />
+            </div>
+            {/* Sidebar ↔ center drag handle */}
+            {!isMobile && (
+              <div
+                onMouseDown={startResizeSidebar}
+                style={{
+                  width: 5, flexShrink: 0, cursor: 'col-resize',
+                  background: T.border, opacity: 0.5,
+                  transition: 'opacity 0.15s, background 0.15s',
+                  zIndex: 5,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = T.accent; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = T.border; }}
+              />
+            )}
+          </>
         )}
 
         {isMarketing && (
@@ -574,8 +696,9 @@ function AppLayout({ currentUser, onSignOut }) {
           {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && (
             <div style={{
               flexShrink: 0, borderBottom: '1px solid ' + T.border,
-              background: T.surface, padding: '10px 16px',
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              background: T.surface, padding: '8px 12px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              overflowX: 'auto', whiteSpace: 'nowrap',
             }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, flex: 1 }}>
                 {VIEW_MODE_OPTS.map(({ mode, label, Icon, colorKey }) => {
@@ -632,7 +755,7 @@ function AppLayout({ currentUser, onSignOut }) {
             </div>
           )}
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
             {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
             {renderCenter()}
           </div>
@@ -640,9 +763,22 @@ function AppLayout({ currentUser, onSignOut }) {
 
         {/* Right panel — Lead Lifecycle (collapsible) */}
         {isContacts && lifecycleOpen && (
+          <>
+          {/* Center ↔ lifecycle drag handle */}
+          <div
+            onMouseDown={startResizeLifecycle}
+            style={{
+              width: 5, flexShrink: 0, cursor: 'col-resize',
+              background: T.border, opacity: 0.5,
+              transition: 'opacity 0.15s, background 0.15s',
+              zIndex: 5,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = T.accent; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.background = T.border; }}
+          />
           <div style={{
-            width: 320, flexShrink: 0,
-            background: T.surface, borderLeft: '1px solid ' + T.border,
+            width: lifecycleW, flexShrink: 0,
+            background: T.surface,
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}>
             <div style={{
@@ -685,6 +821,7 @@ function AppLayout({ currentUser, onSignOut }) {
               )}
             </div>
           </div>
+          </>
         )}
 
         {/* Collapsed lifecycle — slim reopen tab */}
