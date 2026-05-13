@@ -29,6 +29,7 @@ import TemplatesPage from './pages/TemplatesPage';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignDetailPage from './pages/CampaignDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import ReportsPage from './pages/ReportsPage';
 import ContactDetailPanel from './components/ContactDetailPanel';
 import CancelInline from './components/inline/CancelInline';
 import RestoreInline from './components/inline/RestoreInline';
@@ -537,7 +538,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/campaigns" element={<CampaignsPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
-        <Route path="/reports" element={<ComingSoon page="reports" />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

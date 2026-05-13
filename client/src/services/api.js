@@ -1,4 +1,5 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+export const FOXTOW_API = import.meta.env.FOXTOW_API || 'https://render-foxtow-server.onrender.com';
 
 // ── Active pool singleton ─────────────────────────────────────────────────────
 // Synced from PoolContext whenever the user switches pool/client.
@@ -360,4 +361,14 @@ export async function getSettings(clientId, module) {
 
 export async function saveSettings(clientId, module, config) {
   return request('PUT', '/api/settings', { clientId: clientId || null, module, config });
+}
+
+// ── Foxtow External API ───────────────────────────────────────────────────────
+
+export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {
+  const params = new URLSearchParams({ active, page, limit });
+  const res = await fetch(`${FOXTOW_API}/api/v1/newsletter/subscribers?${params}`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Failed to fetch subscribers');
+  return data;
 }
