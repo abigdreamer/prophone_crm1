@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
+import { analytics } from "../services/analytics";
 import {
   getCampaigns, createCampaign, cancelCampaign, restoreCampaign,
   getPublishedTemplates, getActivePool, getClients,
@@ -486,6 +487,7 @@ function NewCampaignModal({ onClose, onCreated }) {
         subject: form.subject.trim(), subjectB: form.type === "ab_test" ? form.subjectB.trim() : "",
         fromName: form.fromName.trim(), fromEmail: form.fromEmail.trim(),
       });
+      analytics.campaignCreated({ clientId: poolClientId || null });
       onCreated(campaign);
     } catch (err) { console.error(err); }
     finally { setSaving(false); }

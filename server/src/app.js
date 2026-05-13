@@ -1,5 +1,4 @@
 import 'dotenv/config';
-// Force IPv4 DNS — prevents timeouts on systems where IPv6 is unavailable
 import { setDefaultResultOrder } from 'dns';
 setDefaultResultOrder('ipv4first');
 import express from 'express';

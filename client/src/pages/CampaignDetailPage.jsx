@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { analytics } from "../services/analytics";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
@@ -1170,6 +1171,10 @@ export default function CampaignDetailPage() {
     try {
       const updated = await sendCampaign(id);
       setCampaign(updated);
+      analytics.campaignLaunched({
+        clientId:       updated.clientId,
+        recipientCount: updated.recipientsCount,
+      });
       setShowSendModal(false);
       const a = await getCampaignAnalytics(id).catch(() => null);
       setAnalytics(a);

@@ -4,6 +4,7 @@ import Avatar from "../components/ui/Avatar";
 import { useTheme, useThemeName } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { loginUser } from "../services/api";
+import { identifyUser, analytics } from "../services/analytics";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
 export default function LoginPage({ onLogin }) {
@@ -22,7 +23,7 @@ export default function LoginPage({ onLogin }) {
 
     try {
       const user = await loginUser(email, password);
-      if (user) onLogin(user);
+      if (user) { identifyUser(user); analytics.signedIn(user); onLogin(user); }
       else setError("Invalid credentials. Check your email and password.");
     } catch {
       setError("Connection error. Make sure the API server is running.");

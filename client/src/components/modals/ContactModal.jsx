@@ -8,6 +8,7 @@ import { useTheme } from "../../context/ThemeContext";
 import USERS_DB from "../../data/users";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
+import { analytics } from "../../services/analytics";
 
 const SOCIAL_FIELDS = [
   { key: "facebook",  label: "Facebook",  placeholder: "https://facebook.com/yourpage" },
@@ -65,6 +66,13 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
     setSaving(true);
     try {
       await onSave(buildPayload());
+      if (!isEdit) {
+        analytics.leadCreated({
+          userId:   currentUser?.id,
+          clientId: form.clientId,
+          stage:    form.lifecycleStage,
+        });
+      }
     } catch (err) {
       toast.error(err.message || "Failed to save contact");
       throw err;

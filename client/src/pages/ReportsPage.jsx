@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   BarChart2, Eye, Users, Zap, RefreshCw, AlertCircle, X,
-  Mail, Download, ChevronLeft, ChevronRight,
+  Mail, Download, ChevronLeft, ChevronRight, Search, MapPin,
 } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import { useTheme } from "../context/ThemeContext";
-import { getProjectReports, getEventDetail } from "../services/posthogReports";
-import { listProjects } from "../services/posthogProjects";
+import { usePool } from "../context/PoolContext";
+import {
+  getClientAnalytics, getClientCharts, getClientEventDetailById,
+} from "../services/posthogReports";
 import { getFoxtowNewsletterSubscribers } from "../services/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,7 +169,7 @@ function TableSkeleton({ T, cols = 4 }) {
 }
 
 // ─── Event Detail Modal ───────────────────────────────────────────────────────
-function EventModal({ T, project, eventRow, onClose }) {
+function EventModal({ T, clientId, eventRow, onClose }) {
   const [detail,  setDetail]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
@@ -172,10 +177,10 @@ function EventModal({ T, project, eventRow, onClose }) {
   useEffect(() => {
     if (!eventRow?.id) return;
     setLoading(true); setError(null); setDetail(null);
-    getEventDetail(project, eventRow.id)
+    getClientEventDetailById(eventRow.id, clientId)
       .then(d => { setDetail(d); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
-  }, [project, eventRow?.id]);
+  }, [clientId, eventRow?.id]);
 
   useEffect(() => {
     const h = e => { if (e.key === "Escape") onClose(); };
@@ -278,160 +283,275 @@ function pageBtn(T, disabled, active = false) {
   };
 }
 
+// ─── Chart helpers ────────────────────────────────────────────────────────────
+function fmtTick(t, granularity) {
+  const d = new Date(t);
+  if (isNaN(d)) return String(t ?? "").slice(0, 10);
+  if (granularity === "hour") {
+    let h = d.getHours();
+    const ampm = h >= 12 ? "pm" : "am";
+    h = h % 12 || 12;
+    return `${h}${ampm}`;
+  }
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function BarRow({ T, label, value, max, accent }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid " + T.border + "44" }}>
+      <div style={{ width: 130, fontSize: 12, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }} title={label}>{label}</div>
+      <div style={{ flex: 1, background: T.border, borderRadius: 3, height: 5, overflow: "hidden" }}>
+        <div style={{ width: pct + "%", background: accent, height: "100%", borderRadius: 3, transition: "width 0.5s ease" }} />
+      </div>
+      <div style={{ width: 38, fontSize: 12, fontWeight: 700, color: T.text, textAlign: "right", flexShrink: 0 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function PanelCard({ T, title, icon: Icon, children }) {
+  return (
+    <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
+      <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", gap: 8 }}>
+        {Icon && <Icon size={14} color={T.muted} />}
+        <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{title}</span>
+      </div>
+      <div style={{ padding: "8px 18px 14px" }}>{children}</div>
+    </div>
+  );
+}
+
+function ChartSkeleton({ T }) {
+  const heights = [40, 65, 30, 80, 50, 72, 44, 90, 35, 60, 55, 78, 25, 85, 58, 42, 70, 50, 80, 45];
+  return (
+    <div style={{ height: 180, display: "flex", alignItems: "flex-end", gap: 3, paddingBottom: 0 }}>
+      {heights.map((h, i) => (
+        <div key={i} style={{ flex: 1, height: h + "%", borderRadius: "3px 3px 0 0", background: T.border, animation: "ph-pulse 1.4s ease-in-out infinite", animationDelay: i * 0.05 + "s" }} />
+      ))}
+    </div>
+  );
+}
+
+function ListSkeleton({ T, rows = 6, twoCol = false }) {
+  const items = Array.from({ length: rows });
+  return (
+    <div style={{ display: twoCol ? "grid" : "flex", gridTemplateColumns: twoCol ? "1fr 1fr" : undefined, flexDirection: twoCol ? undefined : "column", gap: 10, paddingTop: 6 }}>
+      {items.map((_, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 110, height: 11, borderRadius: 4, background: T.border, animation: "ph-pulse 1.4s ease-in-out infinite", flexShrink: 0 }} />
+          <div style={{ flex: 1, height: 5, borderRadius: 3, background: T.border, animation: "ph-pulse 1.4s ease-in-out infinite" }} />
+          <div style={{ width: 32, height: 11, borderRadius: 4, background: T.border, animation: "ph-pulse 1.4s ease-in-out infinite", flexShrink: 0 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── PostHog Section ──────────────────────────────────────────────────────────
 function PosthogSection({ T }) {
-  const [projects,      setProjects]      = useState([]);
-  const [project,       setProject]       = useState("");
-  const [range,         setRange]         = useState("last_7d");
-  const [page,          setPage]          = useState(1);
-  const [eventFilter,   setEventFilter]   = useState("");
-  const [refreshTick,   setRefreshTick]   = useState(0);
-  const [data,          setData]          = useState(null);
-  const [error,         setError]         = useState(null);
-  const [loading,       setLoading]       = useState(true);
-  const [lastFetch,     setLastFetch]     = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  const { clientId }    = usePool();
+  const [range,         setRange]          = useState("last_7d");
+  const [page,          setPage]           = useState(1);
+  const [eventFilter,   setEventFilter]    = useState("");
+  const [refreshTick,   setRefreshTick]    = useState(0);
+  const [stats,         setStats]          = useState(null);
+  const [charts,        setCharts]         = useState(null);
+  const [statsLoading,  setStatsLoading]   = useState(true);
+  const [chartsLoading, setChartsLoading]  = useState(true);
+  const [statsError,    setStatsError]     = useState(null);
+  const [selectedEvent, setSelectedEvent]  = useState(null);
   const closeModal = useCallback(() => setSelectedEvent(null), []);
 
+  // Stats re-fetches on page/eventFilter changes too
   useEffect(() => {
-    listProjects()
-      .then(list => {
-        const active = list.filter(p => !p.hidden);
-        setProjects(active);
-        if (active.length > 0) setProject(active[0].key);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!project) return;
     let cancelled = false;
-    setLoading(true); setError(null);
-    getProjectReports(project, range, page, eventFilter)
-      .then(result => { if (!cancelled) { setData(result); setLastFetch(new Date()); setLoading(false); } })
-      .catch(err   => { if (!cancelled) { setError(err.message || "Failed to load analytics"); setData(null); setLoading(false); } });
+    setStatsLoading(true); setStatsError(null);
+    getClientAnalytics(clientId, range, page, eventFilter)
+      .then(s => { if (!cancelled) { setStats(s); setStatsLoading(false); } })
+      .catch(err => { if (!cancelled) { setStatsError(err.message || "Failed to load analytics"); setStatsLoading(false); } });
     return () => { cancelled = true; };
-  }, [project, range, page, eventFilter, refreshTick]);
+  }, [clientId, range, page, eventFilter, refreshTick]);
 
-  function switchProject(p) { if (p === project) return; setProject(p); setPage(1); setEventFilter(""); setData(null); }
-  function switchRange(r)   { if (r === range) return; setRange(r); setPage(1); setData(null); }
-  function switchEvent(e)   { setEventFilter(e); setPage(1); }
+  // Charts only re-fetch on range/client/refresh — not page or filter
+  useEffect(() => {
+    let cancelled = false;
+    setChartsLoading(true);
+    getClientCharts(clientId, range)
+      .then(c => { if (!cancelled) { setCharts(c); setChartsLoading(false); } })
+      .catch(() => { if (!cancelled) { setCharts(null); setChartsLoading(false); } });
+    return () => { cancelled = true; };
+  }, [clientId, range, refreshTick]);
 
-  const events     = data?.events     || [];
-  const eventNames = data?.eventNames || [];
-  const totalPages = data?.totalPages || 1;
-  const totalCount = data?.filteredCount ?? data?.totalEvents ?? 0;
-  const rangeLabel = DATE_RANGES.find(r => r.id === range)?.label || range;
+  function changeRange(r) { setRange(r); setPage(1); setEventFilter(""); setStats(null); setCharts(null); }
+  function changeFilter(f) { setEventFilter(f); setPage(1); }
 
-  function refreshLabel() {
-    if (!lastFetch) return "";
-    const diff = Math.round((Date.now() - lastFetch.getTime()) / 1000);
-    if (diff < 10) return "just now";
-    if (diff < 60) return `${diff}s ago`;
-    return `${Math.round(diff / 60)}m ago`;
-  }
-
-  const firstItem = (page - 1) * 100 + 1;
-  const lastItem  = Math.min(page * 100, totalCount);
+  const rangeLabel  = DATE_RANGES.find(r => r.id === range)?.label || range;
+  const events      = stats?.events     || [];
+  const eventNames  = stats?.eventNames || [];
+  const totalPages  = stats?.totalPages || 1;
+  const totalCount  = stats?.filteredCount ?? stats?.totalEvents ?? 0;
+  const geoMax      = charts?.geography?.[0]?.n || 1;
+  const pageMax     = charts?.topPages?.[0]?.n  || 1;
+  const evtMax      = charts?.topEvents?.[0]?.n || 1;
+  const anyLoading  = statsLoading || chartsLoading;
+  const firstItem   = (page - 1) * 100 + 1;
+  const lastItem    = Math.min(page * 100, totalCount);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: T.accent + "18", border: "1px solid " + T.accent + "35", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <BarChart2 size={18} color={T.accent} />
-            </div>
-            <span style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.02em" }}>Reports</span>
-          </div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 5 }}>
-            PostHog analytics · {rangeLabel.toLowerCase()}
-            {lastFetch && <span style={{ color: T.dim }}> · refreshed {refreshLabel()}</span>}
-          </div>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <select value={range} onChange={e => switchRange(e.target.value)} style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 9, padding: "8px 12px", color: T.text, fontSize: 13, fontFamily: "inherit", cursor: "pointer", outline: "none" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.02em" }}>Analytics</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>PostHog · {rangeLabel}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={range} onChange={e => changeRange(e.target.value)} style={{
+            background: T.surface, border: "1px solid " + T.border, borderRadius: 9,
+            padding: "8px 12px", color: T.text, fontSize: 13,
+            fontFamily: "inherit", cursor: "pointer", outline: "none",
+          }}>
             {DATE_RANGES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
-
-          {projects.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", background: T.panel, border: "1px solid " + T.border, borderRadius: 10, padding: 4, gap: 2 }}>
-              {projects.map(p => {
-                const active = p.key === project;
-                return (
-                  <button key={p.key} onClick={() => switchProject(p.key)} style={{
-                    padding: "7px 18px", borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
-                    fontSize: 13, fontWeight: active ? 700 : 500,
-                    background: active ? T.accent : "transparent",
-                    color: active ? "#fff" : T.dim,
-                    transition: "all 0.14s",
-                  }}>
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <button onClick={() => setRefreshTick(t => t + 1)} disabled={loading} style={{
+          <button onClick={() => setRefreshTick(t => t + 1)} disabled={anyLoading} style={{
             display: "flex", alignItems: "center", gap: 7, padding: "8px 15px", borderRadius: 9,
-            background: T.surface, border: "1px solid " + T.border,
-            color: T.dim, fontSize: 13, fontFamily: "inherit",
-            cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1,
+            background: T.surface, border: "1px solid " + T.border, color: T.dim,
+            fontSize: 13, fontFamily: "inherit",
+            cursor: anyLoading ? "not-allowed" : "pointer", opacity: anyLoading ? 0.6 : 1,
           }}>
-            <RefreshCw size={13} style={{ transform: loading ? "rotate(180deg)" : "none", transition: "0.3s" }} />
+            <RefreshCw size={13} style={{ transition: "transform 0.3s", ...(anyLoading ? { animation: "spin 1s linear infinite" } : {}) }} />
             Refresh
           </button>
         </div>
       </div>
 
-      {error && <ErrorBanner T={T} message={error} />}
+      {statsError && <ErrorBanner T={T} message={statsError} />}
 
       {/* Stat cards */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <StatCard T={T} icon={Zap}   label="Total Events" value={data?.totalEvents} color={T.accent} loading={loading} />
-        <StatCard T={T} icon={Eye}   label="Page Views"   value={data?.pageViews}   color={T.blue}   loading={loading} />
-        <StatCard T={T} icon={Users} label="Active Users" value={data?.activeUsers} color={T.green}  loading={loading} />
+        <StatCard T={T} icon={Zap}   label="Total Events" value={stats?.totalEvents} color={T.accent} loading={statsLoading} />
+        <StatCard T={T} icon={Eye}   label="Page Views"   value={stats?.pageViews}   color={T.blue}   loading={statsLoading} />
+        <StatCard T={T} icon={Users} label="Active Users" value={stats?.activeUsers} color={T.green}  loading={statsLoading} />
       </div>
 
-      {/* Events table */}
-      <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ flexShrink: 0 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>All Events</span>
-            <span style={{ fontSize: 11, color: T.muted, marginLeft: 8 }}>{rangeLabel.toLowerCase()} · filtered by project</span>
+      {/* Events Over Time */}
+      <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, padding: "18px 20px 12px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 16 }}>Events Over Time</div>
+        {chartsLoading ? (
+          <ChartSkeleton T={T} />
+        ) : !charts?.timeSeries?.length ? (
+          <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, fontSize: 13 }}>
+            No data for this period
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, justifyContent: "flex-end" }}>
-            <select value={eventFilter} onChange={e => switchEvent(e.target.value)} style={{
-              background: T.bg || T.surface, border: "1px solid " + T.border,
-              borderRadius: 8, padding: "6px 12px",
-              color: eventFilter ? T.text : T.muted, fontSize: 12, fontFamily: "inherit",
-              outline: "none", cursor: "pointer", maxWidth: 220,
-            }}>
-              <option value="">All event types</option>
-              {eventNames.map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-            {!loading && totalCount > 0 && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.accent, flexShrink: 0, background: T.accent + "12", border: "1px solid " + T.accent + "28", borderRadius: 6, padding: "3px 9px" }}>
-                {totalCount.toLocaleString()} events
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={charts.timeSeries} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gEvents" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={T.accent} stopOpacity={0.22} />
+                  <stop offset="95%" stopColor={T.accent} stopOpacity={0}    />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 4" stroke={T.border} vertical={false} />
+              <XAxis
+                dataKey="t"
+                tickFormatter={t => fmtTick(t, charts.granularity)}
+                tick={{ fill: T.muted, fontSize: 11 }}
+                tickLine={false} axisLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fill: T.muted, fontSize: 11 }}
+                tickLine={false} axisLine={false}
+                width={36}
+                tickFormatter={v => v >= 1000 ? (v / 1000).toFixed(1) + "k" : v}
+              />
+              <Tooltip
+                cursor={{ stroke: T.border, strokeWidth: 1 }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 9, padding: "9px 13px", boxShadow: "0 8px 24px rgba(0,0,0,0.22)", fontSize: 12 }}>
+                      <div style={{ color: T.muted, marginBottom: 4, fontSize: 11 }}>{fmtTick(label, charts.granularity)}</div>
+                      <div style={{ fontWeight: 700, color: T.text }}>{Number(payload[0].value).toLocaleString()} events</div>
+                    </div>
+                  );
+                }}
+              />
+              <Area type="monotone" dataKey="n" stroke={T.accent} strokeWidth={2} fill="url(#gEvents)" dot={false} activeDot={{ r: 4, fill: T.accent, strokeWidth: 0 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Geography + Top Pages */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <PanelCard T={T} title="Top Countries" icon={MapPin}>
+          {chartsLoading ? <ListSkeleton T={T} /> :
+            !charts?.geography?.length
+              ? <div style={{ fontSize: 12, color: T.muted, padding: "16px 0" }}>No geography data yet</div>
+              : charts.geography.map(g => (
+                  <BarRow key={g.country} T={T} label={g.country} value={g.n} max={geoMax} accent={T.blue} />
+                ))
+          }
+        </PanelCard>
+
+        <PanelCard T={T} title="Top Pages" icon={Eye}>
+          {chartsLoading ? <ListSkeleton T={T} /> :
+            !charts?.topPages?.length
+              ? <div style={{ fontSize: 12, color: T.muted, padding: "16px 0" }}>No page view data</div>
+              : charts.topPages.map(p => (
+                  <BarRow key={p.url} T={T} label={shortUrl(p.url) || p.url} value={p.n} max={pageMax} accent={T.accent} />
+                ))
+          }
+        </PanelCard>
+      </div>
+
+      {/* Event Breakdown */}
+      <PanelCard T={T} title="Event Breakdown" icon={BarChart2}>
+        {chartsLoading ? <ListSkeleton T={T} rows={6} twoCol /> :
+          !charts?.topEvents?.length
+            ? <div style={{ fontSize: 12, color: T.muted, padding: "8px 0" }}>No events</div>
+            : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 32px" }}>
+                {charts.topEvents.map(e => (
+                  <BarRow key={e.event} T={T} label={e.event} value={e.n} max={evtMax} accent={T.green} />
+                ))}
+              </div>
+            )
+        }
+      </PanelCard>
+
+      {/* All Events — paginated + filterable */}
+      <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
+        {/* Toolbar */}
+        <div style={{ padding: "12px 18px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>All Events</span>
+            {!statsLoading && totalCount > 0 && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: T.accent, background: T.accent + "12", border: "1px solid " + T.accent + "28", borderRadius: 6, padding: "2px 8px" }}>
+                {totalCount.toLocaleString()}
               </span>
             )}
           </div>
+          <select value={eventFilter} onChange={e => changeFilter(e.target.value)} style={{
+            background: T.surface, border: "1px solid " + T.border, borderRadius: 8,
+            padding: "6px 12px", color: eventFilter ? T.text : T.muted,
+            fontSize: 12, fontFamily: "inherit", outline: "none", cursor: "pointer", maxWidth: 240,
+          }}>
+            <option value="">All event types</option>
+            {eventNames.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
         </div>
 
-        <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 560 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <colgroup>
-              <col style={{ width: "22%" }} /><col style={{ width: "38%" }} />
-              <col style={{ width: "22%" }} /><col style={{ width: "18%" }} />
-            </colgroup>
+        <div style={{ overflowX: "auto", maxHeight: 520 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr>
-                {["Event Name", "URL / Screen", "Person", "Time"].map((h, i) => (
+                {["Event", "URL", "Location", "Person", "Time"].map((h, i) => (
                   <th key={i} style={{
-                    padding: "9px 18px", textAlign: "left",
+                    padding: "9px 16px", textAlign: "left",
                     fontSize: 10, fontWeight: 700, color: T.muted,
                     textTransform: "uppercase", letterSpacing: "0.06em",
                     borderBottom: "1px solid " + T.border,
@@ -441,44 +561,53 @@ function PosthogSection({ T }) {
               </tr>
             </thead>
             <tbody>
-              {loading && <TableSkeleton T={T} />}
-              {!loading && events.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: "52px 24px", textAlign: "center" }}>
-                  <BarChart2 size={30} color={T.muted} style={{ marginBottom: 12 }} />
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.dim, marginBottom: 6 }}>No events found</div>
-                  <div style={{ fontSize: 12, color: T.muted }}>No events match the selected range and project.</div>
-                </td></tr>
-              )}
-              {!loading && events.map((e, i) => (
-                <tr key={e.id || i} onClick={() => setSelectedEvent(e)} style={{ borderBottom: i < events.length - 1 ? "1px solid " + T.border : "none", cursor: "pointer" }}
-                  onMouseEnter={ev => (ev.currentTarget.style.background = T.panel)}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
-                >
-                  <td style={{ padding: "12px 18px", verticalAlign: "middle" }}><EventChip T={T} name={e.event} /></td>
-                  <td style={{ padding: "12px 18px", verticalAlign: "middle", maxWidth: 0 }}>
-                    {e.properties?.url ? (
-                      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: T.dim, fontSize: 12 }} title={e.properties.url}>
-                        {shortUrl(e.properties.url)}
-                      </span>
-                    ) : <span style={{ color: T.muted, fontSize: 12 }}>—</span>}
-                  </td>
-                  <td style={{ padding: "12px 18px", verticalAlign: "middle" }}>
-                    <span style={{ display: "block", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: T.muted, fontSize: 11 }} title={e.distinct_id}>
-                      {e.distinct_id?.includes("@") ? e.distinct_id : (e.distinct_id?.slice(0, 16) + "…")}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px 18px", verticalAlign: "middle", whiteSpace: "nowrap" }} title={absTime(e.timestamp)}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: T.dim }}>{relTime(e.timestamp)}</span>
+              {statsLoading && <TableSkeleton T={T} cols={5} />}
+              {!statsLoading && events.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: "44px 24px", textAlign: "center" }}>
+                    <BarChart2 size={28} color={T.muted} style={{ marginBottom: 10, opacity: 0.5 }} />
+                    <div style={{ fontSize: 14, fontWeight: 600, color: T.dim, marginBottom: 4 }}>No events found</div>
+                    <div style={{ fontSize: 12, color: T.muted }}>Try a different date range or event filter.</div>
                   </td>
                 </tr>
-              ))}
+              )}
+              {!statsLoading && events.map((e, i) => {
+                const loc = [e.properties?.city, e.properties?.country].filter(Boolean).join(", ");
+                return (
+                  <tr key={e.id || i}
+                    onClick={() => setSelectedEvent(e)}
+                    style={{ borderBottom: i < events.length - 1 ? "1px solid " + T.border : "none", cursor: "pointer" }}
+                    onMouseEnter={ev => (ev.currentTarget.style.background = T.panel)}
+                    onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
+                  >
+                    <td style={{ padding: "10px 16px", verticalAlign: "middle" }}><EventChip T={T} name={e.event} /></td>
+                    <td style={{ padding: "10px 16px", verticalAlign: "middle", maxWidth: 200 }}>
+                      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: T.dim, fontSize: 11 }}>
+                        {shortUrl(e.properties?.url) || "—"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 16px", verticalAlign: "middle", fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{loc || "—"}</td>
+                    <td style={{ padding: "10px 16px", verticalAlign: "middle" }}>
+                      <span style={{ display: "block", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: T.muted, fontSize: 11 }} title={e.distinct_id}>
+                        {e.distinct_id?.includes("@") ? e.distinct_id : (e.distinct_id?.slice(0, 14) + "…")}
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 16px", verticalAlign: "middle", fontSize: 11, color: T.dim, whiteSpace: "nowrap" }} title={absTime(e.timestamp)}>
+                      {relTime(e.timestamp)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {!loading && totalPages > 1 && (
+        {/* Pagination */}
+        {!statsLoading && totalPages > 1 && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid " + T.border }}>
-            <span style={{ fontSize: 12, color: T.muted }}>{firstItem.toLocaleString()}–{lastItem.toLocaleString()} of {totalCount.toLocaleString()} events</span>
+            <span style={{ fontSize: 12, color: T.muted }}>
+              {firstItem.toLocaleString()}–{lastItem.toLocaleString()} of {totalCount.toLocaleString()} events
+            </span>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button onClick={() => setPage(1)} disabled={page === 1} style={pageBtn(T, page === 1)}>«</button>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={pageBtn(T, page === 1)}>‹ Prev</button>
@@ -486,7 +615,7 @@ function PosthogSection({ T }) {
                 .filter(n => n === 1 || n === totalPages || Math.abs(n - page) <= 1)
                 .reduce((acc, n, i, arr) => { if (i > 0 && n - arr[i - 1] > 1) acc.push("…"); acc.push(n); return acc; }, [])
                 .map((n, i) => n === "…"
-                  ? <span key={`g${i}`} style={{ padding: "0 4px", color: T.muted, fontSize: 12 }}>…</span>
+                  ? <span key={"g" + i} style={{ padding: "0 4px", color: T.muted, fontSize: 12 }}>…</span>
                   : <button key={n} onClick={() => setPage(n)} style={pageBtn(T, false, n === page)}>{n}</button>
                 )}
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={pageBtn(T, page === totalPages)}>Next ›</button>
@@ -494,26 +623,27 @@ function PosthogSection({ T }) {
             </div>
           </div>
         )}
-        {!loading && totalPages === 1 && totalCount > 0 && (
+        {!statsLoading && totalPages === 1 && totalCount > 0 && (
           <div style={{ padding: "10px 18px", borderTop: "1px solid " + T.border }}>
             <span style={{ fontSize: 12, color: T.muted }}>{totalCount.toLocaleString()} event{totalCount !== 1 ? "s" : ""}</span>
           </div>
         )}
       </div>
 
-      {selectedEvent && <EventModal T={T} project={project} eventRow={selectedEvent} onClose={closeModal} />}
+      {selectedEvent && <EventModal T={T} clientId={clientId} eventRow={selectedEvent} onClose={closeModal} />}
     </div>
   );
 }
 
 // ─── Newsletter Section ───────────────────────────────────────────────────────
 function NewsletterSection({ T }) {
-  const [data,        setData]        = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState(null);
-  const [refreshing,  setRefreshing]  = useState(false);
-  const [page,        setPage]        = useState(1);
-  const [showActive,  setShowActive]  = useState(true);
+  const [data,         setData]         = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [page,         setPage]         = useState(1);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search,       setSearch]       = useState("");
 
   const LIMIT = 50;
 
@@ -521,24 +651,40 @@ function NewsletterSection({ T }) {
     const isRefresh = opts.refresh || false;
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
-    getFoxtowNewsletterSubscribers({ active: showActive, page, limit: LIMIT })
+    // "inactive" fetches all (active=false) so we can filter client-side; all others use active=true
+    const activeParam = statusFilter === "inactive" ? false : true;
+    getFoxtowNewsletterSubscribers({ active: activeParam, page, limit: LIMIT })
       .then(res => { setData(res); })
       .catch(err => setError(err.message || "Failed to load subscribers"))
       .finally(() => { setLoading(false); setRefreshing(false); });
   }
 
-  useEffect(() => { load(); }, [page, showActive]);
+  useEffect(() => { load(); }, [page, statusFilter]);
 
-  const subscribers = data?.subscribers || data?.data || [];
-  const total       = data?.total ?? data?.count ?? subscribers.length;
-  const totalPages  = Math.max(1, Math.ceil(total / LIMIT));
+  const rawSubscribers = data?.subscribers || data?.data || [];
+  const totalAll       = data?.total ?? data?.count ?? rawSubscribers.length;
+  const totalPages     = Math.max(1, Math.ceil(totalAll / LIMIT));
+
+  const filtered = rawSubscribers.filter(s => {
+    // For "inactive" filter: server returned all records, show only inactive ones
+    const isActive = s.active ?? s.status === "active";
+    const matchStatus = statusFilter !== "inactive" || !isActive;
+    const q = search.toLowerCase();
+    const name  = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "";
+    const email = s.email || "";
+    const matchSearch = !q || name.toLowerCase().includes(q) || email.toLowerCase().includes(q);
+    return matchStatus && matchSearch;
+  });
+
+  const totalActive   = rawSubscribers.filter(s =>   s.active ?? s.status === "active" ).length;
+  const totalInactive = rawSubscribers.filter(s => !(s.active ?? s.status === "active")).length;
 
   function exportCSV() {
-    if (!subscribers.length) return;
-    const keys = Object.keys(subscribers[0]).filter(k => !k.startsWith("_"));
+    if (!filtered.length) return;
+    const keys = Object.keys(filtered[0]).filter(k => !k.startsWith("_"));
     const rows = [
       keys.join(","),
-      ...subscribers.map(s => keys.map(k => {
+      ...filtered.map(s => keys.map(k => {
         const v = String(s[k] ?? "").replace(/"/g, '""');
         return v.includes(",") || v.includes('"') || v.includes("\n") ? `"${v}"` : v;
       }).join(",")),
@@ -562,48 +708,16 @@ function NewsletterSection({ T }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: T.blue + "18", border: "1px solid " + T.blue + "35", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Mail size={18} color={T.blue} />
-            </div>
-            <span style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.02em" }}>Newsletter</span>
-          </div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 5 }}>
-            Foxtow newsletter subscribers · {showActive ? "active" : "all"}
-            {!loading && total > 0 && <span style={{ color: T.dim }}> · {total.toLocaleString()} total</span>}
-          </div>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: T.blue + "18", border: "1px solid " + T.blue + "35", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Mail size={18} color={T.blue} />
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", background: T.panel, border: "1px solid " + T.border, borderRadius: 10, padding: 4, gap: 2 }}>
-            {[{ label: "Active", v: true }, { label: "All", v: false }].map(({ label, v }) => (
-              <button key={label} onClick={() => { setShowActive(v); setPage(1); }} style={{
-                padding: "7px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
-                fontSize: 13, fontWeight: showActive === v ? 700 : 500,
-                background: showActive === v ? T.blue : "transparent",
-                color: showActive === v ? "#fff" : T.dim,
-                transition: "all 0.14s",
-              }}>{label}</button>
-            ))}
+        <div>
+          <span style={{ fontSize: 22, fontWeight: 800, color: T.text, letterSpacing: "-0.02em" }}>Newsletter</span>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>
+            Foxtow newsletter subscribers · {statusFilter}
+            {!loading && totalAll > 0 && <span style={{ color: T.dim }}> · {totalAll.toLocaleString()} total</span>}
           </div>
-          <button onClick={() => load({ refresh: true })} disabled={refreshing || loading} style={{
-            display: "flex", alignItems: "center", gap: 7, padding: "8px 15px", borderRadius: 9,
-            background: T.surface, border: "1px solid " + T.border, color: T.dim, fontSize: 13, fontFamily: "inherit",
-            cursor: (refreshing || loading) ? "not-allowed" : "pointer", opacity: (refreshing || loading) ? 0.6 : 1,
-          }}>
-            <RefreshCw size={13} style={{ transform: (refreshing || loading) ? "rotate(180deg)" : "none", transition: "0.3s" }} />
-            Refresh
-          </button>
-          {subscribers.length > 0 && (
-            <button onClick={exportCSV} style={{
-              display: "flex", alignItems: "center", gap: 7, padding: "8px 15px", borderRadius: 9,
-              background: T.green + "18", border: "1px solid " + T.green + "35", color: T.green,
-              fontSize: 13, fontFamily: "inherit", fontWeight: 600, cursor: "pointer",
-            }}>
-              <Download size={13} /> Export CSV
-            </button>
-          )}
         </div>
       </div>
 
@@ -617,21 +731,62 @@ function NewsletterSection({ T }) {
         </div>
       )}
 
-      {/* Stat card */}
-      {!loading && !error && (
-        <div style={{ display: "flex", gap: 14 }}>
-          <StatCard T={T} icon={Mail}  label="Total Subscribers" value={total}                              color={T.blue}  loading={false} />
-          <StatCard T={T} icon={Users} label="Active"            value={showActive ? total : undefined}     color={T.green} loading={false} />
+      {/* Stat cards */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <StatCard T={T} icon={Mail}  label="Total Subscribers" value={loading ? undefined : totalAll}      color={T.blue}  loading={loading} />
+        <StatCard T={T} icon={Users} label="Active"            value={loading ? undefined : totalActive}   color={T.green} loading={loading} />
+        <StatCard T={T} icon={Users} label="Inactive"          value={loading ? undefined : totalInactive} color={T.red}   loading={loading} />
+      </div>
+
+      {/* Toolbar: search + status filter + refresh + export */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ flex: 1, position: "relative" }}>
+          <Search size={13} color={T.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          <input
+            placeholder="Search subscribers…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 36, paddingRight: 14, paddingTop: 10, paddingBottom: 10, borderRadius: 9, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}
+            onFocus={e => e.target.style.borderColor = T.accent}
+            onBlur={e => e.target.style.borderColor = T.border}
+          />
         </div>
-      )}
+        <select
+          value={statusFilter}
+          onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+          style={{ padding: "10px 14px", borderRadius: 9, border: "1px solid " + T.border, background: T.surface, color: statusFilter === "all" ? T.muted : T.text, fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 150 }}
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <button onClick={() => load({ refresh: true })} disabled={refreshing || loading} style={{
+          display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,
+          background: T.surface, border: "1px solid " + T.border, color: T.dim, fontSize: 13, fontFamily: "inherit",
+          cursor: (refreshing || loading) ? "not-allowed" : "pointer", opacity: (refreshing || loading) ? 0.6 : 1,
+        }}>
+          <RefreshCw size={13} style={{ transform: (refreshing || loading) ? "rotate(180deg)" : "none", transition: "0.3s" }} />
+          Refresh
+        </button>
+        <button onClick={exportCSV} disabled={!filtered.length} style={{
+          display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,
+          background: filtered.length ? T.green + "18" : "transparent",
+          border: "1px solid " + (filtered.length ? T.green + "35" : T.border),
+          color: filtered.length ? T.green : T.muted,
+          fontSize: 13, fontFamily: "inherit", fontWeight: 600,
+          cursor: filtered.length ? "pointer" : "not-allowed",
+        }}>
+          <Download size={13} /> Export CSV
+        </button>
+      </div>
 
       {/* Table */}
       <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Subscribers</span>
-          {!loading && total > 0 && (
+          {!loading && filtered.length > 0 && (
             <span style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blue + "12", border: "1px solid " + T.blue + "28", borderRadius: 6, padding: "3px 9px" }}>
-              {total.toLocaleString()} total
+              {filtered.length.toLocaleString()}{filtered.length !== totalAll ? ` of ${totalAll.toLocaleString()}` : ""} total
             </span>
           )}
         </div>
@@ -646,20 +801,21 @@ function NewsletterSection({ T }) {
             </thead>
             <tbody>
               {loading && <TableSkeleton T={T} cols={4} />}
-              {!loading && !error && subscribers.length === 0 && (
+              {!loading && !error && filtered.length === 0 && (
                 <tr><td colSpan={4} style={{ padding: "52px 24px", textAlign: "center" }}>
                   <Mail size={30} color={T.muted} style={{ marginBottom: 12 }} />
                   <div style={{ fontSize: 15, fontWeight: 700, color: T.dim, marginBottom: 6 }}>No subscribers found</div>
+                  {(search || statusFilter !== "all") && <div style={{ fontSize: 12, color: T.muted }}>Try adjusting your search or filter.</div>}
                 </td></tr>
               )}
-              {!loading && subscribers.map((s, i) => {
-                const name       = s.name || s.first_name ? [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name : "—";
+              {!loading && filtered.map((s, i) => {
+                const name       = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "—";
                 const email      = s.email || "—";
-                const active     = s.active ?? s.status === "active" ?? true;
+                const isActive   = s.active ?? s.status === "active";
                 const joinedDate = s.created_at || s.subscribed_at || s.joined_at || s.createdAt;
                 return (
                   <tr key={s.id || i}
-                    style={{ borderBottom: i < subscribers.length - 1 ? "1px solid " + T.border : "none" }}
+                    style={{ borderBottom: i < filtered.length - 1 ? "1px solid " + T.border : "none" }}
                     onMouseEnter={ev => (ev.currentTarget.style.background = T.panel)}
                     onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
                   >
@@ -669,11 +825,11 @@ function NewsletterSection({ T }) {
                       <span style={{
                         display: "inline-block", fontSize: 10, fontWeight: 700,
                         borderRadius: 5, padding: "2px 8px", letterSpacing: "0.04em", textTransform: "uppercase",
-                        background: active ? T.green + "18" : T.red + "10",
-                        color: active ? T.green : T.red,
-                        border: "1px solid " + (active ? T.green + "35" : T.red + "35"),
+                        background: isActive ? T.green + "18" : T.red + "10",
+                        color: isActive ? T.green : T.red,
+                        border: "1px solid " + (isActive ? T.green + "35" : T.red + "35"),
                       }}>
-                        {active ? "Active" : "Inactive"}
+                        {isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td style={{ padding: "12px 18px", verticalAlign: "middle", fontSize: 12, color: T.muted }}>{fmtDate(joinedDate)}</td>
@@ -710,6 +866,7 @@ export default function ReportsPage() {
     <div style={{ display: "flex", height: "100%", margin: "-20px", overflow: "hidden" }}>
       <style>{`
         @keyframes ph-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {/* Sidebar */}

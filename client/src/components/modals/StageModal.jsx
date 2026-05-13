@@ -5,6 +5,7 @@ import Btn from "../ui/Btn";
 import { useTheme } from "../../context/ThemeContext";
 import { ALL_STAGES, STAGE_DEF } from "../../data/stages";
 import { Spinner } from "../ui/Loader";
+import { analytics } from "../../services/analytics";
 
 // ─── Change Stage modal ───────────────────────────────────────────────────────
 export default function StageModal({ contact, onSave, onClose, currentUser }) {
@@ -28,6 +29,12 @@ export default function StageModal({ contact, onSave, onClose, currentUser }) {
         lifecycleStage: stage,
         lastActivityAt: new Date().toISOString(),
         activities: [...(contact.activities || []), act],
+      });
+      analytics.leadStageChanged({
+        userId:    currentUser?.id,
+        clientId:  contact.clientId,
+        fromStage: contact.lifecycleStage,
+        toStage:   stage,
       });
     } finally {
       setSaving(false);

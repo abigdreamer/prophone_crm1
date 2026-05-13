@@ -18,6 +18,7 @@ import { useTheme } from '../context/ThemeContext';
 import * as db from '../services/api';
 import { usePool } from '../context/PoolContext';
 import { useClients } from '../context/ClientsContext';
+import { analytics } from '../services/analytics';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmtDate = (d) =>
@@ -364,6 +365,7 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated, onCanceled, onRest
     setVerifying(true);
     try {
       const updated = await db.verifyDomain(domain.id);
+      analytics.domainVerified({ domain: domain.domainName });
       onUpdated(updated);
     } catch {
     } finally {
