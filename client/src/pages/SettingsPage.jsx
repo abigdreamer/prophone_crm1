@@ -507,7 +507,7 @@ function PosthogProjectsSection() {
   const T     = useTheme();
   const toast = useAppToast();
   const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = currentUser?.role?.toLowerCase() === "admin";
 
   const [projects,     setProjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
