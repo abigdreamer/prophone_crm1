@@ -12,7 +12,7 @@ import { ACT_DEF, ACT_CATS } from "../data/activities";
 import fmt from "../utils/format";
 import { Spinner } from "./ui/Loader";
 
-const PIPELINE = ["new","contacted","engaged","demo_scheduled","demo_done","proposal_sent","negotiating","customer"];
+const PIPELINE = ["new", "contacted", "engaged", "demo_scheduled", "demo_done", "proposal_sent", "negotiating", "customer"];
 
 function ScoreRing({ score = 0 }) {
   const r = 18; const circ = 2 * Math.PI * r;
@@ -45,18 +45,18 @@ function fmtActivityDate(ts) {
 export default function LifecycleChart({ contact, onLogActivity, onCancelContact, onRestoreContact, currentUser }) {
   const T = useTheme();
   const toast = useAppToast();
-  const [filter,        setFilter]        = useState("all");
-  const [logOpen,       setLogOpen]       = useState(false);
-  const [cancelOpen,    setCancelOpen]    = useState(false);
-  const [cancelReason,  setCancelReason]  = useState("");
+  const [filter, setFilter] = useState("all");
+  const [logOpen, setLogOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [cancelTouched, setCancelTouched] = useState(false);
-  const [cancelSaving,  setCancelSaving]  = useState(false);
-  const [restoreOpen,   setRestoreOpen]   = useState(false);
+  const [cancelSaving, setCancelSaving] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreSaving, setRestoreSaving] = useState(false);
-  const [actType,       setActType]       = useState("call_made");
-  const [actNote,       setActNote]       = useState("");
-  const [logSaving,     setLogSaving]     = useState(false);
-  const [hoveredActId,  setHoveredActId]  = useState(null);
+  const [actType, setActType] = useState("call_made");
+  const [actNote, setActNote] = useState("");
+  const [logSaving, setLogSaving] = useState(false);
+  const [hoveredActId, setHoveredActId] = useState(null);
 
   useEffect(() => {
     setLogOpen(false);
@@ -115,8 +115,8 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
   const acts = contact.activities || [];
   const addedByUser = USERS_DB.find(u => u.name === contact.addedBy) || USERS_DB[0];
 
-  const personName  = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
-  const avatarText  = personName
+  const personName = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
+  const avatarText = personName
     ? ((contact.firstName?.[0] || "") + (contact.lastName?.[0] || "")).toUpperCase()
     : (contact.company?.[0] || contact.email?.[0] || "?").toUpperCase();
   const displayName = personName || contact.email || "Unknown Contact";
@@ -260,6 +260,40 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
           </div>
         </div>
 
+        {/* Stats mini-cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, padding: "0 0 12px" }}>
+          {/* Lead Score — uses the ScoreRing already defined in the file */}
+          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+            <ScoreRing score={contact.leadScore ?? 0} />
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Lead Score</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#f59e0b", lineHeight: 1.1 }}>{contact.leadScore ?? 0}</div>
+            </div>
+          </div>
+          {/* Contract Value */}
+          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Contract Value</div>
+            <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, color: contact.contractValue > 0 ? T.green : T.muted }}>
+              {contact.contractValue > 0 ? "$" + (contact.contractValue >= 1000 ? (contact.contractValue / 1000).toFixed(1) + "k" : contact.contractValue) : "—"}
+            </div>
+          </div>
+          {/* Fleet Size */}
+          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Fleet Size</div>
+            <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, color: (contact.trucks ?? 0) > 0 ? T.orange : T.muted }}>
+              {(contact.trucks ?? 0) > 0 ? contact.trucks : "—"}
+              {(contact.trucks ?? 0) > 0 && <span style={{ fontSize: 10, color: T.muted, marginLeft: 4 }}>trucks</span>}
+            </div>
+          </div>
+          {/* Account Size */}
+          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Account Size</div>
+            <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, color: contact.accountSize ? T.blue : T.muted }}>
+              {contact.accountSize || "—"}
+            </div>
+          </div>
+        </div>
+
         {/* ── Stage pipeline ─────────────────────────────────────────────── */}
         {(() => {
           const isLost = LOST_STAGES.includes(contact.lifecycleStage);
@@ -385,7 +419,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                     border: "1px solid " + (cancelTouched && !cancelReason.trim() ? T.red : T.border),
                   }}
                   onFocus={e => (e.target.style.borderColor = cancelTouched && !cancelReason.trim() ? T.red : T.accent)}
-                  onBlur={e  => (e.target.style.borderColor = cancelTouched && !cancelReason.trim() ? T.red : T.border)}
+                  onBlur={e => (e.target.style.borderColor = cancelTouched && !cancelReason.trim() ? T.red : T.border)}
                 />
                 {cancelTouched && !cancelReason.trim() && (
                   <div style={{ fontSize: 10, color: T.red, marginTop: 3 }}>A reason is required.</div>
@@ -413,7 +447,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                   onChange={e => setActType(e.target.value)}
                   style={inputStyle}
                   onFocus={e => (e.target.style.borderColor = T.accent)}
-                  onBlur={e  => (e.target.style.borderColor = T.border)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
                 >
                   {Object.entries(ACT_DEF).map(([k, v]) => (
                     <option key={k} value={k}>{v.icon} {v.label}</option>
@@ -425,7 +459,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                   placeholder="Describe what happened…"
                   style={taStyle}
                   onFocus={e => (e.target.style.borderColor = T.accent)}
-                  onBlur={e  => (e.target.style.borderColor = T.border)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
                 />
                 <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                   <Btn onClick={handleLogSave} disabled={logSaving} style={{ flex: 1, ...btnSm, justifyContent: "center" }}>
@@ -443,12 +477,12 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
         {/* ── Activity stats ─────────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginBottom: 14 }}>
           {[
-            ["Emails",   acts.filter(a => ACT_DEF[a.type]?.cat === "email").length,   T.blue],
-            ["Calls",    acts.filter(a => ACT_DEF[a.type]?.cat === "call").length,    T.green],
-            ["Ads",      acts.filter(a => ACT_DEF[a.type]?.cat === "ad").length,      T.purple],
+            ["Emails", acts.filter(a => ACT_DEF[a.type]?.cat === "email").length, T.blue],
+            ["Calls", acts.filter(a => ACT_DEF[a.type]?.cat === "call").length, T.green],
+            ["Ads", acts.filter(a => ACT_DEF[a.type]?.cat === "ad").length, T.purple],
             ["Meetings", acts.filter(a => ACT_DEF[a.type]?.cat === "meeting").length, T.amber],
-            ["Total",    acts.length,                                                  T.accent],
-            ["Last",     fmt.ago(contact.lastActivityAt),                              T.orange],
+            ["Total", acts.length, T.accent],
+            ["Last", fmt.ago(contact.lastActivityAt), T.orange],
           ].map(([l, v, c]) => (
             <div key={l} style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 5, padding: "7px 8px", textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
@@ -487,8 +521,8 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
             </div>
             <div style={{ paddingLeft: 14, borderLeft: "2px solid " + T.border }}>
               {dayActs.map(act => {
-                const def     = ACT_DEF[act.type] || { label: act.type.replace(/_/g, " "), icon: "·", color: T.muted, cat: "system" };
-                const byUser  = USERS_DB.find(u => u.name === act.by);
+                const def = ACT_DEF[act.type] || { label: act.type.replace(/_/g, " "), icon: "·", color: T.muted, cat: "system" };
+                const byUser = USERS_DB.find(u => u.name === act.by);
                 const hovered = hoveredActId === act.id;
                 return (
                   <div

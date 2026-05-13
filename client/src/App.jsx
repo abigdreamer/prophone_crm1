@@ -321,8 +321,8 @@ function AppLayout({ currentUser, onSignOut }) {
 
       // Arrow navigation: works everywhere in contacts view except the sidebar search
       if (isContacts && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target !== searchRef.current) {
+        if (isFormEl) return;
         e.preventDefault();
-        if (isFormEl) e.target.blur();
         const pool = viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts;
         const stages = STAGE_GROUPS[viewMode];
         const list = (stages && stages.length > 0)

@@ -311,7 +311,7 @@ export default function ContactDetailPanel({
         {/* Profile body */}
         <div style={{ padding: "0 24px 20px" }}>
 
-          {/* Avatar + badges row — avatar overlaps banner */}
+          {/* Avatar row — avatar overlaps banner */}
           <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: -40, marginBottom: 16 }}>
             <div style={{
               width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
@@ -322,31 +322,6 @@ export default function ContactDetailPanel({
               fontSize: 22, fontWeight: 800, color: avatarColor, letterSpacing: "-0.02em",
             }}>
               {avatarLetter}
-            </div>
-
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", paddingBottom: 8 }}>
-              {!isNew && (
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                  color: contact?.isCanceled ? T.red : T.green,
-                  background: (contact?.isCanceled ? T.red : T.green) + "15",
-                  border: "1.5px solid " + (contact?.isCanceled ? T.red : T.green) + "45",
-                  borderRadius: 20, padding: "4px 12px",
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", flexShrink: 0 }} />
-                  {contact?.isCanceled ? "CANCELED" : "ACTIVE"}
-                </span>
-              )}
-              <span style={{
-                display: "inline-flex", alignItems: "center",
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                color: avatarColor, background: avatarColor + "18",
-                border: "1.5px solid " + avatarColor + "40",
-                borderRadius: 20, padding: "4px 12px",
-              }}>
-                {d.label}
-              </span>
             </div>
           </div>
 
@@ -361,6 +336,32 @@ export default function ContactDetailPanel({
               </div>
             )}
           </div>
+
+          {/* Status indicators */}
+          {!isNew && (
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                color: contact?.isCanceled ? T.red : T.green,
+                background: (contact?.isCanceled ? T.red : T.green) + "15",
+                border: "1.5px solid " + (contact?.isCanceled ? T.red : T.green) + "45",
+                borderRadius: 6, padding: "3px 10px",
+              }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor", flexShrink: 0 }} />
+                {contact?.isCanceled ? "Canceled" : "Active"}
+              </span>
+              <span style={{
+                display: "inline-flex", alignItems: "center",
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                color: avatarColor, background: avatarColor + "18",
+                border: "1.5px solid " + avatarColor + "40",
+                borderRadius: 6, padding: "3px 10px",
+              }}>
+                {d.label}
+              </span>
+            </div>
+          )}
 
           {/* Contact chips */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -386,44 +387,6 @@ export default function ContactDetailPanel({
           </div>
         </div>
 
-      </div>
-
-      {/* ── Stats cards row ───────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-        {/* Lead Score */}
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "18px 20px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Lead Score</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 26, fontWeight: 800, color: T.amber, lineHeight: 1 }}>{contact?.leadScore ?? 0}</span>
-          </div>
-          <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: "hidden", marginTop: 10 }}>
-            <div style={{ width: `${contact?.leadScore ?? 0}%`, height: "100%", background: T.amber, borderRadius: 2, transition: "width 0.4s ease" }} />
-          </div>
-        </div>
-        {/* Contract Value */}
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "18px 20px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Contract Value</div>
-          <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: parseInt(form.contractValue) > 0 ? T.green : T.muted }}>
-            {parseInt(form.contractValue) > 0 ? "$" + (parseInt(form.contractValue) >= 1000 ? (parseInt(form.contractValue) / 1000).toFixed(1) + "k" : parseInt(form.contractValue)) : "—"}
-          </span>
-        </div>
-        {/* Fleet Size */}
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "18px 20px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Fleet Size</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-            <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: parseInt(form.trucks) > 0 ? T.orange : T.muted }}>
-              {parseInt(form.trucks) > 0 ? form.trucks : "—"}
-            </span>
-            {parseInt(form.trucks) > 0 && <span style={{ fontSize: 11, color: T.muted }}>trucks</span>}
-          </div>
-        </div>
-        {/* Account Size */}
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, padding: "18px 20px" }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Account Size</div>
-          <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1, color: form.accountSize ? T.blue : T.muted }}>
-            {form.accountSize || "—"}
-          </span>
-        </div>
       </div>
 
       {/* ── Name & Role ───────────────────────────────────────────────────── */}
@@ -471,7 +434,12 @@ export default function ContactDetailPanel({
             <>
               {show("email") && <InlineInput label="Email" type="email" value={form.email} onChange={v => set("email", v)} placeholder="email@company.com" color={T.accent} />}
               {show("phone") && <InlineInput label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
-              {show("website") && <InlineInput label="Website" value={form.website} onChange={v => set("website", v)} placeholder="https://..." color={T.blue} />}
+              {show("website") && <InlineInput label="Website" value={form.website} onChange={v => set("website", v)} placeholder="https://..." color={T.blue}
+                onBlur={() => {
+                  const v = form.website.trim();
+                  if (v && !/^https?:\/\//i.test(v)) set("website", "https://" + v);
+                }}
+              />}
               {show("address") && <InlineInput label="Address" value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
             </>
           ) : (
@@ -571,18 +539,21 @@ export default function ContactDetailPanel({
       {show("notes") && (
         <Section title="Notes" style={{ marginBottom: 12 }}>
           {editMode ? (
-            <div onClick={() => setNoteClicked(v => !v)} style={{ position: "relative" }}>
-              {noteClicked && !isNew && contact?.lastActivityAt && (
-                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit" }}>
+            <div
+              onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }}
+              style={{ position: "relative" }}
+            >
+              {noteClicked && (
+                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit", letterSpacing: "0.03em" }}>
                   {(() => {
-                    const d2 = new Date(contact.lastActivityAt);
-                    const mm = String(d2.getMonth() + 1).padStart(2, "0");
-                    const dd2 = String(d2.getDate()).padStart(2, "0");
-                    const yy = String(d2.getFullYear()).slice(2);
-                    const day = d2.toLocaleDateString("en-US", { weekday: "short" });
-                    const h = String(d2.getHours()).padStart(2, "0");
-                    const m = String(d2.getMinutes()).padStart(2, "0");
-                    return `${mm}/${dd2}/${yy} ${day} ${h}:${m}`;
+                    const now = new Date();
+                    const mm = String(now.getMonth() + 1).padStart(2, "0");
+                    const dd = String(now.getDate()).padStart(2, "0");
+                    const yy = String(now.getFullYear()).slice(2);
+                    const day = now.toLocaleDateString("en-US", { weekday: "short" });
+                    const h = String(now.getHours()).padStart(2, "0");
+                    const m = String(now.getMinutes()).padStart(2, "0");
+                    return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
                   })()}
                 </div>
               )}
@@ -591,6 +562,7 @@ export default function ContactDetailPanel({
                 onChange={e => set("notes", e.target.value)}
                 onFocus={e => (e.target.style.borderColor = T.accent)}
                 onBlur={e => (e.target.style.borderColor = T.border)}
+                onKeyDown={e => e.stopPropagation()}
                 placeholder="Add notes about this contact…"
                 style={{ ...taStyle, minHeight: 80 }}
               />
@@ -804,20 +776,32 @@ function ViewRow({ label, value, color }) {
   );
 }
 
-function InlineInput({ label, value, onChange, placeholder, type = "text", color, onKeyDown }) {
+function InlineInput({ label, value, onChange, placeholder, type = "text", color, onKeyDown, onBlur }) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+      const idx = all.indexOf(e.currentTarget);
+      if (e.key === "Enter" && idx < all.length - 1) all[idx + 1].focus();
+      if (e.key === "ArrowUp" && idx > 0) all[idx - 1].focus();
+      return;
+    }
+    onKeyDown?.(e);
+  };
   return (
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
       <input
+        data-field-nav
         type={type === "number" ? "text" : type}
         inputMode={type === "number" ? "numeric" : undefined}
         value={value || ""}
         onChange={e => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
+        onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={e => { setFocused(false); onBlur?.(e); }}
         placeholder={placeholder || "—"}
         style={{
           width: "100%", background: focused ? T.surface : "transparent",
@@ -833,17 +817,30 @@ function InlineInput({ label, value, onChange, placeholder, type = "text", color
   );
 }
 
-const FieldInput = forwardRef(function FieldInput({ label, value, onChange, placeholder, type = "text" }, ref) {
+const FieldInput = forwardRef(function FieldInput({ label, value, onChange, placeholder, type = "text", onKeyDown }, ref) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+      const idx = all.indexOf(e.currentTarget);
+      if (e.key === "Enter" && idx < all.length - 1) all[idx + 1].focus();
+      if (e.key === "ArrowUp" && idx > 0) all[idx - 1].focus();
+      return;
+    }
+    onKeyDown?.(e);
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, transition: "color 0.15s" }}>{label}</label>
       <input
+        data-field-nav
         ref={ref}
         type={type}
         value={value || ""}
         onChange={e => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         placeholder={placeholder || ""}
