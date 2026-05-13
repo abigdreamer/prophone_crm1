@@ -320,3 +320,17 @@ model TenantSettings {
   @@index([clientId])
   @@map("tenant_settings")
 }
+
+model PosthogProject {
+  id         String   @id @default(uuid())
+  key        String   @unique
+  label      String
+  domain     String
+  project_id String
+  sort_order Int      @default(0) @map("sort_order")
+  hidden     Boolean  @default(false)
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
+
+  @@map("posthog_projects")
+}

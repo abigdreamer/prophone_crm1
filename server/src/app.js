@@ -16,7 +16,9 @@ import campaignRoutes      from './routes/campaigns.routes.js';
 import emailRoutes         from './routes/email.routes.js';
 import scoringRulesRoutes  from './routes/scoringRules.routes.js';
 import templateLinksRoutes from './routes/templateLinks.routes.js';
-import settingsRoutes       from './routes/settings.routes.js';
+import settingsRoutes          from './routes/settings.routes.js';
+import reportsRoutes           from './routes/reports.routes.js';
+import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -53,6 +55,8 @@ app.use('/api/email',               emailRoutes);
 app.use('/api/scoring-rules',       scoringRulesRoutes);
 app.use('/api/tl',                  templateLinksRoutes);
 app.use('/api/settings',            settingsRoutes);
+app.use('/api/reports',             reportsRoutes);
+app.use('/api/posthog-projects',    posthogProjectsRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
