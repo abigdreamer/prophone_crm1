@@ -396,6 +396,34 @@ function ThreeDotMenu({ items }) {
   );
 }
 
+// Defined at module level so React never remounts it on parent re-render
+function ModalField({ T, label, fieldKey, value, onChange, placeholder, disabled, error, required = true }) {
+  const [focus, setFocus] = useState(false);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
+        {label}{required && <span style={{ color: "#ef4444", marginLeft: 3 }}>*</span>}
+      </label>
+      <input
+        value={value ?? ""}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        style={{
+          width: "100%", padding: "9px 12px", boxSizing: "border-box",
+          background: disabled ? T.panel : T.surface,
+          border: "1.5px solid " + (error ? "#ef4444" : focus ? T.accent : T.border),
+          borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none",
+          transition: "border-color 0.15s",
+        }}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+      />
+      {error && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>{error}</div>}
+    </div>
+  );
+}
+
 function ProjectFormModal({ mode, project, onClose, onSaved }) {
   const T = useTheme();
   const toast = useAppToast();
@@ -406,7 +434,11 @@ function ProjectFormModal({ mode, project, onClose, onSaved }) {
   );
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const set = k => v => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: undefined })); };
+
+  const setField = useCallback((k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    setErrors(e => ({ ...e, [k]: undefined }));
+  }, []);
 
   useEffect(() => {
     const h = e => { if (e.key === "Escape") onClose(); };
@@ -416,7 +448,7 @@ function ProjectFormModal({ mode, project, onClose, onSaved }) {
 
   async function handleSubmit() {
     const e = {};
-    if (mode === "create" && !form.key.trim())  e.key = "Required";
+    if (mode === "create" && !form.key.trim())  e.key        = "Required";
     if (!form.label.trim())      e.label      = "Required";
     if (!form.domain.trim())     e.domain     = "Required";
     if (!form.project_id.trim()) e.project_id = "Required";
@@ -440,29 +472,6 @@ function ProjectFormModal({ mode, project, onClose, onSaved }) {
     } finally { setSaving(false); }
   }
 
-  function Field({ label, k, placeholder, disabled }) {
-    const [focus, setFocus] = useState(false);
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
-          {label} <span style={{ color: "#ef4444" }}>*</span>
-        </label>
-        <input
-          value={form[k] ?? ""} onChange={e => set(k)(e.target.value)}
-          placeholder={placeholder} disabled={disabled}
-          style={{
-            width: "100%", padding: "9px 12px", boxSizing: "border-box",
-            background: disabled ? T.panel : T.surface,
-            border: "1.5px solid " + (errors[k] ? "#ef4444" : focus ? T.accent : T.border),
-            borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none",
-          }}
-          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-        />
-        {errors[k] && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>{errors[k]}</div>}
-      </div>
-    );
-  }
-
   return createPortal(
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{
       position: "fixed", inset: 0, zIndex: 1000,
@@ -476,14 +485,18 @@ function ProjectFormModal({ mode, project, onClose, onSaved }) {
         </div>
         <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
           <style>{SPIN}</style>
-          {mode === "create" && <Field label="Key (slug)" k="key" placeholder="foxtow" />}
-          <Field label="Label (display name)" k="label" placeholder="Foxtow" />
-          <Field label="Domain" k="domain" placeholder="foxtow.com" />
-          <Field label="PostHog Project ID" k="project_id" placeholder="365531" />
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Sort Order</label>
-            <input value={form.sort_order} onChange={e => set("sort_order")(e.target.value)} placeholder="0" style={{ width: "100%", padding: "9px 12px", boxSizing: "border-box", background: T.surface, border: "1.5px solid " + T.border, borderRadius: 8, fontSize: 13, color: T.text, fontFamily: "inherit", outline: "none" }} />
-          </div>
+          {mode === "create" && (
+            <ModalField T={T} label="Key (slug)" fieldKey="key" value={form.key}
+              onChange={v => setField("key", v)} placeholder="foxtow" error={errors.key} />
+          )}
+          <ModalField T={T} label="Label (display name)" fieldKey="label" value={form.label}
+            onChange={v => setField("label", v)} placeholder="Foxtow" error={errors.label} />
+          <ModalField T={T} label="Domain" fieldKey="domain" value={form.domain}
+            onChange={v => setField("domain", v)} placeholder="foxtow.com" error={errors.domain} />
+          <ModalField T={T} label="PostHog Project ID" fieldKey="project_id" value={form.project_id}
+            onChange={v => setField("project_id", v)} placeholder="365531" error={errors.project_id} />
+          <ModalField T={T} label="Sort Order" fieldKey="sort_order" value={form.sort_order}
+            onChange={v => setField("sort_order", v)} placeholder="0" required={false} />
         </div>
         <div style={{ padding: "14px 24px 20px", borderTop: "1px solid " + T.border, display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "9px 16px", background: "transparent", border: "1px solid " + T.border, borderRadius: 8, color: T.text, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
@@ -511,6 +524,7 @@ function PosthogProjectsSection() {
 
   const [projects,     setProjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState(null);
   const [refreshing,   setRefreshing]   = useState(false);
   const [modal,        setModal]        = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -520,9 +534,10 @@ function PosthogProjectsSection() {
 
   function loadProjects(isRefresh = false) {
     if (isRefresh) setRefreshing(true); else setLoading(true);
+    setLoadError(null);
     listPosthogProjects()
       .then(list => setProjects(Array.isArray(list) ? list : []))
-      .catch(() => toast.error("Failed to load projects."))
+      .catch(err => setLoadError(err.message || "Failed to load projects"))
       .finally(() => { setLoading(false); setRefreshing(false); });
   }
 
@@ -624,6 +639,11 @@ function PosthogProjectsSection() {
               {loading ? (
                 <tr><td colSpan={7} style={{ padding: 24, textAlign: "center" }}>
                   <Loader2 size={16} color={T.muted} style={{ animation: "spin 1s linear infinite" }} />
+                </td></tr>
+              ) : loadError ? (
+                <tr><td colSpan={7} style={{ padding: 24, textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: T.red, marginBottom: 10 }}>{loadError}</div>
+                  <button onClick={() => loadProjects()} style={{ fontSize: 12, padding: "6px 14px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.dim, cursor: "pointer", fontFamily: "inherit" }}>Retry</button>
                 </td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: T.muted, fontSize: 13 }}>
