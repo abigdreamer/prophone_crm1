@@ -263,20 +263,20 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
         {/* Stats mini-cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, padding: "0 0 12px" }}>
           {/* Lead Score — uses the ScoreRing already defined in the file */}
-          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+          {/* <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
             <ScoreRing score={contact.leadScore ?? 0} />
             <div>
               <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Lead Score</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: "#f59e0b", lineHeight: 1.1 }}>{contact.leadScore ?? 0}</div>
             </div>
-          </div>
+          </div> */}
           {/* Contract Value */}
-          <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
+          {/* <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Contract Value</div>
             <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, color: contact.contractValue > 0 ? T.green : T.muted }}>
               {contact.contractValue > 0 ? "$" + (contact.contractValue >= 1000 ? (contact.contractValue / 1000).toFixed(1) + "k" : contact.contractValue) : "—"}
             </div>
-          </div>
+          </div> */}
           {/* Fleet Size */}
           <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "10px 14px" }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Fleet Size</div>
