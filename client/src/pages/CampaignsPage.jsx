@@ -71,7 +71,7 @@ function CampaignThumb({ campaign }) {
 
 // ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1fr 110px 80px 80px 80px 44px";
+const GRID_COLS = "1fr 200px 110px 80px 80px 80px 44px";
 
 function StatPill({ icon: Icon, value, color }) {
   const T = useTheme();
@@ -146,6 +146,22 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
             {campaign.fromName || "—"}{campaign.template?.name ? " · " + campaign.template.name : ""}
           </div>
         </div>
+      </div>
+
+      {/* SUBJECT col */}
+      <div style={{ minWidth: 0 }}>
+        <div
+          title={campaign.subject || ""}
+          style={{ fontSize: 13, fontWeight: 500, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {campaign.subject || <span style={{ color: T.muted, fontStyle: "italic" }}>No subject</span>}
+        </div>
+        {campaign.type === "ab_test" && campaign.subjectB && (
+          <div
+            title={campaign.subjectB}
+            style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
+            B: {campaign.subjectB}
+          </div>
+        )}
       </div>
 
       {/* STATUS col */}
@@ -770,7 +786,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Status", "Sent", "Open", "Click", ""].map((h, i) => (
+            {["Campaign", "Subject", "Status", "Sent", "Open", "Click", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
