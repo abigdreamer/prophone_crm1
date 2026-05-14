@@ -1700,7 +1700,7 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
  async function handleSave(extra = {}) {
   if (extra.status === "published" && domains.length === 0) {
     toast.warning("No verified domain found. Go to Domains → verify a domain first.");
-    return;
+    return null;
   }
   setSaving(true);
   const body = buildBody();
@@ -1709,14 +1709,19 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
   try {
     if (tid) {
       await store.updateTemplate(tid, payload);
+      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+      onSaved?.();
+      return tid;
     } else {
       const created = await store.createTemplate(payload);
       setTid(created.id);
+      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+      onSaved?.();
+      return created.id;
     }
-    toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
-    onSaved?.();
   } catch {
     toast.error("Failed to save template.");
+    return null;
   } finally {
     setSaving(false);
   }
@@ -1816,7 +1821,11 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 
         {/* Switch to HTML mode */}
         {onSwitchToHtml && (
-          <button onClick={() => onSwitchToHtml(tid)}
+          <button onClick={async () => {
+            let id = tid;
+            if (!id) id = await handleSave({ status: "draft" });
+            if (id) onSwitchToHtml(id);
+          }}
             style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
             onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
             onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
@@ -2258,7 +2267,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   async function handleSave(extra = {}) {
     if (extra.status === "published" && domains.length === 0) {
       toast.warning("No verified domain found. Go to Domains → verify a domain first.");
-      return;
+      return null;
     }
     setSaving(true);
     const payload = {
@@ -2270,14 +2279,19 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
     try {
       if (tid) {
         await store.updateTemplate(tid, payload);
+        toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+        onSaved?.();
+        return tid;
       } else {
         const created = await store.createTemplate(payload);
         setTid(created.id);
+        toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+        onSaved?.();
+        return created.id;
       }
-      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
-      onSaved?.();
     } catch {
       toast.error("Failed to save template.");
+      return null;
     } finally {
       setSaving(false);
     }
@@ -2353,7 +2367,11 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
 
         {/* Switch to Visual */}
         {onSwitchToVisual && (
-          <button onClick={() => onSwitchToVisual(tid)}
+          <button onClick={async () => {
+            let id = tid;
+            if (!id) id = await handleSave({ status: "draft" });
+            if (id) onSwitchToVisual(id);
+          }}
             style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
             onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
             onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
@@ -2808,21 +2826,32 @@ function TemplateList({ onOpenBuilder }) {
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export default function TemplatesPage() {
+export default function TemplatesPage({ onEditingChange }) {
   const T = useTheme();
   const C = makeC(T);
   // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
 
+  const enterBuilder = (id, mode) => {
+    setEditingId(id || null);
+    setView(mode === "html" ? "builder-html" : "builder-visual");
+    onEditingChange?.(true);
+  };
+
+  const exitBuilder = () => {
+    setView("list");
+    onEditingChange?.(false);
+  };
+
   if (view === "builder-visual") {
     return (
       <CCtx.Provider value={C}>
         <EmailBuilder
           templateId={editingId}
-          onBack={() => setView("list")}
+          onBack={exitBuilder}
           onSaved={() => {}}
-          onSwitchToHtml={id => { setEditingId(id || null); setView("builder-html"); }}
+          onSwitchToHtml={id => enterBuilder(id, "html")}
         />
       </CCtx.Provider>
     );
@@ -2833,9 +2862,9 @@ export default function TemplatesPage() {
       <CCtx.Provider value={C}>
         <HtmlEmailBuilder
           templateId={editingId}
-          onBack={() => setView("list")}
+          onBack={exitBuilder}
           onSaved={() => {}}
-          onSwitchToVisual={id => { setEditingId(id || null); setView("builder-visual"); }}
+          onSwitchToVisual={id => enterBuilder(id, "visual")}
         />
       </CCtx.Provider>
     );
@@ -2846,8 +2875,7 @@ export default function TemplatesPage() {
       <TemplateList
         onOpenBuilder={(id, editorMode) => {
           if (id) {
-            setEditingId(id);
-            setView(editorMode === "html" ? "builder-html" : "builder-visual");
+            enterBuilder(id, editorMode);
           } else {
             setEditingId(null);
             setView("choose");
@@ -2856,7 +2884,7 @@ export default function TemplatesPage() {
       />
       {view === "choose" && (
         <ChooseModeModal
-          onChoose={m => setView(m === "html" ? "builder-html" : "builder-visual")}
+          onChoose={m => enterBuilder(null, m)}
           onCancel={() => setView("list")}
         />
       )}

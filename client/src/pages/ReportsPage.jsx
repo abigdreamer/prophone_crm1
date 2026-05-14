@@ -39,7 +39,7 @@ function absTime(ts) {
   if (!ts) return "";
   const d = new Date(ts);
   if (isNaN(d)) return "";
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   let h = d.getHours();
   const m = String(d.getMinutes()).padStart(2, "0");
   const ampm = h >= 12 ? "pm" : "am";
@@ -57,29 +57,29 @@ function shortUrl(url) {
 }
 
 const DATE_RANGES = [
-  { label: "Today",         id: "today"        },
-  { label: "Yesterday",     id: "yesterday"    },
-  { label: "Last hour",     id: "last_hour"    },
-  { label: "Last 24 hours", id: "last_24h"     },
-  { label: "Last 7 days",   id: "last_7d"      },
-  { label: "Last 14 days",  id: "last_14d"     },
-  { label: "Last 30 days",  id: "last_30d"     },
-  { label: "Last 90 days",  id: "last_90d"     },
-  { label: "Last 180 days", id: "last_180d"    },
-  { label: "Last week",     id: "last_week"    },
-  { label: "Last month",    id: "last_month"   },
-  { label: "This week",     id: "this_week"    },
-  { label: "This month",    id: "this_month"   },
-  { label: "Year to date",  id: "year_to_date" },
-  { label: "All time",      id: "all_time"     },
+  { label: "Today", id: "today" },
+  { label: "Yesterday", id: "yesterday" },
+  { label: "Last hour", id: "last_hour" },
+  { label: "Last 24 hours", id: "last_24h" },
+  { label: "Last 7 days", id: "last_7d" },
+  { label: "Last 14 days", id: "last_14d" },
+  { label: "Last 30 days", id: "last_30d" },
+  { label: "Last 90 days", id: "last_90d" },
+  { label: "Last 180 days", id: "last_180d" },
+  { label: "Last week", id: "last_week" },
+  { label: "Last month", id: "last_month" },
+  { label: "This week", id: "this_week" },
+  { label: "This month", id: "this_month" },
+  { label: "Year to date", id: "year_to_date" },
+  { label: "All time", id: "all_time" },
 ];
 
 const SIDEBAR_W = 200;
 const SIDEBAR_COLLAPSED_W = 52;
 
 const NAV_ITEMS = [
-  { id: "posthog",    label: "PostHog",    Icon: BarChart2 },
-  { id: "newsletter", label: "Newsletter", Icon: Mail      },
+  { id: "posthog", label: "PostHog", Icon: BarChart2 },
+  { id: "newsletter", label: "Newsletter", Icon: Mail },
 ];
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
@@ -116,8 +116,8 @@ function StatCard({ T, icon: Icon, label, value, color, loading }) {
 
 // ─── Event Chip ───────────────────────────────────────────────────────────────
 function EventChip({ T, name }) {
-  const isPage   = name === "$pageview" || name === "$pageleave";
-  const color    = isPage ? T.blue : T.accent;
+  const isPage = name === "$pageview" || name === "$pageleave";
+  const color = isPage ? T.blue : T.accent;
   return (
     <span style={{
       display: "inline-block", maxWidth: 220,
@@ -170,9 +170,9 @@ function TableSkeleton({ T, cols = 4 }) {
 
 // ─── Event Detail Modal ───────────────────────────────────────────────────────
 function EventModal({ T, clientId, eventRow, onClose }) {
-  const [detail,  setDetail]  = useState(null);
+  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!eventRow?.id) return;
@@ -188,9 +188,9 @@ function EventModal({ T, clientId, eventRow, onClose }) {
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const props    = detail?.properties || {};
+  const props = detail?.properties || {};
   const allProps = Object.entries(props).sort(([a], [b]) => a.localeCompare(b));
-  const color    = eventRow?.event === "$pageview" || eventRow?.event === "$pageleave" ? T.blue : T.accent;
+  const color = eventRow?.event === "$pageview" || eventRow?.event === "$pageleave" ? T.blue : T.accent;
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }} style={{
@@ -228,8 +228,8 @@ function EventModal({ T, clientId, eventRow, onClose }) {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", background: T.panel, borderRadius: 10, padding: "14px 16px" }}>
                 {[
-                  { label: "Time",   value: absTime(detail.timestamp) },
-                  { label: "Ago",    value: relTime(detail.timestamp) },
+                  { label: "Time", value: absTime(detail.timestamp) },
+                  { label: "Ago", value: relTime(detail.timestamp) },
                   { label: "Person", value: detail.distinct_id, span: true },
                   props.$current_url ? { label: "URL", value: props.$current_url, link: true, span: true } : null,
                 ].filter(Boolean).map(({ label, value, link, span }) => (
@@ -349,17 +349,17 @@ function ListSkeleton({ T, rows = 6, twoCol = false }) {
 
 // ─── PostHog Section ──────────────────────────────────────────────────────────
 function PosthogSection({ T }) {
-  const { clientId }    = usePool();
-  const [range,         setRange]          = useState("last_7d");
-  const [page,          setPage]           = useState(1);
-  const [eventFilter,   setEventFilter]    = useState("");
-  const [refreshTick,   setRefreshTick]    = useState(0);
-  const [stats,         setStats]          = useState(null);
-  const [charts,        setCharts]         = useState(null);
-  const [statsLoading,  setStatsLoading]   = useState(true);
-  const [chartsLoading, setChartsLoading]  = useState(true);
-  const [statsError,    setStatsError]     = useState(null);
-  const [selectedEvent, setSelectedEvent]  = useState(null);
+  const { clientId } = usePool();
+  const [range, setRange] = useState("last_7d");
+  const [page, setPage] = useState(1);
+  const [eventFilter, setEventFilter] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [stats, setStats] = useState(null);
+  const [charts, setCharts] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [chartsLoading, setChartsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const closeModal = useCallback(() => setSelectedEvent(null), []);
 
   // Stats re-fetches on page/eventFilter changes too
@@ -385,17 +385,17 @@ function PosthogSection({ T }) {
   function changeRange(r) { setRange(r); setPage(1); setEventFilter(""); setStats(null); setCharts(null); }
   function changeFilter(f) { setEventFilter(f); setPage(1); }
 
-  const rangeLabel  = DATE_RANGES.find(r => r.id === range)?.label || range;
-  const events      = stats?.events     || [];
-  const eventNames  = stats?.eventNames || [];
-  const totalPages  = stats?.totalPages || 1;
-  const totalCount  = stats?.filteredCount ?? stats?.totalEvents ?? 0;
-  const geoMax      = charts?.geography?.[0]?.n || 1;
-  const pageMax     = charts?.topPages?.[0]?.n  || 1;
-  const evtMax      = charts?.topEvents?.[0]?.n || 1;
-  const anyLoading  = statsLoading || chartsLoading;
-  const firstItem   = (page - 1) * 100 + 1;
-  const lastItem    = Math.min(page * 100, totalCount);
+  const rangeLabel = DATE_RANGES.find(r => r.id === range)?.label || range;
+  const events = stats?.events || [];
+  const eventNames = stats?.eventNames || [];
+  const totalPages = stats?.totalPages || 1;
+  const totalCount = stats?.filteredCount ?? stats?.totalEvents ?? 0;
+  const geoMax = charts?.geography?.[0]?.n || 1;
+  const pageMax = charts?.topPages?.[0]?.n || 1;
+  const evtMax = charts?.topEvents?.[0]?.n || 1;
+  const anyLoading = statsLoading || chartsLoading;
+  const firstItem = (page - 1) * 100 + 1;
+  const lastItem = Math.min(page * 100, totalCount);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -430,9 +430,9 @@ function PosthogSection({ T }) {
 
       {/* Stat cards */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <StatCard T={T} icon={Zap}   label="Total Events" value={stats?.totalEvents} color={T.accent} loading={statsLoading} />
-        <StatCard T={T} icon={Eye}   label="Page Views"   value={stats?.pageViews}   color={T.blue}   loading={statsLoading} />
-        <StatCard T={T} icon={Users} label="Active Users" value={stats?.activeUsers} color={T.green}  loading={statsLoading} />
+        <StatCard T={T} icon={Zap} label="Total Events" value={stats?.totalEvents} color={T.accent} loading={statsLoading} />
+        <StatCard T={T} icon={Eye} label="Page Views" value={stats?.pageViews} color={T.blue} loading={statsLoading} />
+        <StatCard T={T} icon={Users} label="Active Users" value={stats?.activeUsers} color={T.green} loading={statsLoading} />
       </div>
 
       {/* Events Over Time */}
@@ -449,8 +449,8 @@ function PosthogSection({ T }) {
             <AreaChart data={charts.timeSeries} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
               <defs>
                 <linearGradient id="gEvents" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={T.accent} stopOpacity={0.22} />
-                  <stop offset="95%" stopColor={T.accent} stopOpacity={0}    />
+                  <stop offset="5%" stopColor={T.accent} stopOpacity={0.22} />
+                  <stop offset="95%" stopColor={T.accent} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="2 4" stroke={T.border} vertical={false} />
@@ -492,8 +492,8 @@ function PosthogSection({ T }) {
             !charts?.geography?.length
               ? <div style={{ fontSize: 12, color: T.muted, padding: "16px 0" }}>No geography data yet</div>
               : charts.geography.map(g => (
-                  <BarRow key={g.country} T={T} label={g.country} value={g.n} max={geoMax} accent={T.blue} />
-                ))
+                <BarRow key={g.country} T={T} label={g.country} value={g.n} max={geoMax} accent={T.blue} />
+              ))
           }
         </PanelCard>
 
@@ -502,8 +502,8 @@ function PosthogSection({ T }) {
             !charts?.topPages?.length
               ? <div style={{ fontSize: 12, color: T.muted, padding: "16px 0" }}>No page view data</div>
               : charts.topPages.map(p => (
-                  <BarRow key={p.url} T={T} label={shortUrl(p.url) || p.url} value={p.n} max={pageMax} accent={T.accent} />
-                ))
+                <BarRow key={p.url} T={T} label={shortUrl(p.url) || p.url} value={p.n} max={pageMax} accent={T.accent} />
+              ))
           }
         </PanelCard>
       </div>
@@ -637,72 +637,114 @@ function PosthogSection({ T }) {
 
 // ─── Newsletter Section ───────────────────────────────────────────────────────
 function NewsletterSection({ T }) {
-  const [data,         setData]         = useState(null);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState(null);
-  const [refreshing,   setRefreshing]   = useState(false);
-  const [page,         setPage]         = useState(1);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [search,       setSearch]       = useState("");
+  const [search, setSearch] = useState("");
 
   const LIMIT = 50;
 
+  const isActive = (s) => s.is_active === true;
+
   function load(opts = {}) {
     const isRefresh = opts.refresh || false;
-    if (isRefresh) setRefreshing(true); else setLoading(true);
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
     setError(null);
-    // "inactive" fetches all (active=false) so we can filter client-side; all others use active=true
+
     const activeParam = statusFilter === "inactive" ? false : true;
-    getFoxtowNewsletterSubscribers({ active: activeParam, page, limit: LIMIT })
-      .then(res => { setData(res); })
+
+    getFoxtowNewsletterSubscribers({
+      active: activeParam,
+      page,
+      limit: LIMIT,
+    })
+      .then(res => setData(res))
       .catch(err => setError(err.message || "Failed to load subscribers"))
-      .finally(() => { setLoading(false); setRefreshing(false); });
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
   }
 
-  useEffect(() => { load(); }, [page, statusFilter]);
+  useEffect(() => {
+    load();
+  }, [page, statusFilter]);
 
   const rawSubscribers = data?.subscribers || data?.data || [];
-  const totalAll       = data?.total ?? data?.count ?? rawSubscribers.length;
-  const totalPages     = Math.max(1, Math.ceil(totalAll / LIMIT));
+  const totalAll = data?.total ?? data?.count ?? rawSubscribers.length;
+  const totalPages = Math.max(1, Math.ceil(totalAll / LIMIT));
 
   const filtered = rawSubscribers.filter(s => {
-    // For "inactive" filter: server returned all records, show only inactive ones
-    const isActive = s.active ?? s.status === "active";
-    const matchStatus = statusFilter !== "inactive" || !isActive;
+    const isActiveUser = isActive(s);
+
+    const matchStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && isActiveUser) ||
+      (statusFilter === "inactive" && !isActiveUser);
+
     const q = search.toLowerCase();
-    const name  = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "";
+    const name = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "";
     const email = s.email || "";
-    const matchSearch = !q || name.toLowerCase().includes(q) || email.toLowerCase().includes(q);
+
+    const matchSearch =
+      !q ||
+      name.toLowerCase().includes(q) ||
+      email.toLowerCase().includes(q);
+
     return matchStatus && matchSearch;
   });
 
-  const totalActive   = rawSubscribers.filter(s =>   s.active ?? s.status === "active" ).length;
-  const totalInactive = rawSubscribers.filter(s => !(s.active ?? s.status === "active")).length;
+  const totalActive = rawSubscribers.filter(isActive).length;
+  const totalInactive = rawSubscribers.filter(s => !isActive(s)).length;
 
   function exportCSV() {
     if (!filtered.length) return;
+
     const keys = Object.keys(filtered[0]).filter(k => !k.startsWith("_"));
+
     const rows = [
       keys.join(","),
-      ...filtered.map(s => keys.map(k => {
-        const v = String(s[k] ?? "").replace(/"/g, '""');
-        return v.includes(",") || v.includes('"') || v.includes("\n") ? `"${v}"` : v;
-      }).join(",")),
+      ...filtered.map(s =>
+        keys.map(k => {
+          const v = String(s[k] ?? "").replace(/"/g, '""');
+          return v.includes(",") || v.includes('"') || v.includes("\n")
+            ? `"${v}"`
+            : v;
+        }).join(",")
+      ),
     ];
-    const blob = new Blob(["﻿" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `newsletter-subscribers-${new Date().toISOString().slice(0,10)}.csv`;
+
+    const blob = new Blob(["﻿" + rows.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `newsletter-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+
     URL.revokeObjectURL(url);
   }
 
   function fmtDate(val) {
     if (!val) return "—";
+
     const d = new Date(val);
+
     if (isNaN(d)) return val;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
   return (
@@ -733,12 +775,12 @@ function NewsletterSection({ T }) {
 
       {/* Stat cards */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <StatCard T={T} icon={Mail}  label="Total Subscribers" value={loading ? undefined : totalAll}      color={T.blue}  loading={loading} />
-        <StatCard T={T} icon={Users} label="Active"            value={loading ? undefined : totalActive}   color={T.green} loading={loading} />
-        <StatCard T={T} icon={Users} label="Inactive"          value={loading ? undefined : totalInactive} color={T.red}   loading={loading} />
+        <StatCard T={T} icon={Mail} label="Total Subscribers" value={loading ? undefined : totalAll} color={T.blue} loading={loading} />
+        <StatCard T={T} icon={Users} label="Active" value={loading ? undefined : totalActive} color={T.green} loading={loading} />
+        <StatCard T={T} icon={Users} label="Inactive" value={loading ? undefined : totalInactive} color={T.red} loading={loading} />
       </div>
 
-      {/* Toolbar: search + status filter + refresh + export */}
+      {/* Toolbar */}
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <div style={{ flex: 1, position: "relative" }}>
           <Search size={13} color={T.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
@@ -751,6 +793,7 @@ function NewsletterSection({ T }) {
             onBlur={e => e.target.style.borderColor = T.border}
           />
         </div>
+
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
@@ -760,20 +803,22 @@ function NewsletterSection({ T }) {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
+
         <button onClick={() => load({ refresh: true })} disabled={refreshing || loading} style={{
           display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,
-          background: T.surface, border: "1px solid " + T.border, color: T.dim, fontSize: 13, fontFamily: "inherit",
+          background: T.surface, border: "1px solid " + T.border, color: T.dim, fontSize: 13,
           cursor: (refreshing || loading) ? "not-allowed" : "pointer", opacity: (refreshing || loading) ? 0.6 : 1,
         }}>
           <RefreshCw size={13} style={{ transform: (refreshing || loading) ? "rotate(180deg)" : "none", transition: "0.3s" }} />
           Refresh
         </button>
+
         <button onClick={exportCSV} disabled={!filtered.length} style={{
           display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,
           background: filtered.length ? T.green + "18" : "transparent",
           border: "1px solid " + (filtered.length ? T.green + "35" : T.border),
           color: filtered.length ? T.green : T.muted,
-          fontSize: 13, fontFamily: "inherit", fontWeight: 600,
+          fontSize: 13, fontWeight: 600,
           cursor: filtered.length ? "pointer" : "not-allowed",
         }}>
           <Download size={13} /> Export CSV
@@ -784,47 +829,73 @@ function NewsletterSection({ T }) {
       <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Subscribers</span>
+
           {!loading && filtered.length > 0 && (
             <span style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blue + "12", border: "1px solid " + T.blue + "28", borderRadius: 6, padding: "3px 9px" }}>
               {filtered.length.toLocaleString()}{filtered.length !== totalAll ? ` of ${totalAll.toLocaleString()}` : ""} total
             </span>
           )}
         </div>
+
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr>
                 {["Name", "Email", "Status", "Subscribed"].map((h, i) => (
-                  <th key={i} style={{ padding: "9px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid " + T.border, background: T.panel }}>{h}</th>
+                  <th key={i} style={{ padding: "9px 18px", textAlign: "left", fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", borderBottom: "1px solid " + T.border, background: T.panel }}>
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
+
             <tbody>
               {loading && <TableSkeleton T={T} cols={4} />}
+
               {!loading && !error && filtered.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: "52px 24px", textAlign: "center" }}>
-                  <Mail size={30} color={T.muted} style={{ marginBottom: 12 }} />
-                  <div style={{ fontSize: 15, fontWeight: 700, color: T.dim, marginBottom: 6 }}>No subscribers found</div>
-                  {(search || statusFilter !== "all") && <div style={{ fontSize: 12, color: T.muted }}>Try adjusting your search or filter.</div>}
-                </td></tr>
+                <tr>
+                  <td colSpan={4} style={{ padding: "52px 24px", textAlign: "center" }}>
+                    <Mail size={30} color={T.muted} style={{ marginBottom: 12 }} />
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.dim, marginBottom: 6 }}>
+                      No subscribers found
+                    </div>
+                    {(search || statusFilter !== "all") && (
+                      <div style={{ fontSize: 12, color: T.muted }}>
+                        Try adjusting your search or filter.
+                      </div>
+                    )}
+                  </td>
+                </tr>
               )}
+
               {!loading && filtered.map((s, i) => {
-                const name       = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "—";
-                const email      = s.email || "—";
-                const isActive   = s.active ?? s.status === "active";
-                const joinedDate = s.created_at || s.subscribed_at || s.joined_at || s.createdAt;
+                const name = [s.first_name, s.last_name].filter(Boolean).join(" ") || s.name || "—";
+                const email = s.email || "—";
+
+                const isActive = s.is_active === true;
+
+                const joinedDate =
+                  s.created_at ||
+                  s.subscribed_at ||
+                  s.joined_at ||
+                  s.createdAt;
+
                 return (
                   <tr key={s.id || i}
                     style={{ borderBottom: i < filtered.length - 1 ? "1px solid " + T.border : "none" }}
                     onMouseEnter={ev => (ev.currentTarget.style.background = T.panel)}
                     onMouseLeave={ev => (ev.currentTarget.style.background = "transparent")}
                   >
-                    <td style={{ padding: "12px 18px", verticalAlign: "middle", fontWeight: 600, color: T.text }}>{name}</td>
-                    <td style={{ padding: "12px 18px", verticalAlign: "middle", color: T.dim, fontFamily: "monospace", fontSize: 12 }}>{email}</td>
-                    <td style={{ padding: "12px 18px", verticalAlign: "middle" }}>
+                    <td style={{ padding: "12px 18px", fontWeight: 600, color: T.text }}>{name}</td>
+                    <td style={{ padding: "12px 18px", color: T.dim, fontFamily: "monospace", fontSize: 12 }}>{email}</td>
+                    <td style={{ padding: "12px 18px" }}>
                       <span style={{
-                        display: "inline-block", fontSize: 10, fontWeight: 700,
-                        borderRadius: 5, padding: "2px 8px", letterSpacing: "0.04em", textTransform: "uppercase",
+                        display: "inline-block",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        borderRadius: 5,
+                        padding: "2px 8px",
+                        textTransform: "uppercase",
                         background: isActive ? T.green + "18" : T.red + "10",
                         color: isActive ? T.green : T.red,
                         border: "1px solid " + (isActive ? T.green + "35" : T.red + "35"),
@@ -832,7 +903,9 @@ function NewsletterSection({ T }) {
                         {isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td style={{ padding: "12px 18px", verticalAlign: "middle", fontSize: 12, color: T.muted }}>{fmtDate(joinedDate)}</td>
+                    <td style={{ padding: "12px 18px", fontSize: 12, color: T.muted }}>
+                      {fmtDate(joinedDate)}
+                    </td>
                   </tr>
                 );
               })}
@@ -858,7 +931,7 @@ function NewsletterSection({ T }) {
 export default function ReportsPage() {
   const T = useTheme();
   const [activeSection, setActiveSection] = useState("posthog");
-  const [collapsed,     setCollapsed]     = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   const sidebarW = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W;
 
@@ -916,7 +989,7 @@ export default function ReportsPage() {
                 fontSize: 13, transition: "0.15s",
                 fontFamily: "inherit",
               }}
-              title={collapsed ? label : undefined}
+                title={collapsed ? label : undefined}
               >
                 <Icon size={16} />
                 {!collapsed && label}
@@ -928,7 +1001,7 @@ export default function ReportsPage() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
-        {activeSection === "posthog"    && <PosthogSection    T={T} />}
+        {activeSection === "posthog" && <PosthogSection T={T} />}
         {activeSection === "newsletter" && <NewsletterSection T={T} />}
       </div>
     </div>

@@ -103,6 +103,7 @@ function AppLayout({ currentUser, onSignOut }) {
     () => localStorage.getItem('mktg-sidebar-collapsed') === 'true',
   );
   const [mktgMobileOpen, setMktgMobileOpen] = useState(false);
+  const [templateEditing, setTemplateEditing] = useState(false);
 
   const { contacts, setContacts, contactCounts, loading, firstLoad } = useContacts(currentUser);
   const [canceledContacts, setCanceledContacts] = useState([]);
@@ -128,6 +129,10 @@ function AppLayout({ currentUser, onSignOut }) {
   const pageRoot = page.split('/')[0];
   const isContacts = pageRoot === 'contacts';
   const isMarketing = ['domains', 'templates', 'campaigns', 'sequences'].includes(pageRoot);
+
+  useEffect(() => {
+    if (pageRoot !== 'templates') setTemplateEditing(false);
+  }, [pageRoot]);
 
   const navigateTo = useCallback((p) => {
     setSelected(null);
@@ -536,7 +541,7 @@ function AppLayout({ currentUser, onSignOut }) {
           }
         />
         <Route path="/domains" element={<DomainsPage />} />
-        <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/templates" element={<TemplatesPage onEditingChange={setTemplateEditing} />} />
         <Route path="/campaigns" element={<CampaignsPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
@@ -686,7 +691,7 @@ function AppLayout({ currentUser, onSignOut }) {
           </>
         )}
 
-        {isMarketing && (
+        {isMarketing && !templateEditing && (
           <MarketingSidebar
             page={pageRoot} onNavigate={navigateTo}
             collapsed={mktgCollapsed} onToggleCollapse={handleToggleMktgCollapse}

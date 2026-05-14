@@ -70,7 +70,7 @@ function CampaignThumb({ campaign }) {
 
 // ── Campaign list row (matches TemplatesPage grid style) ─────────────────────
 
-const GRID_COLS = "1fr 1fr 140px 140px 44px";
+const GRID_COLS = "1.4fr 1fr 180px 130px 130px 44px";
 
 function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
   const T = useTheme();
@@ -137,6 +137,32 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
       {/* STATUS col */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <StatusBadge status={campaign.isCanceled ? "canceled" : campaign.status} />
+      </div>
+
+      {/* MINI STATS col — only meaningful for sent/sending campaigns */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {(campaign.status === "sent" || campaign.status === "sending") && campaign.recipientsCount > 0 ? (
+          <>
+            {[
+              { label: "Sent",   val: campaign.sentCount,    total: campaign.recipientsCount, color: "#60a5fa" },
+              { label: "Opens",  val: campaign.openedCount,  total: campaign.sentCount || campaign.recipientsCount, color: "#34d399" },
+              { label: "Clicks", val: campaign.clickedCount, total: campaign.openedCount || 1, color: "#a78bfa" },
+            ].map(({ label, val = 0, total = 1, color }) => {
+              const pct = total > 0 ? Math.min(100, Math.round((val / total) * 100)) : 0;
+              return (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ fontSize: 9, color: T.muted, width: 30, flexShrink: 0 }}>{label}</div>
+                  <div style={{ flex: 1, height: 4, borderRadius: 2, background: T.border, overflow: "hidden" }}>
+                    <div style={{ width: pct + "%", height: "100%", background: color, borderRadius: 2, transition: "width 0.3s" }} />
+                  </div>
+                  <div style={{ fontSize: 9, color: T.dim, width: 22, textAlign: "right", flexShrink: 0 }}>{pct}%</div>
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>—</span>
+        )}
       </div>
 
       {/* CREATED col */}
@@ -678,14 +704,12 @@ export default function CampaignsPage() {
       </div>
 
       {/* ── Stats cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "Total",    value: total,    sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time",  subColor: T.dim,    dot: null     },
-          { label: "Draft",    value: draft,    sub: "not sent yet",                                              subColor: T.muted,  dot: T.muted  },
-          { label: "Sending",  value: active,   sub: active === 0 ? "none active" : "in progress",               subColor: T.amber,  dot: T.amber  },
-          { label: "Sent",     value: sent,     sub: "successfully delivered",                                    subColor: T.green,  dot: T.green  },
-          { label: "Paused",   value: paused,   sub: paused === 0 ? "none paused" : "on hold",                   subColor: T.orange, dot: T.orange },
-          { label: "Canceled", value: canceled, sub: "restorable",                                               subColor: T.red,    dot: T.red    },
+          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time", subColor: T.dim,   dot: null    },
+          { label: "Draft",   value: draft,  sub: "not sent yet",                                             subColor: T.muted, dot: T.muted },
+          { label: "Sending", value: active, sub: active === 0 ? "none active" : "in progress",               subColor: T.amber, dot: T.amber },
+          { label: "Sent",    value: sent,   sub: "successfully delivered",                                   subColor: T.green, dot: T.green },
         ].map(({ label, value, sub, subColor, dot }) => (
           <div key={label} style={{ padding: "18px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -747,7 +771,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Subject", "Status", "Created", ""].map((h, i) => (
+            {["Campaign", "Subject", "Status", "Performance", "Created", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>

@@ -318,6 +318,13 @@ export async function addCampaignRecipients(id, data) {
   return r.data ?? r;
 }
 
+export async function getContactsForCampaign(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) { params.set('pool', 'client'); params.set('clientId', clientId); }
+  const r = await request('GET', `/api/contacts?${params}`);
+  return Array.isArray(r) ? r : (r.data ?? []);
+}
+
 export async function removeCampaignRecipients(id) {
   return request('DELETE', `/api/campaigns/${id}/recipients`);
 }

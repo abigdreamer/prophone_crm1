@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { analytics } from "../services/analytics";
+import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
@@ -414,12 +415,56 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
 
 function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   const T = useTheme();
-  const [step,    setStep]    = useState(1);
-  const [filter,  setFilter]  = useState("all");
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [adding,  setAdding]  = useState(false);
-  const [error,   setError]   = useState(null);
+  // mode: "stage" | "search"
+  const [mode,       setMode]       = useState("stage");
+  const [step,       setStep]       = useState(1);
+  const [filter,     setFilter]     = useState("all");
+  const [preview,    setPreview]    = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [adding,     setAdding]     = useState(false);
+  const [error,      setError]      = useState(null);
+
+  // Search/select state
+  const [contacts,    setContacts]    = useState([]);
+  const [contLoading, setContLoading] = useState(false);
+  const [searchQ,     setSearchQ]     = useState("");
+  const [selected,    setSelected]    = useState(new Set());
+  const searchRef = useRef(null);
+
+  // Load all contacts for the search tab
+  useEffect(() => {
+    if (mode !== "search") return;
+    setContLoading(true);
+    getContactsForCampaign(clientId)
+      .then(data => setContacts(Array.isArray(data) ? data : []))
+      .catch(() => setContacts([]))
+      .finally(() => setContLoading(false));
+  }, [mode, clientId]);
+
+  const filteredContacts = contacts.filter(c => {
+    if (!searchQ) return true;
+    const q = searchQ.toLowerCase();
+    return (
+      (c.firstName || "").toLowerCase().includes(q) ||
+      (c.lastName  || "").toLowerCase().includes(q) ||
+      (c.email     || "").toLowerCase().includes(q) ||
+      (c.company   || "").toLowerCase().includes(q)
+    );
+  });
+
+  const toggleContact = id => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => {
+    if (selected.size === filteredContacts.length && filteredContacts.length > 0) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredContacts.map(c => c.id)));
+    }
+  };
 
   const loadPreview = useCallback(async f => {
     setLoading(true);
@@ -434,13 +479,19 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }
   }, [campaignId]);
 
-  const handleNext = async () => { setStep(2); await loadPreview(filter); };
+  const handleNext = async () => {
+    if (mode === "stage") { setStep(2); await loadPreview(filter); }
+    else { setStep(2); }
+  };
 
   const handleAdd = async () => {
     setAdding(true);
     setError(null);
     try {
-      const updated = await addCampaignRecipients(campaignId, { filter });
+      const payload = mode === "search"
+        ? { contactIds: Array.from(selected) }
+        : { filter };
+      const updated = await addCampaignRecipients(campaignId, payload);
       onAdded(updated);
     } catch (err) {
       setError(err.message || "Failed to add recipients. Please try again.");
@@ -449,6 +500,9 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }
   };
 
+  const confirmCount = mode === "search" ? selected.size : (preview?.count ?? 0);
+  const canConfirm   = mode === "search" ? selected.size > 0 : (preview?.count > 0);
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)",
@@ -456,12 +510,14 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 14,
-        width: 480, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
+        width: step === 1 && mode === "search" ? 520 : 480,
+        maxWidth: "95vw", maxHeight: "90vh", display: "flex", flexDirection: "column",
         boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
       }}>
+        {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "18px 24px 14px", borderBottom: "1px solid " + T.border,
+          padding: "18px 24px 14px", borderBottom: "1px solid " + T.border, flexShrink: 0,
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
             {step === 1 ? "Add Recipients" : "Confirm Recipients"}
@@ -469,29 +525,44 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
 
-        <div style={{ padding: "20px 24px" }}>
-          {step === 1 && (
+        {/* Mode tabs (step 1 only) */}
+        {step === 1 && (
+          <div style={{ display: "flex", gap: 0, padding: "12px 24px 0", flexShrink: 0 }}>
+            {[["stage", "By Stage"], ["search", "By Search"]].map(([m, label]) => (
+              <button key={m} onClick={() => { setMode(m); setError(null); }}
+                style={{
+                  padding: "7px 18px", border: "none", borderRadius: "7px 7px 0 0",
+                  background: mode === m ? T.surface : "transparent",
+                  borderBottom: mode === m ? "2px solid " + T.accent : "2px solid transparent",
+                  color: mode === m ? T.accent : T.muted,
+                  fontWeight: mode === m ? 700 : 500, fontSize: 13,
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Body */}
+        <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto" }}>
+
+          {/* ── BY STAGE ── */}
+          {step === 1 && mode === "stage" && (
             <>
               <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
-                {clientId
-                  ? `Filter contacts for this client by lifecycle stage. Only contacts belonging to this client will be added.`
-                  : "Filter contacts by lifecycle stage."}
+                {clientId ? "Filter contacts by lifecycle stage. Only contacts in this client will be added." : "Filter contacts by lifecycle stage."}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 340, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {STAGE_FILTERS.map(f => {
                   const sel = filter === f.id;
                   return (
-                    <div
-                      key={f.id}
-                      onClick={() => setFilter(f.id)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                        border: "1px solid " + (sel ? T.accent : T.border),
-                        background: sel ? T.accent + "10" : T.surface,
-                        transition: "border-color 0.1s, background 0.1s",
-                      }}
-                    >
+                    <div key={f.id} onClick={() => setFilter(f.id)} style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                      border: "1px solid " + (sel ? T.accent : T.border),
+                      background: sel ? T.accent + "10" : T.surface,
+                      transition: "border-color 0.1s, background 0.1s",
+                    }}>
                       <div style={{
                         width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
                         border: "2px solid " + (sel ? T.accent : T.border),
@@ -511,8 +582,104 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
             </>
           )}
 
+          {/* ── BY SEARCH ── */}
+          {step === 1 && mode === "search" && (
+            <>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <Search size={13} color={T.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                <input
+                  ref={searchRef}
+                  autoFocus
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                  placeholder="Search by name, email, or company…"
+                  style={{
+                    width: "100%", boxSizing: "border-box", paddingLeft: 32, paddingRight: 12,
+                    paddingTop: 9, paddingBottom: 9,
+                    borderRadius: 8, border: "1px solid " + T.border,
+                    background: T.surface, color: T.text, fontSize: 13,
+                    fontFamily: "inherit", outline: "none",
+                  }}
+                  onFocus={e => e.target.style.borderColor = T.accent}
+                  onBlur={e => e.target.style.borderColor = T.border}
+                />
+              </div>
+
+              {/* Select all row */}
+              {!contLoading && filteredContacts.length > 0 && (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "6px 2px", marginBottom: 4,
+                }}>
+                  <span style={{ fontSize: 11, color: T.muted }}>
+                    {selected.size > 0 ? `${selected.size} selected` : `${filteredContacts.length} contacts`}
+                  </span>
+                  <button onClick={toggleAll} style={{
+                    fontSize: 11, color: T.accent, background: "none", border: "none",
+                    cursor: "pointer", fontFamily: "inherit", padding: 0,
+                  }}>
+                    {selected.size === filteredContacts.length && filteredContacts.length > 0 ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
+              )}
+
+              {contLoading ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20, justifyContent: "center" }}>
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading contacts…
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 24, color: T.muted, fontSize: 13 }}>
+                  {searchQ ? "No contacts match your search." : "No contacts found for this campaign."}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 320, overflowY: "auto" }}>
+                  {filteredContacts.map(c => {
+                    const sel = selected.has(c.id);
+                    return (
+                      <div key={c.id} onClick={() => toggleContact(c.id)} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "9px 12px", borderRadius: 8, cursor: "pointer",
+                        border: "1px solid " + (sel ? T.accent + "60" : T.border),
+                        background: sel ? T.accent + "0e" : T.surface,
+                        transition: "all 0.12s",
+                      }}>
+                        {/* Checkbox */}
+                        <div style={{
+                          width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                          border: "2px solid " + (sel ? T.accent : T.border),
+                          background: sel ? T.accent : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {sel && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                        {/* Avatar */}
+                        <div style={{
+                          width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                          background: T.accent + "22",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, fontWeight: 700, color: T.accent,
+                        }}>
+                          {(c.firstName?.[0] || "?").toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}
+                          </div>
+                          <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {c.email}{c.company ? " · " + c.company : ""}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── CONFIRM STEP ── */}
           {step === 2 && (
-            loading ? (
+            loading && mode === "stage" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20 }}>
                 <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading preview…
               </div>
@@ -525,37 +692,27 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                 }}>
                   <Users size={16} color={T.accent} />
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
-                      {preview?.count ?? 0} contacts
-                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{confirmCount} contact{confirmCount !== 1 ? "s" : ""}</div>
                     <div style={{ fontSize: 11, color: T.muted }}>
-                      Stage: {STAGE_FILTERS.find(f => f.id === filter)?.label}
+                      {mode === "search"
+                        ? "Selected manually"
+                        : `Stage: ${STAGE_FILTERS.find(f => f.id === filter)?.label}`}
                     </div>
                   </div>
                 </div>
 
-                {preview?.sample?.length > 0 && (
+                {mode === "stage" && preview?.sample?.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: T.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       Sample (first {preview.sample.length})
                     </div>
                     {preview.sample.map(c => (
-                      <div key={c.id} style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "8px 10px", borderRadius: 7, background: T.surface,
-                      }}>
-                        <div style={{
-                          width: 26, height: 26, borderRadius: "50%",
-                          background: T.accent + "22", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, fontWeight: 700, color: T.accent,
-                        }}>
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
                           {(c.firstName?.[0] || "?").toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
-                            {c.firstName} {c.lastName}
-                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{c.firstName} {c.lastName}</div>
                           <div style={{ fontSize: 10, color: T.muted }}>{c.email || c.company}</div>
                         </div>
                       </div>
@@ -568,10 +725,24 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                   </div>
                 )}
 
-                {preview?.count === 0 && (
-                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>
-                    No contacts match this filter.
+                {mode === "search" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
+                    {contacts.filter(c => selected.has(c.id)).map(c => (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
+                          {(c.firstName?.[0] || "?").toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{[c.firstName, c.lastName].filter(Boolean).join(" ")}</div>
+                          <div style={{ fontSize: 10, color: T.muted }}>{c.email}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+
+                {!canConfirm && (
+                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>No contacts to add.</div>
                 )}
               </>
             )
@@ -579,57 +750,58 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
         </div>
 
         {error && (
-          <div style={{
-            margin: "0 24px 8px",
-            padding: "10px 14px", borderRadius: 7,
-            background: T.red + "15", border: "1px solid " + T.red + "40",
-            color: T.red, fontSize: 12,
-          }}>
+          <div style={{ margin: "0 24px 8px", padding: "10px 14px", borderRadius: 7, background: T.red + "15", border: "1px solid " + T.red + "40", color: T.red, fontSize: 12, flexShrink: 0 }}>
             {error}
           </div>
         )}
 
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 24px", borderTop: "1px solid " + T.border,
+          padding: "16px 24px", borderTop: "1px solid " + T.border, flexShrink: 0,
         }}>
           {step === 1 ? (
             <>
-              <button onClick={onClose} style={{
-                padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
-                background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-              }}>Cancel</button>
-              <button onClick={handleNext} disabled={loading} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", borderRadius: 7, border: "none",
-                background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                Next <ChevronRight size={13} />
+              <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={mode === "search" && selected.size === 0}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 18px", borderRadius: 7, border: "none",
+                  background: (mode === "search" && selected.size === 0) ? T.border : T.accent,
+                  color: (mode === "search" && selected.size === 0) ? T.muted : "#fff",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {mode === "search" && selected.size > 0
+                  ? `Add ${selected.size} Contact${selected.size !== 1 ? "s" : ""}`
+                  : "Next"
+                } <ChevronRight size={13} />
               </button>
             </>
           ) : (
             <>
-              <button onClick={() => { setStep(1); setError(null); }} style={{
-                padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
-                background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-              }}>← Back</button>
+              <button onClick={() => { setStep(1); setError(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                ← Back
+              </button>
               <button
                 onClick={handleAdd}
-                disabled={adding || !preview?.count || loading}
+                disabled={adding || !canConfirm || loading}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 18px", borderRadius: 7, border: "none",
-                  background: preview?.count && !adding ? T.accent : T.border,
-                  color: preview?.count && !adding ? "#fff" : T.muted,
+                  background: canConfirm && !adding ? T.accent : T.border,
+                  color: canConfirm && !adding ? "#fff" : T.muted,
                   fontSize: 13, fontWeight: 600,
-                  cursor: preview?.count && !adding ? "pointer" : "default",
+                  cursor: canConfirm && !adding ? "pointer" : "default",
                   fontFamily: "inherit",
                 }}
               >
                 {adding
                   ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Adding…</>
-                  : <><Plus size={13} /> Add {preview?.count || 0} Recipients</>
+                  : <><Plus size={13} /> Add {confirmCount} Recipient{confirmCount !== 1 ? "s" : ""}</>
                 }
               </button>
             </>
