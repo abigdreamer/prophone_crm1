@@ -4,24 +4,26 @@ setDefaultResultOrder('ipv4first');
 import express from 'express';
 import cors from 'cors';
 
-import authRoutes          from './routes/auth.routes.js';
-import usersRoutes         from './routes/users.routes.js';
-import clientsRoutes       from './routes/clients.routes.js';
-import contactsRoutes      from './routes/contacts.routes.js';
-import domainsRoutes       from './routes/domains.routes.js';
-import emailTemplateRoutes from './routes/emailTemplates.routes.js';
-import interactiveRoutes   from './routes/interactive.routes.js';
-import campaignRoutes      from './routes/campaigns.routes.js';
-import emailRoutes         from './routes/email.routes.js';
-import scoringRulesRoutes  from './routes/scoringRules.routes.js';
-import templateLinksRoutes from './routes/templateLinks.routes.js';
-import settingsRoutes          from './routes/settings.routes.js';
-import reportsRoutes           from './routes/reports.routes.js';
-import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
+import authRoutes             from './routes/auth.routes.js';
+import usersRoutes            from './routes/users.routes.js';
+import clientsRoutes          from './routes/clients.routes.js';
+import contactsRoutes         from './routes/contacts.routes.js';
+import domainsRoutes          from './routes/domains.routes.js';
+import emailTemplateRoutes    from './routes/emailTemplates.routes.js';
+import interactiveRoutes      from './routes/interactive.routes.js';
+import campaignRoutes         from './routes/campaigns.routes.js';
+import emailRoutes            from './routes/email.routes.js';
+import scoringRulesRoutes     from './routes/scoringRules.routes.js';
+import templateLinksRoutes    from './routes/templateLinks.routes.js';
+import settingsRoutes         from './routes/settings.routes.js';
+import reportsRoutes          from './routes/reports.routes.js';
+import posthogProjectsRoutes  from './routes/posthogProjects.routes.js';
+import providerSettingsRoutes from './routes/providerSettings.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
 import { loadEmailProviderConfig }               from './controllers/settings.controller.js';
+import { validateBrevoToken, processBrevoEvent } from './services/webhook/WebhookService.js';
 import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
 
@@ -33,8 +35,19 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Webhook must receive raw body for signature verification — mount BEFORE express.json()
+// Webhooks — raw body required for Resend signature verification
 app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHandler(handleWebhook));
+
+// Brevo webhooks — secured via token query param (?token=BREVO_WEBHOOK_SECRET)
+app.post('/webhooks/brevo', express.json(), asyncHandler(async (req, res) => {
+  const valid = await validateBrevoToken(req.query.token);
+  if (!valid) return res.status(401).json({ error: 'Invalid webhook token' });
+  const events = Array.isArray(req.body) ? req.body : [req.body];
+  await Promise.all(events.map(e => processBrevoEvent(e).catch(err =>
+    console.error('[webhook/brevo] processing error:', err.message),
+  )));
+  res.json({ received: true });
+}));
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -55,6 +68,7 @@ app.use('/api/email',               emailRoutes);
 app.use('/api/scoring-rules',       scoringRulesRoutes);
 app.use('/api/tl',                  templateLinksRoutes);
 app.use('/api/settings',            settingsRoutes);
+app.use('/api/provider-settings',   providerSettingsRoutes);
 app.use('/api/reports',             reportsRoutes);
 app.use('/api/posthog-projects',    posthogProjectsRoutes);
 

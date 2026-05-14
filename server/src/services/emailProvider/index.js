@@ -77,13 +77,15 @@ export function getProvider(name) {
 }
 
 /**
- * Send a single email using the configured provider.
+ * Send a single email using the configured provider (or an explicit override).
  * Payload: { to, from, fromName, subject, html, text?, replyTo?, headers? }
+ * @param {object} payload
+ * @param {string} [providerName] — explicit provider override (e.g. campaign.provider)
  * @returns {Promise<{ id: string, provider: string }>}
  */
-export async function sendEmail(payload) {
+export async function sendEmail(payload, providerName) {
   const { fallbackEnabled, fallbackProvider } = getRuntimeConfig();
-  const provider = getProvider();
+  const provider = getProvider(providerName);
   console.log(`[email] provider=${provider.name} action=sendEmail to=${payload.to}`);
 
   try {
@@ -99,13 +101,14 @@ export async function sendEmail(payload) {
 }
 
 /**
- * Send a batch of emails using the configured provider.
+ * Send a batch of emails using the configured provider (or an explicit override).
  * @param {Array<{ to, from, fromName, subject, html, text?, replyTo?, headers? }>} payloads
+ * @param {string} [providerName] — explicit provider override (e.g. campaign.provider)
  * @returns {Promise<Array<{ id: string, provider: string }>>}
  */
-export async function sendBatch(payloads) {
+export async function sendBatch(payloads, providerName) {
   const { fallbackEnabled, fallbackProvider } = getRuntimeConfig();
-  const provider = getProvider();
+  const provider = getProvider(providerName);
   console.log(`[email] provider=${provider.name} action=sendBatch count=${payloads.length}`);
 
   try {

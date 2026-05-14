@@ -331,8 +331,76 @@ function ContactFieldSettings({ clientId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Email Provider Settings
+// Email Settings (provider switch + API key management)
 // ─────────────────────────────────────────────────────────────────────────────
+
+function KeyDot({ has }) {
+  return (
+    <div
+      style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: has ? "#22c55e" : "#ef4444",
+        boxShadow: has ? "0 0 5px #22c55e88" : "none",
+      }}
+    />
+  );
+}
+
+function MaskedKeyInput({ label, placeholder, onSave, saving }) {
+  const T = useTheme();
+  const [val, setVal] = useState("");
+  const [show, setShow] = useState(false);
+
+  const handleSave = async () => {
+    if (!val.trim()) return;
+    await onSave(val.trim());
+    setVal("");
+  };
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, marginBottom: 6, letterSpacing: "0.05em" }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type={show ? "text" : "password"}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          placeholder={placeholder}
+          style={{
+            flex: 1, padding: "8px 12px", borderRadius: 8,
+            border: "1px solid " + T.border, background: T.surface,
+            color: T.text, fontSize: 12, fontFamily: "monospace",
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={() => setShow((s) => !s)}
+          style={{
+            padding: "8px 10px", borderRadius: 8, border: "1px solid " + T.border,
+            background: T.surface, color: T.muted, cursor: "pointer", fontSize: 11,
+          }}
+        >
+          {show ? "Hide" : "Show"}
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={!val.trim() || saving}
+          style={{
+            padding: "8px 14px", borderRadius: 8, border: "none",
+            background: val.trim() ? T.accent : T.border,
+            color: val.trim() ? "#fff" : T.muted,
+            fontWeight: 700, fontSize: 12,
+            cursor: val.trim() ? "pointer" : "not-allowed",
+          }}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function ProviderCard({ providerKey, selected, onSelect }) {
   const T = useTheme();
@@ -412,58 +480,46 @@ function EmailProviderSettings() {
   const T = useTheme();
   const toast = useAppToast();
 
-  const [loading, setLoading]   = useState(true);
-  const [saving, setSaving]     = useState(false);
-  const [dirty, setDirty]       = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const [switchSaving, setSwitchSaving] = useState(false);
+  const [keySaving, setKeySaving]   = useState({});
+  const [dirty, setDirty]           = useState(false);
 
-  const [effective, setEffective]               = useState(null);
+  const [effective, setEffective]             = useState(null);
   const [supportedProviders, setSupportedProviders] = useState([]);
+  const [keyStatuses, setKeyStatuses]         = useState({});
 
-  // Local edits
   const [provider, setProvider]               = useState("resend");
   const [fallbackEnabled, setFallbackEnabled] = useState(false);
   const [fallbackProvider, setFallbackProvider] = useState("brevo");
 
+  const loadAll = async () => {
+    const [provData, keyData] = await Promise.all([
+      db.getEmailProviderSettings(),
+      db.listProviderStatuses(),
+    ]);
+    setEffective(provData.effective);
+    setSupportedProviders(provData.supportedProviders || []);
+    setProvider(provData.effective.provider || "resend");
+    setFallbackEnabled(provData.effective.fallbackEnabled || false);
+    setFallbackProvider(provData.effective.fallbackProvider || "brevo");
+
+    const statMap = {};
+    (keyData.providers || []).forEach((p) => { statMap[p.provider] = p; });
+    setKeyStatuses(statMap);
+  };
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-
-    db.getEmailProviderSettings()
-      .then((data) => {
-        if (!mounted) return;
-        setEffective(data.effective);
-        setSupportedProviders(data.supportedProviders || []);
-        setProvider(data.effective.provider || "resend");
-        setFallbackEnabled(data.effective.fallbackEnabled || false);
-        setFallbackProvider(data.effective.fallbackProvider || "brevo");
-      })
-      .catch(() => toast.error("Could not load email provider settings."))
+    loadAll()
+      .catch(() => toast.error("Could not load email settings."))
       .finally(() => { if (mounted) setLoading(false); });
-
     return () => { mounted = false; };
   }, []);
 
-  function markDirty() {
-    setDirty(true);
-  }
-
-  const handleProviderSelect = (key) => {
-    setProvider(key);
-    markDirty();
-  };
-
-  const handleFallbackToggle = (val) => {
-    setFallbackEnabled(val);
-    markDirty();
-  };
-
-  const handleFallbackProviderSelect = (key) => {
-    setFallbackProvider(key);
-    markDirty();
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSwitchSave = async () => {
+    setSwitchSaving(true);
     try {
       const res = await db.saveEmailProviderSettings({
         provider,
@@ -472,191 +528,177 @@ function EmailProviderSettings() {
       });
       setEffective(res.effective);
       setDirty(false);
-      toast.success(`Email provider switched to ${PROVIDER_META[provider]?.label ?? provider}.`);
+      toast.success(`Active provider set to ${PROVIDER_META[provider]?.label ?? provider}.`);
     } catch (err) {
-      toast.error(err?.message || "Failed to save email provider settings.");
+      toast.error(err?.message || "Failed to save provider selection.");
     } finally {
-      setSaving(false);
+      setSwitchSaving(false);
     }
   };
 
-  if (loading) {
-    return <div style={{ padding: 32, color: T.muted }}>Loading...</div>;
-  }
+  const handleSaveKey = async (prov, apiKey) => {
+    setKeySaving((s) => ({ ...s, [prov]: true }));
+    try {
+      const result = await db.saveProviderApiKey(prov, apiKey);
+      setKeyStatuses((s) => ({ ...s, [prov]: result }));
+      toast.success(`${PROVIDER_META[prov]?.label ?? prov} API key saved.`);
+    } catch {
+      toast.error("Failed to save API key.");
+    } finally {
+      setKeySaving((s) => ({ ...s, [prov]: false }));
+    }
+  };
+
+  const handleSaveSecret = async (prov, secret) => {
+    setKeySaving((s) => ({ ...s, [`${prov}_secret`]: true }));
+    try {
+      const result = await db.saveProviderWebhookSecret(prov, secret);
+      setKeyStatuses((s) => ({ ...s, [prov]: result }));
+      toast.success(`${PROVIDER_META[prov]?.label ?? prov} webhook secret saved.`);
+    } catch {
+      toast.error("Failed to save webhook secret.");
+    } finally {
+      setKeySaving((s) => ({ ...s, [`${prov}_secret`]: false }));
+    }
+  };
+
+  if (loading) return <div style={{ padding: 32, color: T.muted }}>Loading...</div>;
 
   const fallbackOptions = supportedProviders.filter((p) => p !== provider);
 
   return (
     <div>
-      {/* Header */}
       <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>Email Provider</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>Email</div>
         <div style={{ fontSize: 13, color: T.muted, marginTop: 6 }}>
-          Choose which email delivery service is used for all outbound campaign and transactional email.
-          Changes take effect immediately — no server restart required.
+          Manage email delivery providers, API keys, and webhook secrets. Keys are encrypted and never exposed in API responses.
         </div>
       </div>
 
-      {/* Current active banner */}
+      {/* Active provider banner */}
       {effective && (
-        <div
-          style={{
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: T.accent + "12",
-            border: "1px solid " + T.accent + "30",
-            marginBottom: 24,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            fontSize: 13,
-            color: T.dim,
-          }}
-        >
-          <div
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "#22c55e",
-              flexShrink: 0,
-              boxShadow: "0 0 6px #22c55e88",
-            }}
-          />
-          Currently sending via{" "}
-          <strong style={{ color: T.text }}>
-            {PROVIDER_META[effective.provider]?.label ?? effective.provider}
-          </strong>
+        <div style={{
+          padding: "10px 16px", borderRadius: 10,
+          background: T.accent + "12", border: "1px solid " + T.accent + "30",
+          marginBottom: 24, display: "flex", alignItems: "center", gap: 10,
+          fontSize: 13, color: T.dim,
+        }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", flexShrink: 0, boxShadow: "0 0 6px #22c55e88" }} />
+          Sending via <strong style={{ color: T.text, marginLeft: 4 }}>{PROVIDER_META[effective.provider]?.label ?? effective.provider}</strong>
           {effective.fallbackEnabled && effective.fallbackProvider && (
-            <span style={{ color: T.muted }}>
-              {" "}· fallback:{" "}
-              {PROVIDER_META[effective.fallbackProvider]?.label ?? effective.fallbackProvider}
-            </span>
+            <span style={{ color: T.muted }}> · fallback: {PROVIDER_META[effective.fallbackProvider]?.label ?? effective.fallbackProvider}</span>
           )}
         </div>
       )}
 
-      {/* Provider cards */}
+      {/* ── API Keys ───────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: "0.06em" }}>
-        SELECT PROVIDER
+        API KEYS
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 28 }}>
+        {supportedProviders.map((prov) => {
+          const meta   = PROVIDER_META[prov] || { label: prov };
+          const status = keyStatuses[prov] || {};
+          return (
+            <div key={prov} style={{
+              background: T.card, border: "1px solid " + T.border,
+              borderRadius: 12, padding: "16px 20px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T.text }}>{meta.label}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <KeyDot has={status.hasApiKey} />
+                  <span style={{ fontSize: 11, color: T.muted }}>
+                    API key {status.hasApiKey ? `configured (${status.apiKeySource})` : "not set"}
+                  </span>
+                </div>
+                {status.hasWebhookSecret !== undefined && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <KeyDot has={status.hasWebhookSecret} />
+                    <span style={{ fontSize: 11, color: T.muted }}>
+                      Webhook secret {status.hasWebhookSecret ? `configured (${status.webhookSecretSource})` : "not set"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <MaskedKeyInput
+                label="API KEY"
+                placeholder={`Paste new ${meta.label} API key to update…`}
+                onSave={(key) => handleSaveKey(prov, key)}
+                saving={keySaving[prov]}
+              />
+
+              <MaskedKeyInput
+                label="WEBHOOK SECRET"
+                placeholder={`Paste new ${meta.label} webhook secret to update…`}
+                onSave={(secret) => handleSaveSecret(prov, secret)}
+                saving={keySaving[`${prov}_secret`]}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Active Provider Switch ─────────────────────────────────────────── */}
+      <div style={{ marginBottom: 8, fontSize: 12, fontWeight: 700, color: T.muted, letterSpacing: "0.06em" }}>
+        ACTIVE PROVIDER
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
         {supportedProviders.map((key) => (
-          <ProviderCard
-            key={key}
-            providerKey={key}
-            selected={provider}
-            onSelect={handleProviderSelect}
-          />
+          <ProviderCard key={key} providerKey={key} selected={provider}
+            onSelect={(k) => { setProvider(k); setDirty(true); }} />
         ))}
       </div>
 
-      {/* Fallback section */}
-      <div
-        style={{
-          background: T.card,
-          border: "1px solid " + T.border,
-          borderRadius: 12,
-          overflow: "hidden",
-          marginBottom: 28,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: fallbackEnabled ? "1px solid " + T.border : "none",
-          }}
-        >
+      {/* Fallback */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 20px", borderBottom: fallbackEnabled ? "1px solid " + T.border : "none",
+        }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Automatic Fallback</div>
             <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
               If the primary provider fails, retry with a secondary provider automatically.
             </div>
           </div>
-          <Toggle checked={fallbackEnabled} onChange={handleFallbackToggle} />
+          <Toggle checked={fallbackEnabled} onChange={(v) => { setFallbackEnabled(v); setDirty(true); }} />
         </div>
-
-        {fallbackEnabled && (
+        {fallbackEnabled && fallbackOptions.length > 0 && (
           <div style={{ padding: "14px 20px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, marginBottom: 10, letterSpacing: "0.05em" }}>
-              FALLBACK PROVIDER
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.muted, marginBottom: 10, letterSpacing: "0.05em" }}>FALLBACK PROVIDER</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {fallbackOptions.map((key) => {
+                const isSel = fallbackProvider === key;
+                return (
+                  <button key={key} onClick={() => { setFallbackProvider(key); setDirty(true); }}
+                    style={{
+                      padding: "8px 16px", borderRadius: 8,
+                      border: `1.5px solid ${isSel ? T.accent : T.border}`,
+                      background: isSel ? T.accent + "12" : T.surface,
+                      color: isSel ? T.accent : T.dim,
+                      fontWeight: 700, fontSize: 13, cursor: "pointer",
+                    }}>
+                    {PROVIDER_META[key]?.label ?? key}
+                  </button>
+                );
+              })}
             </div>
-            {fallbackOptions.length === 0 ? (
-              <div style={{ fontSize: 12, color: T.muted }}>
-                No other providers available. Add another provider to enable fallback.
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 10 }}>
-                {fallbackOptions.map((key) => {
-                  const isSelected = fallbackProvider === key;
-                  const meta = PROVIDER_META[key] || { label: key };
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => handleFallbackProviderSelect(key)}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: `1.5px solid ${isSelected ? T.accent : T.border}`,
-                        background: isSelected ? T.accent + "12" : T.surface,
-                        color: isSelected ? T.accent : T.dim,
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                        transition: "0.15s",
-                      }}
-                    >
-                      {meta.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Env var reminder */}
-      <div
-        style={{
-          padding: "12px 16px",
-          borderRadius: 10,
-          background: T.surface,
-          border: "1px solid " + T.border,
-          marginBottom: 28,
-          fontSize: 12,
-          color: T.muted,
-          lineHeight: 1.7,
-        }}
-      >
-        <strong style={{ color: T.dim }}>API keys must be set in your server environment.</strong>{" "}
-        Add <code style={{ fontFamily: "monospace", color: T.accent }}>RESEND_API_KEY</code> or{" "}
-        <code style={{ fontFamily: "monospace", color: T.accent }}>BREVO_API_KEY</code> to{" "}
-        <code style={{ fontFamily: "monospace", color: T.dim }}>server/.env</code>. The setting here
-        only controls which configured provider is active.
-      </div>
-
-      {/* Save */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          onClick={handleSave}
-          disabled={!dirty || saving}
+        <button onClick={handleSwitchSave} disabled={!dirty || switchSaving}
           style={{
-            padding: "10px 28px",
-            borderRadius: 10,
-            border: "none",
+            padding: "10px 28px", borderRadius: 10, border: "none",
             background: dirty ? T.accent : T.surface,
             color: dirty ? "#fff" : T.muted,
-            fontWeight: 800,
-            fontSize: 14,
-            cursor: dirty ? "pointer" : "not-allowed",
-            transition: "0.2s",
-          }}
-        >
-          {saving ? "Saving..." : "Apply Changes"}
+            fontWeight: 800, fontSize: 14,
+            cursor: dirty ? "pointer" : "not-allowed", transition: "0.2s",
+          }}>
+          {switchSaving ? "Applying..." : "Apply Changes"}
         </button>
       </div>
     </div>

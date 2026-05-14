@@ -24,16 +24,25 @@ export async function findByClientAndName(clientId, domainName) {
 
 export async function findFirstVerified(clientId) {
   return prisma.domain.findFirst({
-    where: {
-      clientId,
-      status: 'verified'
-    }
+    where: { clientId, status: 'verified' }
   });
 }
 
 export async function findAnyVerified() {
   return prisma.domain.findFirst({
     where: { status: 'verified' }
+  });
+}
+
+export async function findFirstVerifiedForProvider(clientId, provider) {
+  return prisma.domain.findFirst({
+    where: { clientId, provider, status: 'verified', isCanceled: false }
+  });
+}
+
+export async function findAnyVerifiedForProvider(provider) {
+  return prisma.domain.findFirst({
+    where: { provider, status: 'verified', isCanceled: false }
   });
 }
 

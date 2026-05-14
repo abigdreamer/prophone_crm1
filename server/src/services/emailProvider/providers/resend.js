@@ -1,25 +1,19 @@
 import { Resend } from 'resend';
 import { BaseEmailProvider } from './base.js';
-import { EmailError } from '../EmailError.js';
+import { EmailError }        from '../EmailError.js';
+import { getApiKey }         from '../../settings/SettingsService.js';
 
 export class ResendProvider extends BaseEmailProvider {
-  constructor() {
-    super();
-    this._client = null;
-  }
+  get name() { return 'resend'; }
 
-  get name() {
-    return 'resend';
-  }
-
-  _getClient() {
-    if (!this._client) {
-      if (!process.env.RESEND_API_KEY) {
-        throw new EmailError('RESEND_API_KEY is not set', { code: 'MISSING_CONFIG', provider: 'resend' });
-      }
-      this._client = new Resend(process.env.RESEND_API_KEY);
+  async _getClient() {
+    const key = await getApiKey('resend');
+    if (!key) {
+      throw new EmailError('Resend API key not configured. Add it in Settings → Email or set RESEND_API_KEY.', {
+        code: 'MISSING_CONFIG', provider: 'resend',
+      });
     }
-    return this._client;
+    return new Resend(key);
   }
 
   _buildFrom(from, fromName) {
@@ -27,7 +21,7 @@ export class ResendProvider extends BaseEmailProvider {
     const name  = fromName || process.env.RESEND_FROM_NAME;
     if (!email) {
       throw new EmailError(
-        'No sender email configured. Set RESEND_FROM_EMAIL or pass from in payload.',
+        'No sender email. Configure a verified domain with a senderPrefix or set RESEND_FROM_EMAIL.',
         { code: 'MISSING_SENDER', provider: 'resend' },
       );
     }
@@ -35,7 +29,7 @@ export class ResendProvider extends BaseEmailProvider {
   }
 
   async sendEmail({ to, from, fromName, subject, html, text, replyTo, headers }) {
-    const client = this._getClient();
+    const client  = await this._getClient();
     const payload = {
       from:    this._buildFrom(from, fromName),
       to:      Array.isArray(to) ? to : [to],
@@ -47,20 +41,16 @@ export class ResendProvider extends BaseEmailProvider {
     if (headers) payload.headers  = headers;
 
     const { data, error } = await client.emails.send(payload);
-
     if (error) {
-      throw new EmailError(
-        `Resend error: ${error.message || JSON.stringify(error)}`,
-        { code: 'PROVIDER_ERROR', provider: 'resend', originalError: error },
-      );
+      throw new EmailError(`Resend error: ${error.message || JSON.stringify(error)}`, {
+        code: 'PROVIDER_ERROR', provider: 'resend', originalError: error,
+      });
     }
-
     return { id: data.id, provider: 'resend' };
   }
 
   async sendBatch(payloads) {
-    const client = this._getClient();
-
+    const client = await this._getClient();
     const mapped = payloads.map(e => {
       const msg = {
         from:    this._buildFrom(e.from, e.fromName),
@@ -75,14 +65,11 @@ export class ResendProvider extends BaseEmailProvider {
     });
 
     const { data, error } = await client.batch.send(mapped);
-
     if (error) {
-      throw new EmailError(
-        `Resend batch error: ${error.message || JSON.stringify(error)}`,
-        { code: 'PROVIDER_BATCH_ERROR', provider: 'resend', originalError: error },
-      );
+      throw new EmailError(`Resend batch error: ${error.message || JSON.stringify(error)}`, {
+        code: 'PROVIDER_BATCH_ERROR', provider: 'resend', originalError: error,
+      });
     }
-
     const results = Array.isArray(data) ? data : (data?.data ?? []);
     return results.map(r => ({ id: r.id, provider: 'resend' }));
   }
@@ -90,7 +77,7 @@ export class ResendProvider extends BaseEmailProvider {
   async getEmailStatus(messageId) {
     if (!messageId) return null;
     try {
-      const client = this._getClient();
+      const client = await this._getClient();
       const { data, error } = await client.emails.get(messageId);
       if (error || !data) return null;
       return { status: data.last_event ?? data.status ?? null };

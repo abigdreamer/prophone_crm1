@@ -28,6 +28,28 @@ function thisWeekCount(list) {
   return list.filter(c => new Date(c.createdAt) > cutoff).length;
 }
 
+// ── Provider badge ────────────────────────────────────────────────────────────
+
+function ProviderBadge({ provider }) {
+  const T = useTheme();
+  if (!provider || provider === "resend") {
+    return (
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+        color: "#60a5fa", background: "#60a5fa18", border: "1px solid #60a5fa40",
+        borderRadius: 3, padding: "1px 5px", flexShrink: 0,
+      }}>Resend</span>
+    );
+  }
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+      color: "#f59e0b", background: "#f59e0b18", border: "1px solid #f59e0b40",
+      borderRadius: 3, padding: "1px 5px", flexShrink: 0,
+    }}>Brevo</span>
+  );
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -135,12 +157,13 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
             <span
               title={campaign.name}
-              style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>
+              style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 240 }}>
               {campaign.name}
             </span>
             {campaign.type === "ab_test" && (
               <span style={{ fontSize: 9, fontWeight: 700, flexShrink: 0, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 3, padding: "1px 5px" }}>A/B</span>
             )}
+            <ProviderBadge provider={campaign.provider} />
           </div>
           <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {campaign.fromName || "—"}{campaign.template?.name ? " · " + campaign.template.name : ""}
@@ -342,6 +365,30 @@ function WizardStep1({ form, setForm, onNext, onClose }) {
             })}
           </div>
         </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 8, letterSpacing: "0.04em" }}>EMAIL PROVIDER</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
+            {[
+              { id: "resend", label: "Resend",  color: "#60a5fa", desc: "Default provider" },
+              { id: "brevo",  label: "Brevo",   color: "#f59e0b", desc: "Alternative provider" },
+            ].map(({ id, label, color, desc }, i) => {
+              const active = (form.provider || "resend") === id;
+              return (
+                <button key={id} onClick={() => setForm(f => ({ ...f, provider: id }))} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+                  padding: "12px", border: "none", cursor: "pointer", fontFamily: "inherit",
+                  background: active ? color + "15" : T.surface, color: active ? color : T.muted,
+                  borderRight: i === 0 ? "1px solid " + T.border : "none",
+                  transition: "background 0.1s, color 0.1s",
+                }}>
+                  <Mail size={16} />
+                  <span style={{ fontSize: 12, fontWeight: active ? 700 : 400 }}>{label}</span>
+                  <span style={{ fontSize: 10, color: active ? color + "cc" : T.muted }}>{desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ marginBottom: 24 }}>
           <Field label="Campaign name" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))}
             placeholder="e.g. Q2 Towing Outreach" onKeyDown={e => e.key === "Enter" && nameOk && onNext()} autoFocus />
@@ -493,7 +540,7 @@ function NewCampaignModal({ onClose, onCreated }) {
   const [templates, setTemplates] = useState([]);
   const [clientName, setClientName] = useState("");
   const [form, setForm] = useState({
-    type: "regular", name: "",
+    type: "regular", name: "", provider: "resend",
     templateId: null, templateIdB: null,
     subject: "", subjectB: "", fromName: "", fromEmail: "",
   });
@@ -520,6 +567,7 @@ function NewCampaignModal({ onClose, onCreated }) {
         templateId: form.templateId, templateIdB: form.templateIdB || null,
         subject: form.subject.trim(), subjectB: form.type === "ab_test" ? form.subjectB.trim() : "",
         fromName: form.fromName.trim(), fromEmail: form.fromEmail.trim(),
+        provider: form.provider || "resend",
       });
       analytics.campaignCreated({ clientId: poolClientId || null });
       onCreated(campaign);

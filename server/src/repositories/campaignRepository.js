@@ -145,10 +145,10 @@ export async function findPendingRecipientsForSend(campaignId) {
   });
 }
 
-export async function markRecipientSent(id, messageId) {
+export async function markRecipientSent(id, messageId, provider = 'resend') {
   return prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sentAt: new Date(), provider },
   });
 }
 

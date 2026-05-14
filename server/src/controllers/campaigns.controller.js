@@ -4,7 +4,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
-import { sendBatch as sendBatchEmails } from '../services/emailProvider/index.js';
+import { sendBatch as sendBatchEmails, getRuntimeConfig } from '../services/emailProvider/index.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -12,6 +12,32 @@ import {
   buildEmailHeaders,
   buildUnsubUrl,
 } from '../services/email.js';
+
+// Resolve sender from verified domain for the campaign's provider.
+// Priority: campaign.fromEmail → verified domain senderPrefix → any verified domain → error
+async function resolveSender(campaign) {
+  const provider = campaign.provider || getRuntimeConfig().provider || 'resend';
+
+  if (campaign.fromEmail?.trim()) {
+    return { fromEmail: campaign.fromEmail.trim(), fromName: campaign.fromName || '', provider };
+  }
+
+  // Find verified domain scoped to provider + client
+  const clientDomain = await domainRepo.findFirstVerifiedForProvider(campaign.clientId, provider);
+  if (clientDomain) {
+    const fromEmail = `${clientDomain.senderPrefix || 'noreply'}@${clientDomain.domainName}`;
+    return { fromEmail, fromName: clientDomain.senderName || campaign.fromName || '', provider };
+  }
+
+  // Fallback: any verified domain for this provider
+  const anyDomain = await domainRepo.findAnyVerifiedForProvider(provider);
+  if (anyDomain) {
+    const fromEmail = `${anyDomain.senderPrefix || 'noreply'}@${anyDomain.domainName}`;
+    return { fromEmail, fromName: anyDomain.senderName || campaign.fromName || '', provider };
+  }
+
+  return null; // caller must error
+}
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -39,7 +65,7 @@ export const getCampaign = async (req, res) => {
 export const createCampaign = async (req, res) => {
   const {
     name, type = 'regular', clientId, templateId, templateIdB,
-    subject, subjectB, fromName, fromEmail,
+    subject, subjectB, fromName, fromEmail, provider,
   } = req.body ?? {};
   if (!name) return sendError(res, 'name is required', 400);
 
@@ -50,6 +76,8 @@ export const createCampaign = async (req, res) => {
       resolvedSubject = tmpl?.subject || '';
     }
 
+    const activeProvider = provider || getRuntimeConfig().provider || 'resend';
+
     const row = await repo.createCampaign({
       name, type, status: 'draft',
       clientId:    clientId    || null,
@@ -59,6 +87,7 @@ export const createCampaign = async (req, res) => {
       subjectB:    subjectB  || '',
       fromName:    fromName  || '',
       fromEmail:   fromEmail || '',
+      provider:    activeProvider,
     });
 
     const by = req.user?.name || req.user?.email || 'system';
@@ -75,7 +104,7 @@ export const updateCampaign = async (req, res) => {
     const existing = await repo.findById(req.params.id);
     if (!existing) return sendError(res, 'Campaign not found', 404);
 
-    const { name, status, templateId, templateIdB, subject, subjectB, fromName, fromEmail } = req.body ?? {};
+    const { name, status, templateId, templateIdB, subject, subjectB, fromName, fromEmail, provider } = req.body ?? {};
     const data = {};
     if (name        !== undefined) data.name        = name;
     if (status      !== undefined) data.status      = status;
@@ -85,6 +114,7 @@ export const updateCampaign = async (req, res) => {
     if (subjectB    !== undefined) data.subjectB    = subjectB;
     if (fromName    !== undefined) data.fromName    = fromName;
     if (fromEmail   !== undefined) data.fromEmail   = fromEmail;
+    if (provider    !== undefined) data.provider    = provider;
 
     const row = await repo.updateCampaign(req.params.id, data);
 
@@ -236,22 +266,12 @@ export const sendCampaign = async (req, res) => {
       ? await templateRepo.findById(campaign.templateIdB)
       : null;
 
-    // Resolve sender address: campaign field → verified client domain → env fallback
-    let fromEmail = campaign.fromEmail?.trim() || '';
-    if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
-      if (clientDomain) {
-        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
-      } else {
-        const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
-      }
+    // Resolve sender from campaign provider + verified domain
+    const sender = await resolveSender(campaign);
+    if (!sender) {
+      return sendError(res, 'No verified domain configured for this provider. Add a domain in Settings → Domains.', 400);
     }
-    if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
-    }
+    const { fromEmail, fromName: resolvedFromName, provider: campaignProvider } = sender;
 
     // Load all pending recipients with contact data (no pagination — need all for send)
     const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
@@ -317,7 +337,7 @@ export const sendCampaign = async (req, res) => {
             _recipientId: r.id,
             to:           r.contact.email,
             from:         fromEmail,
-            fromName:     campaign.fromName || '',
+            fromName:     resolvedFromName,
             subject:      subj,
             html,
             text,
@@ -328,10 +348,10 @@ export const sendCampaign = async (req, res) => {
       if (!emails.length) continue;
 
       try {
-        const results = await sendBatchEmails(emails);
+        const results = await sendBatchEmails(emails, campaignProvider);
 
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignProvider),
         ));
 
         totalSent += emails.length;
@@ -387,21 +407,11 @@ export const resendCampaign = async (req, res) => {
       ? await templateRepo.findById(campaign.templateIdB)
       : null;
 
-    let fromEmail = campaign.fromEmail?.trim() || '';
-    if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
-      if (clientDomain) {
-        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
-      } else {
-        const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
-      }
+    const sender = await resolveSender(campaign);
+    if (!sender) {
+      return sendError(res, 'No verified domain configured for this provider. Add a domain in Settings → Domains.', 400);
     }
-    if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
-    }
+    const { fromEmail, fromName: resolvedFromName, provider: campaignProvider } = sender;
 
     await repo.updateCampaign(campaignId, { status: 'sending' });
 
@@ -446,14 +456,14 @@ export const resendCampaign = async (req, res) => {
           const text    = htmlToPlainText(html);
           const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
 
-          return { _recipientId: r.id, to: r.contact.email, from: fromEmail, fromName: campaign.fromName || '', subject: subj, html, text, headers };
+          return { _recipientId: r.id, to: r.contact.email, from: fromEmail, fromName: resolvedFromName, subject: subj, html, text, headers };
         });
 
       if (!emails.length) continue;
       try {
-        const results = await sendBatchEmails(emails);
+        const results = await sendBatchEmails(emails, campaignProvider);
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignProvider),
         ));
         totalSent += emails.length;
       } catch (batchErr) {
@@ -523,6 +533,7 @@ export const duplicateCampaign = async (req, res) => {
       subjectB:    src.subjectB,
       fromName:    src.fromName,
       fromEmail:   src.fromEmail,
+      provider:    src.provider || 'resend',
       status:      'draft',
     });
 

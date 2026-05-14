@@ -383,6 +383,20 @@ export async function saveEmailProviderSettings(config) {
   return request('PUT', '/api/settings/email-provider', config);
 }
 
+// ── Provider Settings (encrypted API keys) ────────────────────────────────────
+
+export async function listProviderStatuses() {
+  return request('GET', '/api/provider-settings');
+}
+
+export async function saveProviderApiKey(provider, apiKey) {
+  return request('PUT', `/api/provider-settings/${provider}/api-key`, { apiKey });
+}
+
+export async function saveProviderWebhookSecret(provider, webhookSecret) {
+  return request('PUT', `/api/provider-settings/${provider}/webhook-secret`, { webhookSecret });
+}
+
 // ── Foxtow External API ───────────────────────────────────────────────────────
 
 export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {

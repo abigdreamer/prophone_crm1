@@ -128,8 +128,12 @@ model Domain {
   id                String    @id @default(uuid())
   clientId          String?   @map("client_id")
   domainName        String    @unique @map("domain_name")
-  resendDomainId    String    @map("resend_domain_id")
+  provider          String    @default("resend")
+  providerDomainId  String    @default("") @map("provider_domain_id")
+  resendDomainId    String    @default("") @map("resend_domain_id")
   status            String    @default("pending")
+  senderName        String    @default("") @map("sender_name")
+  senderPrefix      String    @default("noreply") @map("sender_prefix")
   defaultFromEmail  String    @default("") @map("default_from_email")
   spfRecord         String    @default("") @map("spf_record")
   dkimRecord        String    @default("") @map("dkim_record")
@@ -140,6 +144,7 @@ model Domain {
   restoredAt        DateTime? @map("restored_at")
   createdAt         DateTime  @default(now()) @map("created_at")
 
+  @@index([provider])
   @@map("domains")
 }
 
@@ -227,6 +232,7 @@ model Campaign {
   clientId          String?   @map("client_id")
   name              String
   type              String    @default("regular")
+  provider          String    @default("resend")
   status            String    @default("draft")
   templateId        String?   @map("template_id")
   templateIdB       String?   @map("template_id_b")
@@ -263,6 +269,7 @@ model CampaignRecipient {
   campaignId String    @map("campaign_id")
   contactId  String    @map("contact_id")
   abVariant  String?   @map("ab_variant")
+  provider   String    @default("resend")
   status     String    @default("pending")
   messageId  String?   @map("message_id")
   sentAt     DateTime? @map("sent_at")
@@ -327,6 +334,32 @@ model SystemSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+model ProviderSettings {
+  provider               String   @id
+  encryptedApiKey        String   @default("") @map("encrypted_api_key")
+  encryptedWebhookSecret String   @default("") @map("encrypted_webhook_secret")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("provider_settings")
+}
+
+model EmailEvent {
+  id                String   @id @default(uuid())
+  campaignId        String?  @map("campaign_id")
+  recipientId       String?  @map("recipient_id")
+  providerMessageId String?  @map("provider_message_id")
+  recipientEmail    String   @default("") @map("recipient_email")
+  provider          String   @default("")
+  event             String
+  occurredAt        DateTime @default(now()) @map("occurred_at")
+  metadata          Json?
+
+  @@index([providerMessageId])
+  @@index([campaignId])
+  @@index([recipientId])
+  @@map("email_events")
 }
 
 model PosthogProject {
