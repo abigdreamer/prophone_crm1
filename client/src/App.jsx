@@ -38,12 +38,21 @@ import ImportInline from './components/inline/ImportInline';
 
 import { useAuth } from './hooks/useAuth';
 import { useContacts } from './hooks/useContacts';
+import { useClients } from './context/ClientsContext';
 import { PageLoader, ContentLoader } from './components/ui/Loader';
 import { useAppToast } from './context/ToastContext';
 import * as db from './services/api';
 
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
+  const { reload: reloadClients } = useClients();
+
+  // ClientsProvider mounts before auth resolves, so the first fetch has no token.
+  // Re-fetch as soon as currentUser is available (login or page refresh).
+  useEffect(() => {
+    if (currentUser) reloadClients();
+  }, [currentUser?.id]); // eslint-disable-line
+
   if (loading) return <PageLoader text="Loading…" />;
   return (
     <Routes>
