@@ -8,6 +8,7 @@ import {
   deleteCampaign,
   cancelCampaign,
   restoreCampaign,
+  duplicateCampaign,
   listRecipients,
   addRecipients,
   previewRecipients,
@@ -28,8 +29,9 @@ router.get('/:id', getCampaign);
 router.post('/',   createCampaign);
 router.patch('/:id', updateCampaign);
 router.delete('/:id',       deleteCampaign);
-router.post('/:id/cancel',  cancelCampaign);
-router.post('/:id/restore', restoreCampaign);
+router.post('/:id/cancel',    cancelCampaign);
+router.post('/:id/restore',   restoreCampaign);
+router.post('/:id/duplicate', duplicateCampaign);
 
 router.get('/:id/recipients',         listRecipients);
 router.post('/:id/recipients',        addRecipients);

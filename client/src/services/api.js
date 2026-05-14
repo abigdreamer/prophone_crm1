@@ -345,6 +345,11 @@ export async function resendCampaign(id, recipientStatuses) {
   return r.data ?? r;
 }
 
+export async function duplicateCampaign(id) {
+  const r = await request('POST', `/api/campaigns/${id}/duplicate`);
+  return r.data ?? r;
+}
+
 export async function getCampaignAnalytics(id) {
   const r = await request('GET', `/api/campaigns/${id}/analytics`);
   return r.data ?? r;

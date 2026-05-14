@@ -2,14 +2,15 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
-  Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw,
+  Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
+  Send, Eye, MousePointerClick,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import { analytics } from "../services/analytics";
 import {
   getCampaigns, createCampaign, cancelCampaign, restoreCampaign,
-  getPublishedTemplates, getActivePool, getClients,
+  duplicateCampaign, getPublishedTemplates, getActivePool, getClients,
 } from "../services/api";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -68,11 +69,25 @@ function CampaignThumb({ campaign }) {
   );
 }
 
-// ── Campaign list row (matches TemplatesPage grid style) ─────────────────────
+// ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1.4fr 1fr 180px 130px 130px 44px";
+const GRID_COLS = "1fr 140px 220px 44px";
 
-function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
+function StatPill({ icon: Icon, value, color }) {
+  const T = useTheme();
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 4,
+      padding: "3px 8px", borderRadius: 20,
+      background: color + "14", border: "1px solid " + color + "30",
+    }}>
+      <Icon size={11} color={color} />
+      <span style={{ fontSize: 11, fontWeight: 600, color }}>{value ?? 0}</span>
+    </div>
+  );
+}
+
+function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -84,10 +99,8 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
     return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
-  const templateLabel = [campaign.fromName, campaign.template?.name].filter(Boolean).join(" · ") || "No template";
-  const createdLabel  = campaign.createdAt
-    ? new Date(campaign.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : "—";
+  const isSent = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending");
+  const effectiveStatus = campaign.isCanceled ? "canceled" : campaign.status;
 
   return (
     <div
@@ -103,91 +116,64 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
         transition: "background 0.1s", position: "relative",
       }}
     >
-      {/* CAMPAIGN col: icon + name + subtitle */}
+      {/* TITLE col */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <CampaignThumb campaign={campaign} />
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span
+              title={campaign.name}
+              style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>
               {campaign.name}
             </span>
             {campaign.type === "ab_test" && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, flexShrink: 0,
-                color: T.purple, background: T.purple + "18",
-                border: "1px solid " + T.purple + "30",
-                borderRadius: 3, padding: "1px 5px",
-              }}>A/B</span>
+              <span style={{ fontSize: 9, fontWeight: 700, flexShrink: 0, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 3, padding: "1px 5px" }}>A/B</span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: "monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {templateLabel}
+          <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {campaign.fromName || "—"}{campaign.template?.name ? " · " + campaign.template.name : ""}
           </div>
         </div>
       </div>
 
-      {/* SUBJECT col */}
-      <div style={{ fontSize: 13, color: T.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16 }}>
-        {campaign.subject
-          ? campaign.subject
-          : <span style={{ color: T.muted, fontStyle: "italic" }}>No subject</span>
-        }
-      </div>
-
       {/* STATUS col */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <StatusBadge status={campaign.isCanceled ? "canceled" : campaign.status} />
-      </div>
+      <StatusBadge status={effectiveStatus} />
 
-      {/* MINI STATS col — only meaningful for sent/sending campaigns */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {(campaign.status === "sent" || campaign.status === "sending") && campaign.recipientsCount > 0 ? (
+      {/* PERFORMANCE col — counts for sent/sending */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {isSent ? (
           <>
-            {[
-              { label: "Sent",   val: campaign.sentCount,    total: campaign.recipientsCount, color: "#60a5fa" },
-              { label: "Opens",  val: campaign.openedCount,  total: campaign.sentCount || campaign.recipientsCount, color: "#34d399" },
-              { label: "Clicks", val: campaign.clickedCount, total: campaign.openedCount || 1, color: "#a78bfa" },
-            ].map(({ label, val = 0, total = 1, color }) => {
-              const pct = total > 0 ? Math.min(100, Math.round((val / total) * 100)) : 0;
-              return (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <div style={{ fontSize: 9, color: T.muted, width: 30, flexShrink: 0 }}>{label}</div>
-                  <div style={{ flex: 1, height: 4, borderRadius: 2, background: T.border, overflow: "hidden" }}>
-                    <div style={{ width: pct + "%", height: "100%", background: color, borderRadius: 2, transition: "width 0.3s" }} />
-                  </div>
-                  <div style={{ fontSize: 9, color: T.dim, width: 22, textAlign: "right", flexShrink: 0 }}>{pct}%</div>
-                </div>
-              );
-            })}
+            <StatPill icon={Send}              value={campaign.sentCount}    color="#60a5fa" />
+            <StatPill icon={Eye}               value={campaign.openedCount}  color="#34d399" />
+            <StatPill icon={MousePointerClick} value={campaign.clickedCount} color="#a78bfa" />
           </>
         ) : (
-          <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>—</span>
+          <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>
+            {campaign.recipientsCount > 0 ? campaign.recipientsCount + " recipients" : "No recipients"}
+          </span>
         )}
       </div>
-
-      {/* CREATED col */}
-      <div style={{ fontSize: 13, color: T.muted }}>{createdLabel}</div>
 
       {/* ACTIONS col */}
       <div ref={menuRef} style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
         <button
           onClick={() => setMenuOpen(o => !o)}
-          style={{
-            width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "transparent", border: "1px solid transparent", borderRadius: 7,
-            color: T.muted, cursor: "pointer",
-          }}
+          style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid transparent", borderRadius: 7, color: T.muted, cursor: "pointer" }}
           onMouseEnter={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.borderColor = T.border; }}
           onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
         >
           <MoreVertical size={15} />
         </button>
         {menuOpen && (
-          <div style={{
-            position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200,
-            background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-            minWidth: 150, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0",
-          }}>
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0" }}>
+            <button
+              onClick={() => { setMenuOpen(false); onDuplicate(campaign); }}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={e => e.currentTarget.style.background = T.surface}
+              onMouseLeave={e => e.currentTarget.style.background = "none"}
+            >
+              <Copy size={12} /> Duplicate
+            </button>
             {campaign.isCanceled ? (
               <button
                 onClick={() => { setMenuOpen(false); onRestore(campaign); }}
@@ -664,6 +650,13 @@ export default function CampaignsPage() {
     finally { setActing(false); }
   }, [toRestore]);
 
+  const handleDuplicate = useCallback(async (campaign) => {
+    try {
+      const copy = await duplicateCampaign(campaign.id);
+      navigate("/campaigns/" + copy.id);
+    } catch (err) { console.error(err); }
+  }, [navigate]);
+
   const filtered = campaigns.filter(c => {
     const effectiveStatus = c.isCanceled ? "canceled" : c.status;
     const matchStatus = statusFilter === "all" || effectiveStatus === statusFilter;
@@ -771,7 +764,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Subject", "Status", "Performance", "Created", ""].map((h, i) => (
+            {["Campaign", "Status", "Performance", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
@@ -789,6 +782,7 @@ export default function CampaignsPage() {
                 onOpen={() => navigate("/campaigns/" + c.id)}
                 onCancel={setToCancel}
                 onRestore={setToRestore}
+                onDuplicate={handleDuplicate}
               />
             ))
           )}

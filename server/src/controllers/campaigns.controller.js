@@ -164,7 +164,6 @@ export const addRecipients = async (req, res) => {
   try {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
-    if (campaign.status === 'sent') return sendError(res, 'Cannot add recipients to a sent campaign', 400);
 
     let ids = [];
     if (Array.isArray(contactIds) && contactIds.length) {
@@ -504,6 +503,33 @@ export const getCampaignAnalytics = async (req, res) => {
     });
   } catch (err) {
     sendServerError(res, err, 'getCampaignAnalytics');
+  }
+};
+
+// ── Duplicate campaign ────────────────────────────────────────────────────────
+
+export const duplicateCampaign = async (req, res) => {
+  try {
+    const src = await repo.findById(req.params.id);
+    if (!src) return sendError(res, 'Campaign not found', 404);
+
+    const copy = await repo.createCampaign({
+      name:        src.name + ' (Copy)',
+      type:        src.type,
+      clientId:    src.clientId,
+      templateId:  src.templateId,
+      templateIdB: src.templateIdB,
+      subject:     src.subject,
+      subjectB:    src.subjectB,
+      fromName:    src.fromName,
+      fromEmail:   src.fromEmail,
+      status:      'draft',
+    });
+
+    const result = await repo.findById(copy.id);
+    sendSuccess(res, result);
+  } catch (err) {
+    sendServerError(res, err, 'duplicateCampaign');
   }
 };
 

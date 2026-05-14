@@ -5,13 +5,13 @@ import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw,
+  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
-  cancelCampaign, restoreCampaign,
+  cancelCampaign, restoreCampaign, duplicateCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
@@ -1434,10 +1434,11 @@ export default function CampaignDetailPage() {
 
   if (!campaign) return null;
 
-  const canSend   = ["draft", "paused"].includes(campaign.status) && campaign.recipientsCount > 0;
-  const isSent    = campaign.status === "sent";
-  const isSending = campaign.status === "sending";
-  const isAbTest  = campaign.type === "ab_test";
+  const canSend       = ["draft", "paused"].includes(campaign.status) && campaign.recipientsCount > 0;
+  const isSent        = campaign.status === "sent";
+  const isSending     = campaign.status === "sending";
+  const isAbTest      = campaign.type === "ab_test";
+  const pendingCount  = Math.max(0, (campaign.recipientsCount ?? 0) - (campaign.sentCount ?? 0) - (campaign.bouncedCount ?? 0));
 
   const totals = analytics?.totals ?? {};
   const rates  = analytics?.rates  ?? {};
@@ -1494,15 +1495,19 @@ export default function CampaignDetailPage() {
                 }}>
                   <button
                     onClick={() => { setMenuOpen(false); setShowEditModal(true); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "10px 14px", border: "none", background: "transparent",
-                      color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
                     onMouseEnter={e => e.currentTarget.style.background = T.surface}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <Pencil size={13} /> Edit Campaign
+                  </button>
+                  <button
+                    onClick={async () => { setMenuOpen(false); try { const copy = await duplicateCampaign(id); navigate("/campaigns/" + copy.id); } catch(e) { console.error(e); } }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.dim, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.surface}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <Copy size={13} /> Duplicate
                   </button>
                   {campaign.isCanceled ? (
                     <button
@@ -1556,7 +1561,8 @@ export default function CampaignDetailPage() {
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
             </div>
           )}
-          {!isSent && (
+          {/* Add Recipients — available for all non-canceled campaigns */}
+          {!campaign.isCanceled && (
             <button
               onClick={() => setShowAddModal(true)}
               style={{
@@ -1566,6 +1572,21 @@ export default function CampaignDetailPage() {
               }}
             >
               <Plus size={13} /> Add Recipients
+            </button>
+          )}
+          {/* Send to new pending recipients (for sent campaigns with new additions) */}
+          {isSent && pendingCount > 0 && (
+            <button
+              onClick={() => handleResend(["pending"])}
+              disabled={sending}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.accent + "60",
+                background: T.accent + "12", color: T.accent, fontSize: 12, fontWeight: 600,
+                cursor: sending ? "default" : "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Send size={12} /> Send to {pendingCount} New
             </button>
           )}
           {canSend && (
