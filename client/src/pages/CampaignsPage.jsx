@@ -71,7 +71,7 @@ function CampaignThumb({ campaign }) {
 
 // ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1fr 140px 220px 44px";
+const GRID_COLS = "1fr 200px 44px";
 
 function StatPill({ icon: Icon, value, color }) {
   const T = useTheme();
@@ -136,22 +136,18 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
         </div>
       </div>
 
-      {/* STATUS col */}
-      <StatusBadge status={effectiveStatus} />
-
-      {/* PERFORMANCE col — counts for sent/sending */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      {/* STATUS + PERFORMANCE col — stacked */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+        <StatusBadge status={effectiveStatus} />
         {isSent ? (
-          <>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <StatPill icon={Send}              value={campaign.sentCount}    color="#60a5fa" />
             <StatPill icon={Eye}               value={campaign.openedCount}  color="#34d399" />
             <StatPill icon={MousePointerClick} value={campaign.clickedCount} color="#a78bfa" />
-          </>
-        ) : (
-          <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>
-            {campaign.recipientsCount > 0 ? campaign.recipientsCount + " recipients" : "No recipients"}
-          </span>
-        )}
+          </div>
+        ) : campaign.recipientsCount > 0 ? (
+          <span style={{ fontSize: 10, color: T.muted }}>{campaign.recipientsCount} recipients</span>
+        ) : null}
       </div>
 
       {/* ACTIONS col */}
@@ -764,7 +760,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Status", "Performance", ""].map((h, i) => (
+            {["Campaign", "Status", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
