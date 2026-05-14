@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
-import { sendSingleEmail } from '../services/resendService.js';
+import { sendEmail as sendSingleEmail } from '../services/emailProvider/index.js';
 import { htmlToPlainText } from '../services/email.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo    from '../repositories/domainRepository.js';

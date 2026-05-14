@@ -4,7 +4,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
-import { sendBatchEmails } from '../services/resendService.js';
+import { sendBatch as sendBatchEmails } from '../services/emailProvider/index.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,

@@ -375,6 +375,14 @@ export async function saveSettings(clientId, module, config) {
   return request('PUT', '/api/settings', { clientId: clientId || null, module, config });
 }
 
+export async function getEmailProviderSettings() {
+  return request('GET', '/api/settings/email-provider');
+}
+
+export async function saveEmailProviderSettings(config) {
+  return request('PUT', '/api/settings/email-provider', config);
+}
+
 // ── Foxtow External API ───────────────────────────────────────────────────────
 
 export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {

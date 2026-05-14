@@ -21,6 +21,7 @@ import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
+import { loadEmailProviderConfig }               from './controllers/settings.controller.js';
 import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
 
@@ -65,7 +66,10 @@ app.use((err, req, res, _next) => {
 });
 
 const PORT   = process.env.PORT || 8080;
-const server = app.listen(PORT, () => console.log(`ProPhone API listening on port ${PORT}`));
+const server = app.listen(PORT, async () => {
+  console.log(`ProPhone API listening on port ${PORT}`);
+  await loadEmailProviderConfig();
+});
 
 let _bindRetry = false;
 server.on('error', (err) => {

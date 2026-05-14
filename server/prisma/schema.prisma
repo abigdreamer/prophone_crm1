@@ -321,6 +321,14 @@ model TenantSettings {
   @@map("tenant_settings")
 }
 
+model SystemSettings {
+  module    String   @id
+  config    Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
 model PosthogProject {
   id         String   @id @default(uuid())
   key        String   @unique
