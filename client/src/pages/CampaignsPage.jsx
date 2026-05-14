@@ -71,7 +71,7 @@ function CampaignThumb({ campaign }) {
 
 // ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1fr 200px 44px";
+const GRID_COLS = "1fr 110px 80px 80px 80px 44px";
 
 function StatPill({ icon: Icon, value, color }) {
   const T = useTheme();
@@ -83,6 +83,18 @@ function StatPill({ icon: Icon, value, color }) {
     }}>
       <Icon size={11} color={color} />
       <span style={{ fontSize: 11, fontWeight: 600, color }}>{value ?? 0}</span>
+    </div>
+  );
+}
+
+function StatCell({ icon: Icon, value, color, T }) {
+  if (value === null || value === undefined) {
+    return <div style={{ fontSize: 12, color: T.muted }}>—</div>;
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <Icon size={12} color={color} />
+      <span style={{ fontSize: 12, fontWeight: 600, color }}>{value}</span>
     </div>
   );
 }
@@ -136,19 +148,17 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
         </div>
       </div>
 
-      {/* STATUS + PERFORMANCE col — stacked */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-        <StatusBadge status={effectiveStatus} />
-        {isSent ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <StatPill icon={Send}              value={campaign.sentCount}    color="#60a5fa" />
-            <StatPill icon={Eye}               value={campaign.openedCount}  color="#34d399" />
-            <StatPill icon={MousePointerClick} value={campaign.clickedCount} color="#a78bfa" />
-          </div>
-        ) : campaign.recipientsCount > 0 ? (
-          <span style={{ fontSize: 10, color: T.muted }}>{campaign.recipientsCount} recipients</span>
-        ) : null}
-      </div>
+      {/* STATUS col */}
+      <div><StatusBadge status={effectiveStatus} /></div>
+
+      {/* SENT col */}
+      <StatCell icon={Send} value={isSent ? campaign.sentCount : null} color="#60a5fa" T={T} />
+
+      {/* OPEN col */}
+      <StatCell icon={Eye} value={isSent ? campaign.openedCount : null} color="#34d399" T={T} />
+
+      {/* CLICK col */}
+      <StatCell icon={MousePointerClick} value={isSent ? campaign.clickedCount : null} color="#a78bfa" T={T} />
 
       {/* ACTIONS col */}
       <div ref={menuRef} style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
@@ -760,7 +770,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Status", ""].map((h, i) => (
+            {["Campaign", "Status", "Sent", "Open", "Click", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
