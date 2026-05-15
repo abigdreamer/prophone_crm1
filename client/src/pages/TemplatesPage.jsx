@@ -2222,6 +2222,9 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   const [previewDevice, setPreviewDevice] = useState("desktop");
   const [tagsOpen,      setTagsOpen]      = useState(false);
   const [fromOpen,      setFromOpen]      = useState(false);
+  const [importing,     setImporting]     = useState(false);
+  const [safeMode,      setSafeMode]      = useState(false);
+  const [validation,    setValidation]    = useState(null);
   const fromRef  = useRef(null);
   const tagsRef  = useRef(null);
   const taRef    = useRef(null);
@@ -2301,7 +2304,25 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setHtmlCode(ev.target.result || "");
+    reader.onload = async ev => {
+      const raw = ev.target.result || "";
+      setImporting(true);
+      try {
+        const result = await store.importHtml(raw, { safeMode });
+        setHtmlCode(result.html);
+        setValidation(result.validation);
+        const { validation: v } = result;
+        if (v.warnings.length > 0) {
+          toast.warning(v.warnings[0]);
+        } else {
+          toast.success(`Imported — ${v.linkCount} links, ${v.imageCount} images, ${v.sizeKb} KB`);
+        }
+      } catch {
+        toast.error("Import failed. The file may be too large or malformed.");
+      } finally {
+        setImporting(false);
+      }
+    };
     reader.readAsText(file);
     e.target.value = "";
   }
@@ -2405,15 +2426,25 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
         {/* Left 50%: HTML code editor (always dark) */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", borderRight: "1px solid #21262d", overflow: "hidden" }}>
           {/* Editor sub-header */}
-          <div style={{ height: 44, background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 14px", gap: 8, flexShrink: 0 }}>
+          <div style={{ background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }}>
+            <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 14px", gap: 8 }}>
             <Code2 size={13} color="#8b949e" />
             <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
             <div style={{ flex: 1 }} />
 
+            {/* Safe mode toggle */}
+            <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", userSelect: "none" }}>
+              <div style={{ width: 28, height: 16, borderRadius: 8, background: safeMode ? "#6366f1" : "#30363d", position: "relative", transition: "background 0.18s", flexShrink: 0, cursor: "pointer" }}
+                onClick={() => setSafeMode(p => !p)}>
+                <div style={{ position: "absolute", top: 2, left: safeMode ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: "#fff", transition: "left 0.18s" }} />
+              </div>
+              <span style={{ fontSize: 11, color: safeMode ? "#c9d1d9" : "#8b949e", fontWeight: 600 }}>Safe Mode</span>
+            </label>
+
             <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
-            <button onClick={() => fileRef.current?.click()}
-              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-              ⬆ Import .html
+            <button onClick={() => fileRef.current?.click()} disabled={importing}
+              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: importing ? "#484f58" : "#c9d1d9", cursor: importing ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: importing ? 0.7 : 1 }}>
+              {importing ? <><LoaderCircle size={11} style={{ animation: "_tspin 0.8s linear infinite" }} /> Importing…</> : "⬆ Import .html"}
             </button>
 
             <div ref={tagsRef} style={{ position: "relative" }}>
@@ -2440,6 +2471,19 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
               style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit" }}>
               ⊡ Button
             </button>
+            </div>
+
+            {/* Validation bar — shown after a file is imported */}
+            {validation && (
+              <div style={{ borderTop: "1px solid #21262d", padding: "4px 14px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>🔗 <strong style={{ color: "#c9d1d9" }}>{validation.linkCount}</strong> links</span>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>🖼 <strong style={{ color: "#c9d1d9" }}>{validation.imageCount}</strong> images</span>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>📄 <strong style={{ color: "#c9d1d9" }}>{validation.sizeKb}</strong> KB</span>
+                {validation.warnings.map((w, i) => (
+                  <span key={i} style={{ fontSize: 10, color: "#f97316" }}>⚠ {w}</span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Code area with line numbers */}
