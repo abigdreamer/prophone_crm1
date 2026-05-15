@@ -256,6 +256,13 @@ export async function sendTestEmail(id, email) {
   return r.data ?? r;
 }
 
+// Sanitize + validate HTML server-side. Returns { html, validation }.
+// Does NOT save to the database — use createTemplate / updateTemplate for that.
+export async function importHtml(html, { safeMode = false } = {}) {
+  const r = await request('POST', '/api/email-templates/import', { html, safeMode });
+  return r.data ?? r;
+}
+
 // ── Interactive Sessions ──────────────────────────────────────────────────────
 
 export async function createInteractiveSession(data) {

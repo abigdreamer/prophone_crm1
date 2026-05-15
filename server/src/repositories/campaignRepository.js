@@ -224,8 +224,8 @@ export async function logEvent(recipientId, campaignId, event, metadata = null) 
 export async function getRecipientEvents(recipientId) {
   return prisma.campaignRecipientEvent.findMany({
     where:   { recipientId },
-    orderBy: { occurredAt: 'asc' },
-    select:  { id: true, event: true, occurredAt: true, metadata: true },
+    orderBy: { createdAt: 'asc' },
+    select:  { id: true, event: true, createdAt: true, metadata: true },
   });
 }
 
@@ -305,25 +305,38 @@ export async function applyTrackingEvent(recipientId, event) {
     };
 
     const activityRows = [];
+    const eventRows    = [];
 
     // Backfilled open activity (appears first in the timeline)
     if (openBackfilled) {
       activityRows.push({
-        contactId: recipient.contactId,
-        type:      'email_opened',
-        note:      'Opened a campaign email (inferred from click)',
-        by:        'System',
-        points:    tracking.openPoints,
+        entityType: 'contact',
+        entityId:   recipient.contactId,
+        type:       'email_opened',
+        note:       'Opened a campaign email (inferred from click)',
+        by:         'System',
+        points:     tracking.openPoints,
+      });
+      eventRows.push({
+        recipientId: recipient.id,
+        campaignId:  recipient.campaignId,
+        event:       'opened',
       });
     }
 
     // Primary event activity
     activityRows.push({
-      contactId: recipient.contactId,
-      type:      isOpen ? 'email_opened' : 'email_clicked',
-      note:      isOpen ? 'Opened a campaign email' : 'Clicked a link in a campaign email',
-      by:        'System',
-      points:    isOpen ? tracking.openPoints : tracking.clickPoints,
+      entityType: 'contact',
+      entityId:   recipient.contactId,
+      type:       isOpen ? 'email_opened' : 'email_clicked',
+      note:       isOpen ? 'Opened a campaign email' : 'Clicked a link in a campaign email',
+      by:         'System',
+      points:     isOpen ? tracking.openPoints : tracking.clickPoints,
+    });
+    eventRows.push({
+      recipientId: recipient.id,
+      campaignId:  recipient.campaignId,
+      event:       isOpen ? 'opened' : 'clicked',
     });
 
     await Promise.all([
@@ -331,6 +344,7 @@ export async function applyTrackingEvent(recipientId, event) {
       tx.campaign.update({          where: { id: recipient.campaignId },  data: campaignData  }),
       tx.contact.update({           where: { id: recipient.contactId },   data: contactData   }),
       ...activityRows.map(data => tx.activity.create({ data })),
+      ...eventRows.map(data => tx.campaignRecipientEvent.create({ data })),
     ]);
   });
 }

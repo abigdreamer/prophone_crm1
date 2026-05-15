@@ -11,6 +11,7 @@ import {
 } from '../services/templateLinkService.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
+import { importHtml as processImport } from '../services/htmlImporter.js';
 
 // ── Guard: assert client exists ───────────────────────────────────────────────
 
@@ -234,6 +235,27 @@ export const duplicateTemplate = async (req, res) => {
     sendSuccess(res, { ...copy, links }, 201);
   } catch (err) {
     sendServerError(res, err, 'duplicateTemplate');
+  }
+};
+
+// ── HTML import — sanitize + validate, no DB write ────────────────────────────
+export const importHtml = (req, res) => {
+  try {
+    const { html, safeMode = false } = req.body ?? {};
+
+    if (!html || typeof html !== 'string' || !html.trim()) {
+      return sendError(res, 'html is required', 400);
+    }
+
+    const MAX_SIZE = 500 * 1024; // 500 KB hard cap
+    if (Buffer.byteLength(html, 'utf8') > MAX_SIZE) {
+      return sendError(res, 'HTML is too large (max 500 KB)', 413);
+    }
+
+    const result = processImport(html, { safeMode: Boolean(safeMode) });
+    sendSuccess(res, result);
+  } catch (err) {
+    sendServerError(res, err, 'importHtml');
   }
 };
 
