@@ -22,8 +22,10 @@ export const ACT_DEF = {
   contract_signed:  { label: "Contract Signed",  icon: "✍", color: T.green,   cat: "proposal" },
 
   note_added:       { label: "Note Added",       icon: "◆", color: T.dim,     cat: "note"     },
-  lead_updated:  { label: "Lead Updated",  icon: "✎", color: T.orange,  cat: "system"   },
+  lead_updated:     { label: "Lead Updated",    icon: "✎", color: T.orange,  cat: "system"   },
   stage_changed:    { label: "Stage Changed",    icon: "⇢", color: "#6366f1", cat: "system"   },
+  contact_created:  { label: "Contact Created",  icon: "✦", color: T.accent,  cat: "system"   },
+  contact_imported: { label: "Contact Imported", icon: "⇩", color: T.teal,    cat: "system"   },
 
   form_submitted:   { label: "Form Submitted",   icon: "✓", color: T.green,   cat: "inbound"  },
   page_visited:     { label: "Page Visited",     icon: "○", color: T.muted,   cat: "inbound"  },

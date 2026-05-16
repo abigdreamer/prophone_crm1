@@ -4,7 +4,7 @@ import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
-import { ENTITY_TYPE, ACTION } from '../constants/index.js';
+import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
 import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
@@ -276,6 +276,8 @@ export const sendCampaign = async (req, res) => {
       console.warn('[sendCampaign] APP_BASE_URL not set — open/click tracking disabled');
     }
 
+    const sentContactIds = [];
+
     for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
       const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
 
@@ -335,6 +337,9 @@ export const sendCampaign = async (req, res) => {
           repo.markRecipientSent(e._recipientId, results[j]?.id || null),
         ));
 
+        batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
+          .forEach(r => sentContactIds.push(r.contact.id));
+
         totalSent += emails.length;
       } catch (batchErr) {
         // Log but continue with remaining batches; partial sends still count
@@ -350,6 +355,20 @@ export const sendCampaign = async (req, res) => {
 
     const by = req.user?.name || req.user?.email || 'system';
     logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND, `Campaign sent to ${totalSent} recipients`, by);
+
+    // Log email_sent activity per contact
+    if (sentContactIds.length) {
+      await prisma.activity.createMany({
+        data: sentContactIds.map(contactId => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   contactId,
+          type:       ACTIVITY_TYPE.EMAIL_SENT,
+          note:       `Campaign email sent: "${campaign.name}"`,
+          by,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
@@ -444,6 +463,7 @@ export const sendToContacts = async (req, res) => {
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
     const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
     let totalSent = 0;
+    const sentContactIdsQuick = [];
 
     for (let i = 0; i < pendingRecipients.length; i += SEND_BATCH_SIZE) {
       const batch = pendingRecipients.slice(i, i + SEND_BATCH_SIZE);
@@ -490,6 +510,8 @@ export const sendToContacts = async (req, res) => {
         await Promise.all(emails.map((e, j) =>
           repo.markRecipientSent(e._recipientId, results[j]?.id || null),
         ));
+        batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
+          .forEach(r => sentContactIdsQuick.push(r.contact.id));
         totalSent += emails.length;
       } catch (batchErr) {
         console.error('[sendToContacts] batch error:', batchErr.message);
@@ -504,6 +526,20 @@ export const sendToContacts = async (req, res) => {
     const by = req.user?.name || req.user?.email || 'system';
     logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND,
       `Quick-sent to ${totalSent} contact${totalSent !== 1 ? 's' : ''}`, by);
+
+    // Log email_sent activity per contact
+    if (sentContactIdsQuick.length) {
+      await prisma.activity.createMany({
+        data: sentContactIdsQuick.map(contactId => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   contactId,
+          type:       ACTIVITY_TYPE.EMAIL_SENT,
+          note:       `Campaign email sent: "${campaign.name}"`,
+          by,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     sendSuccess(res, {
       sent:    totalSent,

@@ -179,9 +179,12 @@ export default function Sidebar({
             </div>
             <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
               {filtered.length.toLocaleString()} leads
-              {selEnabled && selectedIds?.size > 0 && (
-                <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {selectedIds.size} selected</span>
-              )}
+              {selEnabled && (() => {
+                const visibleSelected = filtered.slice(0, 150).filter(c => selectedIds?.has(c.id)).length;
+                return visibleSelected > 0
+                  ? <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {visibleSelected} selected</span>
+                  : null;
+              })()}
             </div>
           </div>
           {selEnabled && (() => {

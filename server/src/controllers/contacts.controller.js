@@ -172,8 +172,8 @@ async function createContact(req, res) {
     data: {
       entityType: ENTITY_TYPE.CONTACT,
       entityId:   contact.id,
-      type: ACTIVITY_TYPE.STAGE_CHANGED,
-      note: 'Contact created',
+      type: ACTIVITY_TYPE.CONTACT_CREATED,
+      note: `Contact created manually by ${by}`,
       by,
     },
   });
@@ -425,6 +425,27 @@ async function importContacts(req, res) {
       )
     );
     updated += chunk.length;
+  }
+
+  // Log a contact_imported activity for each newly inserted contact
+  if (imported > 0) {
+    const insertedEmails = toInsert.map(d => d.email).filter(Boolean);
+    const newContacts = await prisma.contact.findMany({
+      where: { pool, clientId, email: { in: insertedEmails } },
+      select: { id: true },
+    });
+    if (newContacts.length) {
+      await prisma.activity.createMany({
+        data: newContacts.map(c => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   c.id,
+          type:       ACTIVITY_TYPE.CONTACT_IMPORTED,
+          note:       `Contact imported by ${currentUserName}`,
+          by:         currentUserName,
+        })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   const skipped = rows.length - imported - updated - invalid.length;

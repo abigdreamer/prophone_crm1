@@ -119,6 +119,16 @@ function AppLayout({ currentUser, onSignOut }) {
   const { contacts, setContacts, contactCounts, loading, firstLoad } = useContacts(currentUser);
   const [canceledContacts, setCanceledContacts] = useState([]);
 
+  // Contacts visible in the current viewMode — used to scope the selection display
+  const visibleSelectedIds = (() => {
+    const pool_list = viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts;
+    const stages = STAGE_GROUPS[viewMode];
+    const inView = stages?.length > 0
+      ? pool_list.filter(c => stages.includes(c.lifecycleStage))
+      : pool_list;
+    return inView.filter(c => selectedIds.has(c.id)).map(c => c.id);
+  })();
+
   // Auto-select first matching contact whenever nothing is selected on the contacts page
   useEffect(() => {
     const onContacts = location.pathname.split('/')[1] === 'contacts';
@@ -136,7 +146,7 @@ function AppLayout({ currentUser, onSignOut }) {
     db.getCanceledContacts().then(setCanceledContacts).catch(() => {});
   }, [viewMode, pool, clientId, currentUser]);
 
-  useEffect(() => { setSelectedIds(new Set()); }, [viewMode, pool, clientId]);
+  useEffect(() => { setSelectedIds(new Set()); }, [pool, clientId]);
 
   const page = location.pathname.replace('/', '') || 'dashboard';
   const pageRoot = page.split('/')[0];
@@ -508,7 +518,7 @@ function AppLayout({ currentUser, onSignOut }) {
         return <ImportInline onBack={handleCancelForm} clientId={clientId} pool={pool} onImported={handleImportDone} />;
       }
       if (centerMode === 'sendEmail') {
-        const ids = selectedIds.size > 0 ? [...selectedIds] : (selected ? [selected.id] : []);
+        const ids = visibleSelectedIds.length > 0 ? visibleSelectedIds : (selected ? [selected.id] : []);
         return (
           <SendEmailInline
             contactIds={ids}
@@ -815,14 +825,14 @@ function AppLayout({ currentUser, onSignOut }) {
           )}
 
           {/* Bulk selection action bar */}
-          {isContacts && selectedIds.size > 0 && viewMode !== VIEW_MODE.CANCELED && centerMode !== 'sendEmail' && (
+          {isContacts && visibleSelectedIds.length > 0 && viewMode !== VIEW_MODE.CANCELED && centerMode !== 'sendEmail' && (
             <div style={{
               flexShrink: 0, borderBottom: '1px solid ' + T.border,
               background: T.accent + '0e', padding: '7px 14px',
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: T.accent }}>
-                {selectedIds.size} contact{selectedIds.size > 1 ? 's' : ''} selected
+                {visibleSelectedIds.length} contact{visibleSelectedIds.length > 1 ? 's' : ''} selected
               </span>
               <div style={{ flex: 1 }} />
               <button

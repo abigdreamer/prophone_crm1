@@ -66,6 +66,8 @@ export const ACTIVITY_TYPE = Object.freeze({
   CANCEL_CONTACT:    'cancel_contact',
   UNCANCEL_CONTACT:  'uncancel_contact',
   LEAD_UPDATED:      'lead_updated',
+  CONTACT_CREATED:   'contact_created',
+  CONTACT_IMPORTED:  'contact_imported',
 });
 
 export const VALID_ACTIVITY_TYPES = [

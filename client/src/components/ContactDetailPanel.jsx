@@ -455,25 +455,65 @@ export default function ContactDetailPanel({
         <Section title="Company &amp; Acquisition">
           {editMode ? (
             <>
-              {show("company")       && <InlineInput label="Company"      value={form.company}       onChange={v => set("company",       v)} placeholder="Acme Corp" />}
-              {show("accountSize")   && <InlineInput label="Account Size" value={form.accountSize}   onChange={v => set("accountSize",   v)} placeholder="1-5" />}
-              {show("source")        && <InlineInput label="Source"       value={form.source}        onChange={v => set("source",        v)} placeholder="Referral" />}
-              {show("campaign")      && <InlineInput label="Campaign"     value={form.campaign}      onChange={v => set("campaign",      v)} placeholder="Q1 Outreach" />}
-              {show("trucks")        && <InlineInput label="# of Trucks"  type="number" value={form.trucks}        onChange={v => set("trucks",        v)} placeholder="0" onKeyDown={numKey} />}
+              {show("company") && <InlineInput label="Company" value={form.company} onChange={v => set("company", v)} placeholder="Acme Corp" />}
+              {show("accountSize") && <InlineInput label="Account Size" value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="1-5" />}
+              {show("source") && <InlineInput label="Source" value={form.source} onChange={v => set("source", v)} placeholder="Referral" />}
+              {show("campaign") && <InlineInput label="Campaign" value={form.campaign} onChange={v => set("campaign", v)} placeholder="Q1 Outreach" />}
+              {show("trucks") && <InlineInput label="# of Trucks" type="number" value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} />}
               {show("contractValue") && <InlineInput label="Contract ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} />}
             </>
           ) : (
             <>
-              {show("company")       && <ViewRow label="Company"      value={form.company} />}
-              {show("accountSize")   && <ViewRow label="Account Size" value={form.accountSize} />}
-              {show("source")        && <ViewRow label="Source"       value={form.source} />}
-              {show("campaign")      && <ViewRow label="Campaign"     value={form.campaign} />}
-              {show("trucks")        && <ViewRow label="# of Trucks"  value={form.trucks} />}
+              {show("company") && <ViewRow label="Company" value={form.company} />}
+              {show("accountSize") && <ViewRow label="Account Size" value={form.accountSize} />}
+              {show("source") && <ViewRow label="Source" value={form.source} />}
+              {show("campaign") && <ViewRow label="Campaign" value={form.campaign} />}
+              {show("trucks") && <ViewRow label="# of Trucks" value={form.trucks} />}
               {show("contractValue") && <ViewRow label="Contract ($)" value={form.contractValue} />}
             </>
           )}
         </Section>
       </div>
+
+      {/* ── Notes ────────────────────────────────────────────────────────── */}
+      {show("notes") && (
+        <Section title="Notes" style={{ marginBottom: 12 }}>
+          {editMode ? (
+            <div
+              onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }}
+              style={{ position: "relative" }}
+            >
+              {noteClicked && (
+                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit", letterSpacing: "0.03em" }}>
+                  {(() => {
+                    const now = new Date();
+                    const mm = String(now.getMonth() + 1).padStart(2, "0");
+                    const dd = String(now.getDate()).padStart(2, "0");
+                    const yy = String(now.getFullYear()).slice(2);
+                    const day = now.toLocaleDateString("en-US", { weekday: "short" });
+                    const h = String(now.getHours()).padStart(2, "0");
+                    const m = String(now.getMinutes()).padStart(2, "0");
+                    return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
+                  })()}
+                </div>
+              )}
+              <textarea
+                value={form.notes}
+                onChange={e => set("notes", e.target.value)}
+                onFocus={e => (e.target.style.borderColor = T.accent)}
+                onBlur={e => (e.target.style.borderColor = T.border)}
+                onKeyDown={e => e.stopPropagation()}
+                placeholder="Add notes about this contact…"
+                style={{ ...taStyle, minHeight: 80 }}
+              />
+            </div>
+          ) : (
+            form.notes
+              ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
+              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
+          )}
+        </Section>
+      )}
 
       {/* ── Social Media ─────────────────────────────────────────────────── */}
       {enabledSocials.length > 0 && (
@@ -533,46 +573,6 @@ export default function ContactDetailPanel({
             </div>
           ))}
         </div>
-      )}
-
-      {/* ── Notes ────────────────────────────────────────────────────────── */}
-      {show("notes") && (
-        <Section title="Notes" style={{ marginBottom: 12 }}>
-          {editMode ? (
-            <div
-              onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }}
-              style={{ position: "relative" }}
-            >
-              {noteClicked && (
-                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit", letterSpacing: "0.03em" }}>
-                  {(() => {
-                    const now = new Date();
-                    const mm = String(now.getMonth() + 1).padStart(2, "0");
-                    const dd = String(now.getDate()).padStart(2, "0");
-                    const yy = String(now.getFullYear()).slice(2);
-                    const day = now.toLocaleDateString("en-US", { weekday: "short" });
-                    const h = String(now.getHours()).padStart(2, "0");
-                    const m = String(now.getMinutes()).padStart(2, "0");
-                    return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
-                  })()}
-                </div>
-              )}
-              <textarea
-                value={form.notes}
-                onChange={e => set("notes", e.target.value)}
-                onFocus={e => (e.target.style.borderColor = T.accent)}
-                onBlur={e => (e.target.style.borderColor = T.border)}
-                onKeyDown={e => e.stopPropagation()}
-                placeholder="Add notes about this contact…"
-                style={{ ...taStyle, minHeight: 80 }}
-              />
-            </div>
-          ) : (
-            form.notes
-              ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
-              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
-          )}
-        </Section>
       )}
 
       {/* ── Tags ─────────────────────────────────────────────────────────── */}
@@ -697,13 +697,13 @@ function Section({ title, children, style }) {
 }
 
 const LEAD_STATE_OPTS = [
-  { value: "prospect",   label: "Prospect"   },
-  { value: "lead",       label: "Lead"       },
-  { value: "warm",       label: "Warm Lead"  },
-  { value: "hot",        label: "Hot Lead"   },
-  { value: "customer",   label: "Customer"   },
+  { value: "prospect", label: "Prospect" },
+  { value: "lead", label: "Lead" },
+  { value: "warm", label: "Warm Lead" },
+  { value: "hot", label: "Hot Lead" },
+  { value: "customer", label: "Customer" },
   { value: "backburner", label: "Backburner" },
-  { value: "lost",       label: "Lost"       },
+  { value: "lost", label: "Lost" },
 ];
 
 function LeadStateSelect({ value, onChange }) {
