@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Mail, XCircle } from "lucide-react";
 import { useAppToast } from "../context/ToastContext";
 import Card from "../components/ui/Card";
 import { StagePill } from "../components/ui/Pill";
@@ -13,6 +13,7 @@ import { useClientById } from "../context/ClientsContext";
 import { VIEW_MODE, STATUS, STAGE_GROUPS } from "../constants/index";
 import fmt from "../utils/format";
 import * as db from "../services/api";
+import CampaignSendModal from "../components/CampaignSendModal";
 
 const PAGE_SIZE = 100;
 
@@ -67,12 +68,17 @@ export default function ContactsPage({
   const [page, setPage] = useState(1);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
+  const [bulkCanceling, setBulkCanceling] = useState(false);
   const toast = useAppToast();
 
   const q = (search || "").trim();
   const showingCanceled = viewMode === VIEW_MODE.CANCELED;
 
   useEffect(() => { setPage(1); }, [sortBy, q, viewMode]);
+  useEffect(() => { setSelectedIds(new Set()); }, [viewMode, q]);
 
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -135,6 +141,43 @@ export default function ContactsPage({
     }
   }
 
+  const allPageIds = pageRows.map(c => c.id);
+  const allPageSelected = allPageIds.length > 0 && allPageIds.every(id => selectedIds.has(id));
+  const somePageSelected = allPageIds.some(id => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allPageSelected) { allPageIds.forEach(id => next.delete(id)); }
+      else { allPageIds.forEach(id => next.add(id)); }
+      return next;
+    });
+  }
+
+  function toggleSelectOne(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkCancel() {
+    setBulkCanceling(true);
+    try {
+      await Promise.all([...selectedIds].map(id => db.cancelContact(id, "Bulk canceled")));
+      const fresh = await db.getContacts();
+      setContacts(fresh);
+      setSelectedIds(new Set());
+      setBulkCancelOpen(false);
+      toast.success(`${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""} canceled.`);
+    } catch {
+      toast.error("Failed to cancel some contacts.");
+    } finally {
+      setBulkCanceling(false);
+    }
+  }
+
   const selectStyle = {
     background: T.surface, border: "1px solid " + T.border,
     borderRadius: 6, padding: "5px 9px", color: T.text, fontSize: 11,
@@ -142,6 +185,7 @@ export default function ContactsPage({
   };
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {restoreTarget && (
         <RestoreModal
@@ -151,6 +195,86 @@ export default function ContactsPage({
           onRestore={handleRestoreConfirm}
           onClose={() => { if (!restoreLoading) setRestoreTarget(null); }}
         />
+      )}
+
+      {/* Bulk action toolbar */}
+      {selectedIds.size > 0 && !showingCanceled && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
+          background: T.accent + "12", border: "1px solid " + T.accent + "30",
+          borderRadius: 8, flexWrap: "wrap",
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.accent }}>
+            {selectedIds.size} selected
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setSendEmailOpen(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+              background: T.blue, border: "none", borderRadius: 6,
+              color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <Mail size={12} /> Send Email Campaign
+          </button>
+          <button
+            onClick={() => setBulkCancelOpen(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+              background: "transparent", border: "1px solid " + T.red + "60",
+              borderRadius: 6, color: T.red, fontSize: 11, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            <XCircle size={12} /> Cancel Leads
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            style={{
+              background: "transparent", border: "none", color: T.muted,
+              fontSize: 11, cursor: "pointer", fontFamily: "inherit", padding: "4px 8px",
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Bulk cancel confirmation */}
+      {bulkCancelOpen && (
+        <div style={{
+          background: T.red + "08", border: "1px solid " + T.red + "30",
+          borderRadius: 8, padding: "14px 18px",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.red, marginBottom: 6 }}>Cancel {selectedIds.size} contact{selectedIds.size > 1 ? "s" : ""}?</div>
+          <div style={{ fontSize: 11, color: T.dim, marginBottom: 12 }}>
+            These contacts will be removed from the active list. You can restore them at any time.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleBulkCancel}
+              disabled={bulkCanceling}
+              style={{
+                padding: "6px 16px", background: T.red, border: "none", borderRadius: 6,
+                color: "#fff", fontSize: 11, fontWeight: 600, cursor: bulkCanceling ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {bulkCanceling ? "Canceling…" : "Confirm Cancel"}
+            </button>
+            <button
+              onClick={() => setBulkCancelOpen(false)}
+              disabled={bulkCanceling}
+              style={{
+                padding: "6px 14px", background: "transparent", border: "1px solid " + T.border,
+                borderRadius: 6, color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              Keep Active
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Minimal header — count + refresh + sort only */}
@@ -187,6 +311,17 @@ export default function ContactsPage({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ background: T.surface }}>
+                {!showingCanceled && (
+                  <th style={{ padding: "8px 11px", width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
+                      onChange={toggleSelectAll}
+                      style={{ cursor: "pointer", accentColor: T.accent }}
+                    />
+                  </th>
+                )}
                 {(showingCanceled
                   ? ["Name & Email", "Company", "Address", "Status", "Canceled By", "Last Activity", "Value", "Owner"]
                   : ["Name & Email", "Company", "Address", "Stage", "Status", "Score", "Last Activity", "Value", "Owner"]
@@ -198,13 +333,14 @@ export default function ContactsPage({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: 24, textAlign: "center", color: T.muted }}>
+                  <td colSpan={showingCanceled ? 8 : 10} style={{ padding: 24, textAlign: "center", color: T.muted }}>
                     No contacts found.
                   </td>
                 </tr>
               ) : pageRows.map(c => {
                 const ownUser = USERS_DB.find(u => u.name === c.ownedBy) || USERS_DB[0];
                 const isSel = selected?.id === c.id;
+                const isChecked = selectedIds.has(c.id);
                 const status = c.status || (c.isCanceled ? STATUS.CANCELED : STATUS.ACTIVE);
                 const displayName = contactDisplayName(c);
                 return (
@@ -213,10 +349,20 @@ export default function ContactsPage({
                     onClick={() => onSelect(c)}
                     style={{
                       borderBottom: "1px solid " + T.border, cursor: "pointer",
-                      background: isSel ? col + "10" : "transparent",
+                      background: isChecked ? T.accent + "08" : isSel ? col + "10" : "transparent",
                       borderLeft: isSel ? "3px solid " + col : "3px solid transparent",
                     }}
                   >
+                    {!showingCanceled && (
+                      <td style={{ padding: "8px 11px", width: 32 }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleSelectOne(c.id)}
+                          style={{ cursor: "pointer", accentColor: T.accent }}
+                        />
+                      </td>
+                    )}
                     <td style={{ padding: "8px 11px" }}>
                       <div style={{ fontWeight: 600, color: T.text }}>
                         <Hi text={displayName} q={q} />
@@ -305,5 +451,14 @@ export default function ContactsPage({
         </div>
       )}
     </div>
+
+    {sendEmailOpen && (
+      <CampaignSendModal
+        contactIds={[...selectedIds]}
+        onClose={() => setSendEmailOpen(false)}
+        onSent={() => { setSendEmailOpen(false); setSelectedIds(new Set()); }}
+      />
+    )}
+    </>
   );
 }

@@ -14,6 +14,7 @@ import {
   previewRecipients,
   removeRecipients,
   sendCampaign,
+  sendToContacts,
   resendCampaign,
   getCampaignAnalytics,
   listPublishedTemplates,
@@ -38,8 +39,9 @@ router.post('/:id/recipients',        addRecipients);
 router.delete('/:id/recipients',      removeRecipients);
 router.get('/:id/recipients/preview', previewRecipients);
 
-router.post('/:id/send',      sendCampaign);
-router.post('/:id/resend',    resendCampaign);
+router.post('/:id/send',         sendCampaign);
+router.post('/:id/send-to',      sendToContacts);
+router.post('/:id/resend',       resendCampaign);
 router.get('/:id/analytics',  getCampaignAnalytics);
 
 export default router;

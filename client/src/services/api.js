@@ -362,6 +362,13 @@ export async function getCampaignAnalytics(id) {
   return r.data ?? r;
 }
 
+// Real campaign send to specific contacts — full tracking, recipients stored, stats updated.
+// domainFilter: optional array like ['gmail.com', 'yahoo.com']
+export async function quickSendCampaign(campaignId, { contactIds, domainFilter = [] } = {}) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/send-to`, { contactIds, domainFilter });
+  return r.data ?? r;
+}
+
 export async function getPublishedTemplates() {
   const { clientId } = getActivePool();
   const params = new URLSearchParams();

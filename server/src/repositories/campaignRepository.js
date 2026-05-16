@@ -350,6 +350,17 @@ export async function applyTrackingEvent(recipientId, event) {
 }
 
 // Return set of contactIds that have ever bounced or unsubscribed
+export async function findPendingRecipientsForContacts(campaignId, contactIds) {
+  return prisma.campaignRecipient.findMany({
+    where: { campaignId, status: 'pending', contactId: { in: contactIds } },
+    include: {
+      contact: {
+        select: { id: true, firstName: true, lastName: true, email: true, company: true },
+      },
+    },
+  });
+}
+
 export async function findSuppressedContactIds(contactIds) {
   const rows = await prisma.campaignRecipient.findMany({
     where:  { contactId: { in: contactIds }, status: { in: ['bounced', 'unsubscribed'] } },

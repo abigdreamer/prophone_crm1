@@ -1,3 +1,4 @@
+import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
@@ -354,6 +355,163 @@ export const sendCampaign = async (req, res) => {
   } catch (err) {
     await repo.updateCampaign(campaignId, { status: 'draft' }).catch(() => {});
     sendServerError(res, err, 'sendCampaign');
+  }
+};
+
+// ── Send to specific contacts (single or bulk quick-send) ─────────────────────
+
+export const sendToContacts = async (req, res) => {
+  const campaignId = req.params.id;
+  const { contactIds, domainFilter } = req.body ?? {};
+
+  if (!Array.isArray(contactIds) || !contactIds.length) {
+    return sendError(res, 'contactIds array is required', 400);
+  }
+
+  try {
+    const campaign = await repo.findById(campaignId);
+    if (!campaign)                      return sendError(res, 'Campaign not found', 404);
+    if (!campaign.templateId)           return sendError(res, 'Campaign has no template selected', 400);
+    if (campaign.status === 'sending')  return sendError(res, 'Campaign is currently sending', 400);
+
+    const template = await templateRepo.findById(campaign.templateId);
+    if (!template) return sendError(res, 'Template not found — it may have been deleted', 404);
+
+    // Resolve from-email
+    let fromEmail = campaign.fromEmail?.trim() || '';
+    if (!fromEmail) {
+      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
+      if (clientDomain) {
+        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      } else {
+        const anyDomain = await domainRepo.findAnyVerified();
+        fromEmail = anyDomain
+          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
+          : (process.env.RESEND_FROM_EMAIL || '');
+      }
+    }
+    if (!fromEmail) {
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+    }
+
+    // Fetch contacts — skip canceled, require email
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: contactIds }, isCanceled: false },
+      select: { id: true, firstName: true, lastName: true, email: true, company: true },
+    });
+
+    // Apply optional domain filter (@gmail.com, @yahoo.com, etc.)
+    const domains = Array.isArray(domainFilter) && domainFilter.length
+      ? domainFilter.map(d => d.toLowerCase().replace(/^@/, ''))
+      : null;
+
+    let filtered = contacts.filter(c => c.email?.includes('@'));
+    if (domains) {
+      filtered = filtered.filter(c => {
+        const emailDomain = c.email.split('@')[1]?.toLowerCase();
+        return domains.includes(emailDomain);
+      });
+    }
+
+    // Deduplicate by lowercased email address
+    const seen = new Set();
+    const deduped = filtered.filter(c => {
+      const key = c.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (!deduped.length) {
+      return sendError(res, 'No eligible contacts match the selected filters', 400);
+    }
+
+    // Suppress previously bounced / unsubscribed contacts
+    const dedupedIds = deduped.map(c => c.id);
+    const suppressedIds = await repo.findSuppressedContactIds(dedupedIds);
+    const toSend = deduped.filter(c => !suppressedIds.has(c.id));
+
+    if (!toSend.length) {
+      return sendError(res, 'All matched contacts are suppressed (bounced or unsubscribed)', 400);
+    }
+
+    // Upsert recipients (skipDuplicates — already-existing records stay as-is)
+    await repo.addRecipients(campaignId, toSend.map(c => c.id));
+
+    // Fetch the pending recipient rows for these contacts (only newly added ones)
+    const pendingRecipients = await repo.findPendingRecipientsForContacts(campaignId, toSend.map(c => c.id));
+
+    const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
+    let totalSent = 0;
+
+    for (let i = 0; i < pendingRecipients.length; i += SEND_BATCH_SIZE) {
+      const batch = pendingRecipients.slice(i, i + SEND_BATCH_SIZE);
+
+      const emails = batch
+        .filter(r => r.contact?.email?.includes('@'))
+        .map(r => {
+          const vars = {
+            firstName: r.contact.firstName || '',
+            lastName:  r.contact.lastName  || '',
+            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:     r.contact.email     || '',
+            company:   r.contact.company   || '',
+          };
+
+          let html = template.htmlOutput
+            ? substituteIntoHtml(template.htmlOutput, vars)
+            : renderTemplate(template.body, vars);
+
+          if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
+
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+
+          const text    = htmlToPlainText(html);
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+
+          return {
+            _recipientId: r.id,
+            to:       r.contact.email,
+            from:     fromEmail,
+            fromName: campaign.fromName || '',
+            subject:  campaign.subject || template.subject || template.name,
+            html, text, headers,
+          };
+        });
+
+      if (!emails.length) continue;
+
+      try {
+        const results = await sendBatchEmails(emails);
+        await Promise.all(emails.map((e, j) =>
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+        ));
+        totalSent += emails.length;
+      } catch (batchErr) {
+        console.error('[sendToContacts] batch error:', batchErr.message);
+      }
+    }
+
+    // Increment campaign sent count without changing its status
+    await repo.updateCampaign(campaignId, {
+      sentCount: (campaign.sentCount || 0) + totalSent,
+    });
+
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND,
+      `Quick-sent to ${totalSent} contact${totalSent !== 1 ? 's' : ''}`, by);
+
+    sendSuccess(res, {
+      sent:    totalSent,
+      skipped: contactIds.length - totalSent,
+      total:   contactIds.length,
+    });
+  } catch (err) {
+    sendServerError(res, err, 'sendToContacts');
   }
 };
 
