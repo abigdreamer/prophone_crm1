@@ -64,7 +64,7 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
-const PORT   = process.env.PORT || 8080;
+const PORT   = process.env.PORT || 8040;
 const server = app.listen(PORT, () => console.log(`ProPhone API listening on port ${PORT}`));
 
 let _bindRetry = false;

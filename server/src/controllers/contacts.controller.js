@@ -19,7 +19,7 @@ function normaliseDomain(raw) {
 async function fetchActivities(entityId) {
   return prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId },
-    orderBy: { ts: 'asc' },
+    orderBy: { createdAt: 'asc' },
   });
 }
 
@@ -27,7 +27,7 @@ async function fetchActivitiesBulk(entityIds) {
   if (!entityIds.length) return {};
   const rows = await prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId: { in: entityIds } },
-    orderBy: { ts: 'asc' },
+    orderBy: { createdAt: 'asc' },
   });
   const map = {};
   for (const r of rows) {
@@ -80,8 +80,8 @@ function formatContact(c) {
     restoredBy: c.restoredBy,
     createdAt: c.createdAt,
     activities: (c.activities || [])
-      .sort((a, b) => new Date(a.ts) - new Date(b.ts))
-      .map(a => ({ id: a.id, type: a.type, note: a.note, ts: a.ts, by: a.by })),
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .map(a => ({ id: a.id, type: a.type, note: a.note, createdAt: a.createdAt, by: a.by })),
   };
 }
 
@@ -134,7 +134,6 @@ async function createContact(req, res) {
   if (b.pool && !VALID_POOLS.includes(b.pool)) return res.status(400).json({ error: 'Invalid pool' });
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
   if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
-  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) return res.status(400).json({ error: 'Invalid accountSize' });
 
   const contact = await prisma.contact.create({
     data: {
@@ -176,7 +175,6 @@ async function createContact(req, res) {
       type: ACTIVITY_TYPE.STAGE_CHANGED,
       note: 'Contact created',
       by,
-      ts: new Date(),
     },
   });
 
@@ -198,10 +196,6 @@ async function updateContact(req, res) {
 
   if (b.status && !VALID_STATUSES.includes(b.status)) {
     return res.status(400).json({ error: "Invalid status" });
-  }
-
-  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) {
-    return res.status(400).json({ error: "Invalid accountSize" });
   }
 
   const existing = await prisma.contact.findUnique({ where: { id } });
@@ -448,7 +442,7 @@ async function importContacts(req, res) {
 async function getContactClientActivities(req, res) {
   const activities = await prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId: req.params.id },
-    orderBy: { ts: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
   res.json(activities);
 }

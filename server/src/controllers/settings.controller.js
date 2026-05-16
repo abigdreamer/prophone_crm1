@@ -8,7 +8,7 @@ export async function getSettings(req, res) {
 
   if (!module) return res.status(400).json({ error: 'module is required' });
 
-  const record = await prisma.tenantSettings.findUnique({
+  const record = await prisma.contactFieldSettings.findUnique({
     where: { clientId_module: { clientId, module } },
   });
 
@@ -23,7 +23,7 @@ export async function saveSettings(req, res) {
   if (!module) return res.status(400).json({ error: 'module is required' });
   if (config === undefined) return res.status(400).json({ error: 'config is required' });
 
-  const record = await prisma.tenantSettings.upsert({
+  const record = await prisma.contactFieldSettings.upsert({
     where: { clientId_module: { clientId, module } },
     update: { config },
     create: { id: crypto.randomUUID(), clientId, module, config },
