@@ -484,14 +484,16 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
 
   const selectedTpl = tpls.find(t => t.id === form.templateId) || null;
 
-  // When a template is picked, always override subject from template
+  // When a template is picked, always override subject + fromEmail from template
   const handleSelectTemplate = (id) => {
     const tpl = tpls.find(t => t.id === id);
+    const tplFromEmail = tpl?.fromEmail || tpl?.body?.from || '';
     setForm(f => ({
       ...f,
       templateId: id,
-      subject: tpl?.subject || f.subject,
-      fromName: f.fromName || clientName || '',
+      subject:   tpl?.subject   || f.subject,
+      fromName:  f.fromName     || clientName || '',
+      fromEmail: tplFromEmail   || f.fromEmail,
     }));
   };
 

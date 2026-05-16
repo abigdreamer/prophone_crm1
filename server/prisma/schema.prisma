@@ -165,6 +165,7 @@ model EmailTemplate {
   clientId     String?   @map("client_id")
   name         String
   subject      String    @default("")
+  fromEmail    String    @default("") @map("from_email")
   body         Json      @default("{\"blocks\": [], \"version\": 1}")
   htmlOutput   String    @default("") @map("html_output")
   trackedLinks Json      @default("[]") @map("tracked_links")
