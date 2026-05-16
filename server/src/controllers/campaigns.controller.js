@@ -731,7 +731,10 @@ export const duplicateCampaign = async (req, res) => {
 
 export const listPublishedTemplates = async (req, res) => {
   try {
-    const rows = await templateRepo.findMany({ status: 'published' });
+    const { clientId } = req.query;
+    const where = { status: 'published' };
+    if (clientId) where.clientId = clientId;
+    const rows = await templateRepo.findMany(where);
     sendSuccess(res, rows);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
