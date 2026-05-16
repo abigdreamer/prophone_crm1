@@ -309,6 +309,110 @@ function TemplatePickerList({ tpls, selected, onSelect, accent, maxHeight = 220 
   );
 }
 
+// ── Template preview (mini scaled render) ─────────────────────────────────────
+
+const PREV_W = 560;
+
+function PreviewBlock({ block }) {
+  const { type, props: p } = block;
+  if (!p) return null;
+  const pt = p.padding?.top    ?? 0;
+  const pb = p.padding?.bottom ?? 0;
+  const pl = p.padding?.left   ?? 24;
+  const pr = p.padding?.right  ?? 24;
+  switch (type) {
+    case "heading":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <div style={{ margin: 0, fontSize: p.fontSize || 28, fontWeight: p.fontWeight || 700, color: p.color || "#111827", textAlign: p.align || "center", lineHeight: 1.2 }}>{p.text || ""}</div>
+        </div>
+      );
+    case "text":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <p style={{ margin: 0, fontSize: p.fontSize || 15, color: p.color || "#374151", textAlign: p.align || "left", lineHeight: p.lineHeight || 1.6, whiteSpace: "pre-wrap" }}>{p.text || ""}</p>
+        </div>
+      );
+    case "button":
+      return (
+        <div style={{ padding: "16px 24px", textAlign: p.align || "center" }}>
+          <span style={{ display: "inline-block", padding: "12px 28px", background: p.bgColor || "#6366f1", color: p.textColor || "#fff", fontSize: p.fontSize || 14, fontWeight: 600, borderRadius: p.borderRadius || 6 }}>{p.label || "Click Here"}</span>
+        </div>
+      );
+    case "divider":
+      return (
+        <div style={{ padding: `${p.marginTop || 8}px ${p.sidePadding || 24}px ${p.marginBottom || 8}px` }}>
+          <hr style={{ border: "none", borderTop: `${p.thickness || 1}px solid ${p.color || "#e5e7eb"}`, margin: 0 }} />
+        </div>
+      );
+    case "spacer":
+      return <div style={{ height: p.height || 32 }} />;
+    case "image":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, textAlign: p.align || "center" }}>
+          {p.src
+            ? <img src={p.src} alt="" style={{ maxWidth: `${p.width || 100}%`, borderRadius: p.borderRadius || 0, display: "block", margin: "0 auto" }} onError={e => { e.currentTarget.style.display = "none"; }} />
+            : <div style={{ height: 80, background: "#e5e7eb", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 12 }}>Image</div>
+          }
+        </div>
+      );
+    case "footer":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <p style={{ margin: 0, fontSize: p.fontSize || 12, color: p.color || "#9ca3af", textAlign: p.align || "center", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{p.text || ""}</p>
+        </div>
+      );
+    case "columns":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, display: "flex", gap: 16 }}>
+          <div style={{ flex: 1, fontSize: p.fontSize || 14, color: p.color || "#374151", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{p.leftText || ""}</div>
+          <div style={{ flex: 1, fontSize: p.fontSize || 14, color: p.color || "#374151", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{p.rightText || ""}</div>
+        </div>
+      );
+    default: return null;
+  }
+}
+
+function TemplatePreviewPane({ template }) {
+  const T = useTheme();
+  const wrapRef = useRef(null);
+  const [paneW, setPaneW] = useState(240);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setPaneW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale   = paneW / PREV_W;
+  const blocks  = template?.body?.blocks || [];
+  const emailBg = template?.body?.containerBg || "#ffffff";
+  const pageBg  = template?.body?.backgroundColor || "#f4f4f4";
+  const isHtml  = template?.body?.editorMode === "html";
+  return (
+    <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", background: template ? pageBg : T.bg }}>
+      {!template ? (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Mail size={22} color={T.muted} strokeWidth={1.5} />
+          <div style={{ fontSize: 11, color: T.muted }}>Select a template</div>
+        </div>
+      ) : isHtml && template.htmlOutput ? (
+        <div style={{ position: "absolute", top: 0, left: 0, width: PREV_W, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none" }}
+          dangerouslySetInnerHTML={{ __html: template.htmlOutput }} />
+      ) : blocks.length > 0 ? (
+        <div style={{ position: "absolute", top: 0, left: 0, width: PREV_W, background: emailBg, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          {blocks.map(b => <PreviewBlock key={b.id} block={b} />)}
+        </div>
+      ) : (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Mail size={20} color={T.muted} strokeWidth={1.5} />
+          <div style={{ fontSize: 11, color: T.muted }}>No content yet</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Wizard Step 1 ─────────────────────────────────────────────────────────────
 
 function WizardStep1({ form, setForm, onNext, onClose }) {
@@ -378,13 +482,16 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientName]);
 
-  // When a template is picked, auto-fill subject (if blank) from template.subject
+  const selectedTpl = tpls.find(t => t.id === form.templateId) || null;
+
+  // When a template is picked, always override subject from template
   const handleSelectTemplate = (id) => {
     const tpl = tpls.find(t => t.id === id);
     setForm(f => ({
       ...f,
       templateId: id,
-      subject: f.subject || tpl?.subject || '',
+      subject: tpl?.subject || f.subject,
+      fromName: f.fromName || clientName || '',
     }));
   };
 
@@ -393,7 +500,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
     setForm(f => ({
       ...f,
       templateIdB: id,
-      subjectB: f.subjectB || tpl?.subject || '',
+      subjectB: tpl?.subject || f.subjectB,
     }));
   };
 
@@ -468,11 +575,17 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <StepIndicator step={2} />
-      <div style={{ display: "flex", minHeight: 340 }}>
-        <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid " + T.border, padding: "18px 16px", overflowY: "auto" }}>
+      <div style={{ display: "flex", minHeight: 360 }}>
+        {/* Template list */}
+        <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid " + T.border, padding: "18px 14px", overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 10, letterSpacing: "0.04em" }}>SELECT TEMPLATE</div>
-          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.accent} maxHeight={260} />
+          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.accent} maxHeight={290} />
         </div>
+        {/* Live preview */}
+        <div style={{ width: 260, flexShrink: 0, borderRight: "1px solid " + T.border, overflowY: "hidden" }}>
+          <TemplatePreviewPane template={selectedTpl} />
+        </div>
+        {/* Form fields */}
         <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
           <Field label="Subject Line" required value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Your compelling subject line…" />
           {fromRow}
@@ -527,7 +640,7 @@ function NewCampaignModal({ onClose, onCreated }) {
     finally { setSaving(false); }
   }, [form, poolClientId, onCreated]);
 
-  const modalWidth = step === 1 ? 520 : form.type === "ab_test" ? 830 : 660;
+  const modalWidth = step === 1 ? 520 : form.type === "ab_test" ? 830 : 800;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
