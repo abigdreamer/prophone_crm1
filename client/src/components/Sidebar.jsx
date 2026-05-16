@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Hi from "./ui/Hi";
 
 function Checkbox({ checked, indeterminate, onChange, color }) {
@@ -66,7 +66,9 @@ export default function Sidebar({
   const [statusF, setStatusF] = useState("all");
   const [sortF, setSortF] = useState("recent");
   const [isFocused, setIsFocused] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(150);
   const listRef = useRef(null);
+  const filteredLenRef = useRef(0);
 
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -80,6 +82,25 @@ export default function Sidebar({
 
   // Reset filters when viewMode changes
   useEffect(() => { setStageF("all"); setStatusF("all"); }, [viewMode]);
+
+  // Reset display limit when any filter or sort changes
+  useEffect(() => { setDisplayLimit(150); }, [viewMode, stageF, statusF, search, sortF]);
+
+  // Infinite scroll — attach once; reads filteredLenRef so closure stays fresh
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    function onScroll() {
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
+        setDisplayLimit(prev => {
+          const next = prev + 150;
+          return next > filteredLenRef.current ? filteredLenRef.current : next;
+        });
+      }
+    }
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []); // eslint-disable-line — intentional: attach once, ref keeps value fresh
 
   const stageOpts = STAGE_GROUPS[viewMode] || ALL_STAGES;
   const viewModeStages = STAGE_GROUPS[viewMode]; // undefined = ALL, [] = backburner
@@ -111,6 +132,9 @@ export default function Sidebar({
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
+  // Keep ref in sync so infinite-scroll handler reads current length
+  filteredLenRef.current = filtered.length;
+
   // Live-select first result as the user types so center panel stays in sync
   useEffect(() => {
     if (!search.trim() || filtered.length === 0) return;
@@ -127,7 +151,7 @@ export default function Sidebar({
     }
     if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp"].includes(e.key)) return;
     e.preventDefault();
-    const visible = filtered.slice(0, 150);
+    const visible = filtered.slice(0, displayLimit);
     if (visible.length === 0) return;
     const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
     let nextIdx;
@@ -180,22 +204,21 @@ export default function Sidebar({
             <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
               {filtered.length.toLocaleString()} leads
               {selEnabled && (() => {
-                const visibleSelected = filtered.slice(0, 150).filter(c => selectedIds?.has(c.id)).length;
-                return visibleSelected > 0
-                  ? <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {visibleSelected} selected</span>
+                const totalSelected = filtered.filter(c => selectedIds?.has(c.id)).length;
+                return totalSelected > 0
+                  ? <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {totalSelected.toLocaleString()} selected</span>
                   : null;
               })()}
             </div>
           </div>
           {selEnabled && (() => {
-            const visible = filtered.slice(0, 150);
-            const someChecked = visible.some(c => selectedIds?.has(c.id));
-            const allChecked = visible.length > 0 && visible.every(c => selectedIds?.has(c.id));
+            const someChecked = filtered.some(c => selectedIds?.has(c.id));
+            const allChecked = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
             return (
               <Checkbox
                 checked={allChecked}
                 indeterminate={someChecked && !allChecked}
-                onChange={() => onToggleSelectAll?.(visible.map(c => c.id))}
+                onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
                 color={col}
               />
             );
@@ -281,7 +304,7 @@ export default function Sidebar({
             </div>
           </div>
         ) : (
-          filtered.slice(0, 150).map(c => {
+          filtered.slice(0, displayLimit).map(c => {
             const sd = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
             const isSel = selected?.id === c.id;
             const isChecked = selEnabled && selectedIds?.has(c.id);
@@ -356,6 +379,11 @@ export default function Sidebar({
               </div>
             );
           })
+        )}
+        {filtered.length > 0 && displayLimit < filtered.length && (
+          <div style={{ padding: "14px 16px", textAlign: "center", color: T.muted, fontSize: 10, borderTop: "1px solid " + T.border }}>
+            Showing {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — scroll to load more
+          </div>
         )}
       </div>
     </div>
