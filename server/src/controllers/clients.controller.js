@@ -135,7 +135,7 @@ async function restoreClient(req, res) {
 async function getClientActivities(req, res) {
   const activities = await prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CLIENT, entityId: req.params.id },
-    orderBy: { ts: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
   res.json(activities);
 }
