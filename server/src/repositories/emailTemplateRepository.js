@@ -8,6 +8,7 @@ export async function findMany(where) {
       clientId: true,
       name: true,
       subject: true,
+      fromEmail: true,
       body: true,
       htmlOutput: true,
       trackedLinks: true,

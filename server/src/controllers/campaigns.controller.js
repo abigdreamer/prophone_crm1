@@ -735,7 +735,12 @@ export const listPublishedTemplates = async (req, res) => {
     const where = { status: 'published' };
     if (clientId) where.clientId = clientId;
     const rows = await templateRepo.findMany(where);
-    sendSuccess(res, rows);
+    // Backfill fromEmail from body.from for legacy templates saved before the column existed
+    const enriched = rows.map(t => ({
+      ...t,
+      fromEmail: t.fromEmail || (typeof t.body === 'object' ? t.body?.from : null) || '',
+    }));
+    sendSuccess(res, enriched);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
   }

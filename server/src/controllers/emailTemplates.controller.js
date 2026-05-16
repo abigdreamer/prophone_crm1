@@ -84,6 +84,7 @@ export const createTemplate = async (req, res) => {
     clientId,
     name,
     subject    = '',
+    fromEmail  = '',
     body,
     htmlOutput = '',
     status     = 'draft',
@@ -95,12 +96,16 @@ export const createTemplate = async (req, res) => {
   const clientOk = await assertClientOwnership(clientId, res);
   if (!clientOk) return;
 
+  const resolvedBody = body ?? { version: 1, blocks: [] };
+  const resolvedFromEmail = fromEmail || resolvedBody?.from || '';
+
   try {
     const row = await templateRepo.createTemplate({
       clientId:    clientId ?? null,
       name,
       subject,
-      body:        body ?? { version: 1, blocks: [] },
+      fromEmail:   resolvedFromEmail,
+      body:        resolvedBody,
       htmlOutput,
       trackedLinks: [],
       status,
@@ -142,6 +147,12 @@ export const updateTemplate = async (req, res) => {
     if (updates.htmlOutput  !== undefined) data.htmlOutput  = updates.htmlOutput;
     if (updates.status      !== undefined) data.status      = updates.status;
     if (updates.trackedLinks !== undefined) data.trackedLinks = updates.trackedLinks;
+    // Persist fromEmail: prefer explicit field, fall back to body.from for HTML templates
+    if (updates.fromEmail !== undefined) {
+      data.fromEmail = updates.fromEmail;
+    } else if (updates.body?.from) {
+      data.fromEmail = updates.body.from;
+    }
 
     const row = await templateRepo.updateTemplate(req.params.id, data);
 
