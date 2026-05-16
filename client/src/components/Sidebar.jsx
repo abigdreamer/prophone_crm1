@@ -1,5 +1,34 @@
 import { useState, useRef, useEffect } from "react";
 import Hi from "./ui/Hi";
+
+function Checkbox({ checked, indeterminate, onChange, color }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate ?? false;
+  }, [indeterminate]);
+
+  return (
+    <div
+      onClick={e => { e.stopPropagation(); onChange?.(); }}
+      style={{
+        width: 15, height: 15, borderRadius: 4, flexShrink: 0,
+        border: "1.5px solid " + (checked || indeterminate ? color : "rgba(255,255,255,0.2)"),
+        background: checked || indeterminate ? color : "rgba(0,0,0,0.25)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", transition: "all 0.15s", boxSizing: "border-box",
+        boxShadow: checked || indeterminate ? `0 0 6px ${color}55` : "none",
+      }}
+    >
+      {indeterminate && !checked ? (
+        <div style={{ width: 7, height: 1.5, background: "#fff", borderRadius: 1 }} />
+      ) : checked ? (
+        <svg viewBox="0 0 10 8" width={9} height={7} fill="none">
+          <polyline points="1,4 3.5,6.5 9,1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+    </div>
+  );
+}
 import ScoreBar from "./ui/ScoreBar";
 import { useTheme } from "../context/ThemeContext";
 import { useClientById } from "../context/ClientsContext";
@@ -30,6 +59,7 @@ export default function Sidebar({
   selected, onSelect, onAddNew, onEditInline, onImport,
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
+  selectedIds, onToggleSelect, onToggleSelectAll,
 }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
@@ -41,6 +71,7 @@ export default function Sidebar({
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
   const showingCanceled = viewMode === VIEW_MODE.CANCELED;
+  const selEnabled = !!onToggleSelect && !showingCanceled;
 
   useEffect(() => {
     const timer = setTimeout(() => { searchRef?.current?.focus(); }, 150);
@@ -148,8 +179,24 @@ export default function Sidebar({
             </div>
             <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
               {filtered.length.toLocaleString()} leads
+              {selEnabled && selectedIds?.size > 0 && (
+                <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {selectedIds.size} selected</span>
+              )}
             </div>
           </div>
+          {selEnabled && (() => {
+            const visible = filtered.slice(0, 150);
+            const someChecked = visible.some(c => selectedIds?.has(c.id));
+            const allChecked = visible.length > 0 && visible.every(c => selectedIds?.has(c.id));
+            return (
+              <Checkbox
+                checked={allChecked}
+                indeterminate={someChecked && !allChecked}
+                onChange={() => onToggleSelectAll?.(visible.map(c => c.id))}
+                color={col}
+              />
+            );
+          })()}
         </div>
       </div>
 
@@ -234,6 +281,7 @@ export default function Sidebar({
           filtered.slice(0, 150).map(c => {
             const sd = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
             const isSel = selected?.id === c.id;
+            const isChecked = selEnabled && selectedIds?.has(c.id);
             const displayName = contactDisplayName(c);
             return (
               <div
@@ -243,11 +291,22 @@ export default function Sidebar({
                 style={{
                   padding: "11px 14px", borderBottom: "1px solid " + T.border,
                   cursor: "pointer",
-                  background: isSel ? col + "14" : "transparent",
+                  background: isChecked ? col + "0d" : isSel ? col + "14" : "transparent",
                   borderLeft: `4px solid ${isSel ? col : "transparent"}`,
                   transition: "background 0.1s",
+                  display: "flex", alignItems: "flex-start", gap: 8,
                 }}
               >
+                {selEnabled && (
+                  <div style={{ paddingTop: 2, flexShrink: 0 }}>
+                    <Checkbox
+                      checked={isChecked}
+                      onChange={() => onToggleSelect?.(c.id)}
+                      color={col}
+                    />
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                   <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? col : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 6 }}>
                     <Hi text={displayName} q={search} />
@@ -289,6 +348,7 @@ export default function Sidebar({
                   <span style={{ fontSize: 9, color: T.muted, flexShrink: 0 }}>
                     {fmt.ago(c.lastActivityAt || c.createdAt)}
                   </span>
+                </div>
                 </div>
               </div>
             );

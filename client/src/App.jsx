@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid, Menu } from 'lucide-react';
+import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid, Menu, Mail } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -35,6 +35,7 @@ import ContactDetailPanel from './components/ContactDetailPanel';
 import CancelInline from './components/inline/CancelInline';
 import RestoreInline from './components/inline/RestoreInline';
 import ImportInline from './components/inline/ImportInline';
+import SendEmailInline from './components/inline/SendEmailInline';
 
 import { useAuth } from './hooks/useAuth';
 import { useContacts } from './hooks/useContacts';
@@ -76,8 +77,9 @@ function AppLayout({ currentUser, onSignOut }) {
   const { pool, setPool, clientId, setClientId } = usePool();
   const [viewMode, setViewMode] = useState(VIEW_MODE.ALL);
   const [selected, setSelected] = useState(null);
-  // centerMode: null | 'add' | 'cancel' | 'restore' | 'import'
+  // centerMode: null | 'add' | 'cancel' | 'restore' | 'import' | 'sendEmail'
   const [centerMode, setCenterMode] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [search, setSearch] = useState('');
   const searchRef = useRef(null);
@@ -133,6 +135,8 @@ function AppLayout({ currentUser, onSignOut }) {
     if (viewMode !== VIEW_MODE.CANCELED || !currentUser) return;
     db.getCanceledContacts().then(setCanceledContacts).catch(() => {});
   }, [viewMode, pool, clientId, currentUser]);
+
+  useEffect(() => { setSelectedIds(new Set()); }, [viewMode, pool, clientId]);
 
   const page = location.pathname.replace('/', '') || 'dashboard';
   const pageRoot = page.split('/')[0];
@@ -329,6 +333,31 @@ function AppLayout({ currentUser, onSignOut }) {
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
 
+  const handleToggleSelect = useCallback((id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback((filteredIds) => {
+    setSelectedIds(prev => {
+      const allSelected = filteredIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) filteredIds.forEach(id => next.delete(id));
+      else filteredIds.forEach(id => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const handleSendEmail = useCallback(() => {
+    if (selected && selectedIds.size === 0) {
+      setSelectedIds(new Set([selected.id]));
+    }
+    setCenterMode('sendEmail');
+  }, [selected, selectedIds]);
+
   useEffect(() => {
     function handler(e) {
       const tag = e.target.tagName;
@@ -477,6 +506,16 @@ function AppLayout({ currentUser, onSignOut }) {
       }
       if (centerMode === 'import') {
         return <ImportInline onBack={handleCancelForm} clientId={clientId} pool={pool} onImported={handleImportDone} />;
+      }
+      if (centerMode === 'sendEmail') {
+        const ids = selectedIds.size > 0 ? [...selectedIds] : (selected ? [selected.id] : []);
+        return (
+          <SendEmailInline
+            contactIds={ids}
+            onBack={() => setCenterMode(null)}
+            onSent={() => { setCenterMode(null); setSelectedIds(new Set()); }}
+          />
+        );
       }
       if (selected) {
         return (
@@ -681,6 +720,9 @@ function AppLayout({ currentUser, onSignOut }) {
                 canceledContacts={canceledContacts}
                 setContacts={viewMode === VIEW_MODE.CANCELED ? setCanceledContacts : setContacts}
                 currentUser={currentUser}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onToggleSelectAll={handleToggleSelectAll}
               />
             </div>
             {/* Sidebar ↔ center drag handle */}
@@ -710,7 +752,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {/* ── Center filter bar (contacts only, not in modal modes) ─────── */}
-          {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && (
+          {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && centerMode !== 'sendEmail' && (
             <div style={{
               flexShrink: 0, borderBottom: '1px solid ' + T.border,
               background: T.surface, padding: '8px 12px',
@@ -772,6 +814,41 @@ function AppLayout({ currentUser, onSignOut }) {
             </div>
           )}
 
+          {/* Bulk selection action bar */}
+          {isContacts && selectedIds.size > 0 && viewMode !== VIEW_MODE.CANCELED && centerMode !== 'sendEmail' && (
+            <div style={{
+              flexShrink: 0, borderBottom: '1px solid ' + T.border,
+              background: T.accent + '0e', padding: '7px 14px',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.accent }}>
+                {selectedIds.size} contact{selectedIds.size > 1 ? 's' : ''} selected
+              </span>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => setCenterMode('sendEmail')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '5px 13px', background: T.blue, border: 'none',
+                  borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                <Mail size={11} /> Send Email Campaign
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                style={{
+                  padding: '5px 10px', background: 'transparent',
+                  border: '1px solid ' + T.border, borderRadius: 6,
+                  color: T.muted, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
             {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
             {renderCenter()}
@@ -826,6 +903,7 @@ function AppLayout({ currentUser, onSignOut }) {
                   onLogActivity={handleLogActivity}
                   onCancelContact={handleCancelContact}
                   onRestoreContact={handleRestoreConfirm}
+                  onSendEmail={handleSendEmail}
                   currentUser={currentUser}
                 />
               ) : (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Activity, XCircle, RotateCcw } from "lucide-react";
+import { Activity, XCircle, RotateCcw, Mail } from "lucide-react";
 import Card from "./ui/Card";
 import { Pill, StagePill } from "./ui/Pill";
 import Avatar from "./ui/Avatar";
@@ -42,7 +42,7 @@ function fmtActivityDate(ts) {
   return `${mm}/${dd2}/${yy} ${day} ${h}:${m}`;
 }
 
-export default function LifecycleChart({ contact, onLogActivity, onCancelContact, onRestoreContact, currentUser }) {
+export default function LifecycleChart({ contact, onLogActivity, onCancelContact, onRestoreContact, onSendEmail, currentUser }) {
   const T = useTheme();
   const toast = useAppToast();
   const [filter, setFilter] = useState("all");
@@ -126,7 +126,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
   const filtered = filter === "all" ? acts : acts.filter(a => ACT_DEF[a.type]?.cat === filter);
   const byDay = {};
   filtered.forEach(a => {
-    const day = new Date(a.ts).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const day = new Date(a.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     if (!byDay[day]) byDay[day] = [];
     byDay[day].push(a);
   });
@@ -146,7 +146,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
     try {
       await onLogActivity({
         id: "a" + Date.now(), type: actType, note: actNote,
-        ts: new Date().toISOString(), by: currentUser?.name || "Unknown",
+        by: currentUser?.name || "Unknown",
       });
       setLogOpen(false);
       setActNote("");
@@ -391,12 +391,15 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
         ) : (
           <>
             {!logOpen && !cancelOpen && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 14 }}>
                 <Btn onClick={() => setLogOpen(true)} style={{ ...btnSm, justifyContent: "center" }}>
                   <Activity size={11} /> Log Activity
                 </Btn>
+                <Btn onClick={() => onSendEmail?.()} variant="secondary" style={{ ...btnSm, justifyContent: "center", borderColor: T.blue, color: T.blue }}>
+                  <Mail size={11} /> Send Email
+                </Btn>
                 <Btn onClick={() => setCancelOpen(true)} variant="secondary" style={{ ...btnSm, justifyContent: "center", borderColor: T.red, color: T.red }}>
-                  <XCircle size={11} /> Cancel Contact
+                  <XCircle size={11} /> Cancel
                 </Btn>
               </div>
             )}
@@ -548,7 +551,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
                         {byUser && <Avatar user={byUser} size={14} />}
                         <span style={{ fontSize: 9, color: T.muted }}>
-                          by {act.by || "System"} · {hovered ? fmtActivityDate(act.ts) : new Date(act.ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          by {act.by || "System"} · {hovered ? fmtActivityDate(act.createdAt) : new Date(act.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                         </span>
                       </div>
                     </div>
