@@ -95,6 +95,29 @@ export async function addRecipients(campaignId, contactIds) {
   return result;
 }
 
+// Upsert recipients for re-send flows: resets status to 'pending' if the row already exists
+// so the contact can be sent to again. Uniqueness within a batch is enforced by the caller.
+export async function upsertRecipients(campaignId, contactIds) {
+  await Promise.all(
+    contactIds.map(contactId =>
+      prisma.campaignRecipient.upsert({
+        where:  { campaignId_contactId: { campaignId, contactId } },
+        create: { campaignId, contactId, status: 'pending' },
+        update: {
+          status:    'pending',
+          messageId: null,
+          sentAt:    null,
+          openedAt:  null,
+          clickedAt: null,
+          bouncedAt: null,
+        },
+      })
+    )
+  );
+  const count = await prisma.campaignRecipient.count({ where: { campaignId } });
+  await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
+}
+
 export async function removeAllRecipients(campaignId) {
   const result = await prisma.campaignRecipient.deleteMany({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: 0 } });

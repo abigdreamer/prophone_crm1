@@ -454,10 +454,10 @@ export const sendToContacts = async (req, res) => {
       return sendError(res, 'All matched contacts are suppressed (bounced or unsubscribed)', 400);
     }
 
-    // Upsert recipients (skipDuplicates — already-existing records stay as-is)
-    await repo.addRecipients(campaignId, toSend.map(c => c.id));
+    // Upsert recipients — resets status to 'pending' for already-sent contacts so they can be re-sent
+    await repo.upsertRecipients(campaignId, toSend.map(c => c.id));
 
-    // Fetch the pending recipient rows for these contacts (only newly added ones)
+    // Fetch the pending recipient rows for these contacts
     const pendingRecipients = await repo.findPendingRecipientsForContacts(campaignId, toSend.map(c => c.id));
 
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
