@@ -387,9 +387,12 @@ export const sendToContacts = async (req, res) => {
     return sendError(res, 'contactIds array is required', 400);
   }
 
+  let previousStatus = 'draft';
+
   try {
     const campaign = await repo.findById(campaignId);
-    if (!campaign)                      return sendError(res, 'Campaign not found', 404);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    previousStatus = campaign.status ?? 'draft';
     if (!campaign.templateId)           return sendError(res, 'Campaign has no template selected', 400);
     if (campaign.status === 'sending')  return sendError(res, 'Campaign is currently sending', 400);
 
@@ -460,6 +463,12 @@ export const sendToContacts = async (req, res) => {
     // Fetch the pending recipient rows for these contacts
     const pendingRecipients = await repo.findPendingRecipientsForContacts(campaignId, toSend.map(c => c.id));
 
+    // Mark as sending before we start (same pattern as sendCampaign)
+    await repo.updateCampaign(campaignId, {
+      status:  'sending',
+      sentAt:  campaign.sentAt || new Date(),
+    });
+
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
     const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
     let totalSent = 0;
@@ -518,9 +527,11 @@ export const sendToContacts = async (req, res) => {
       }
     }
 
-    // Increment campaign sent count without changing its status
+    // Mark sent — same fields as sendCampaign so the campaigns list shows correct status/stats
     await repo.updateCampaign(campaignId, {
-      sentCount: (campaign.sentCount || 0) + totalSent,
+      status:      'sent',
+      sentCount:   (campaign.sentCount || 0) + totalSent,
+      completedAt: new Date(),
     });
 
     const by = req.user?.name || req.user?.email || 'system';
@@ -547,6 +558,8 @@ export const sendToContacts = async (req, res) => {
       total:   contactIds.length,
     });
   } catch (err) {
+    // Roll back to previous status so the campaign isn't stuck in 'sending'
+    await repo.updateCampaign(campaignId, { status: previousStatus ?? 'draft' }).catch(() => {});
     sendServerError(res, err, 'sendToContacts');
   }
 };
