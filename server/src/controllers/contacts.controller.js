@@ -300,7 +300,8 @@ const CHUNK = 500;
 
 async function importContacts(req, res) {
   const { rows, clientId, pool = 'client', duplicateAction = 'ignore' } = req.body;
-  const currentUserName = req.user?.name || 'import';
+  const fullName = req.user?.name || '';
+  const currentUserName = fullName.split(' ')[0] || req.user?.email || 'Unknown';
 
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows array is required' });
