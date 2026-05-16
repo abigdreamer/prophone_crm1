@@ -343,6 +343,14 @@ function AppLayout({ currentUser, onSignOut }) {
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
 
+  const handleImportBack = useCallback(async () => {
+    setCenterMode(null);
+    try {
+      const fresh = await db.getContacts();
+      setContacts(fresh);
+    } catch {}
+  }, [setContacts]);
+
   const handleToggleSelect = useCallback((id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -515,7 +523,7 @@ function AppLayout({ currentUser, onSignOut }) {
         return <RestoreInline contact={selected} onConfirm={handleRestoreConfirm} onBack={handleCancelForm} loading={restoreLoading} />;
       }
       if (centerMode === 'import') {
-        return <ImportInline onBack={handleCancelForm} clientId={clientId} pool={pool} onImported={handleImportDone} />;
+        return <ImportInline onBack={handleImportBack} clientId={clientId} pool={pool} onImported={handleImportDone} />;
       }
       if (centerMode === 'sendEmail') {
         const ids = visibleSelectedIds.length > 0 ? visibleSelectedIds : (selected ? [selected.id] : []);
