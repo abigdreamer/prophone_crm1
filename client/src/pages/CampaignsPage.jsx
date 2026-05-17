@@ -814,7 +814,7 @@ export default function CampaignsPage() {
   const newThisWeek = thisWeekCount(campaigns);
 
   return (
-    <div style={{ width: "100%" }}>
+    <div style={{ width: "100%", padding: "8px 8px 20px" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── Page header ── */}
@@ -836,18 +836,21 @@ export default function CampaignsPage() {
       {/* ── Stats cards ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time", subColor: T.dim,   dot: null    },
-          { label: "Draft",   value: draft,  sub: "not sent yet",                                             subColor: T.muted, dot: T.muted },
-          { label: "Sending", value: active, sub: active === 0 ? "none active" : "in progress",               subColor: T.amber, dot: T.amber },
-          { label: "Sent",    value: sent,   sub: "successfully delivered",                                   subColor: T.green, dot: T.green },
-        ].map(({ label, value, sub, subColor, dot }) => (
-          <div key={label} style={{ padding: "18px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-              {dot && <div style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />}
-              <span style={{ fontSize: 11, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 5 }}>{value}</div>
-            <div style={{ fontSize: 11, color: subColor }}>{sub}</div>
+          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time", accent: T.accent },
+          { label: "Draft",   value: draft,  sub: "not sent yet",                                             accent: T.muted  },
+          { label: "Sending", value: active, sub: active === 0 ? "none active" : "in progress",               accent: T.amber  },
+          { label: "Sent",    value: sent,   sub: "successfully delivered",                                   accent: T.green  },
+        ].map(({ label, value, sub, accent }) => (
+          <div key={label} style={{
+            padding: "18px 20px",
+            background: `linear-gradient(135deg, ${accent}12 0%, ${T.card} 65%)`,
+            border: `1px solid ${T.border}`,
+            borderLeft: `3px solid ${accent}`,
+            borderRadius: 12,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: accent, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 5 }}>{value}</div>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>{sub}</div>
           </div>
         ))}
       </div>

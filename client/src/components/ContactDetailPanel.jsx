@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, forwardRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useCallback, createContext, useContext } from "react";
 import Btn from "./ui/Btn";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
-import { STAGE_DEF, ALL_STAGES, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES } from "../data/stages";
+import { STAGE_DEF, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 import { Spinner } from "./ui/Loader";
@@ -15,15 +15,47 @@ const ACTION_CFG = {
 };
 
 const SOCIAL_FIELDS = [
-  { key: "facebook", label: "Facebook", color: "#1877f2", placeholder: "https://facebook.com/yourpage" },
-  { key: "instagram", label: "Instagram", color: "#e1306c", placeholder: "https://instagram.com/yourhandle" },
-  { key: "linkedin", label: "LinkedIn", color: "#0a66c2", placeholder: "https://linkedin.com/in/profile" },
-  { key: "twitter", label: "Twitter / X", color: "#1da1f2", placeholder: "https://twitter.com/handle" },
-  { key: "youtube", label: "YouTube", color: "#ff0000", placeholder: "https://youtube.com/@channel" },
-  { key: "yelp", label: "Yelp", color: "#d32323", placeholder: "https://yelp.com/biz/name" },
-  { key: "pinterest", label: "Pinterest", color: "#e60023", placeholder: "https://pinterest.com/profile" },
-  { key: "tiktok", label: "TikTok", color: "#010101", placeholder: "https://tiktok.com/@handle" },
+  { key: "facebook",  label: "Facebook",    color: "#1877f2", placeholder: "https://facebook.com/yourpage" },
+  { key: "instagram", label: "Instagram",   color: "#e1306c", placeholder: "https://instagram.com/yourhandle" },
+  { key: "linkedin",  label: "LinkedIn",    color: "#0a66c2", placeholder: "https://linkedin.com/in/profile" },
+  { key: "twitter",   label: "Twitter / X", color: "#1da1f2", placeholder: "https://twitter.com/handle" },
+  { key: "youtube",   label: "YouTube",     color: "#ff0000", placeholder: "https://youtube.com/@channel" },
+  { key: "yelp",      label: "Yelp",        color: "#d32323", placeholder: "https://yelp.com/biz/name" },
+  { key: "pinterest", label: "Pinterest",   color: "#e60023", placeholder: "https://pinterest.com/profile" },
+  { key: "tiktok",    label: "TikTok",      color: "#010101", placeholder: "https://tiktok.com/@handle" },
 ];
+
+// Module-level drag state — avoids DataTransfer.types unreliability
+let _secDragIdx = null;   // index into visibleContainers being dragged
+let _fieldDrag  = null;   // { field, fromContainerId }
+
+const FIELD_DEFS = {
+  firstName:     { key: "firstName",     label: "First Name" },
+  lastName:      { key: "lastName",      label: "Last Name" },
+  title:         { key: "title",         label: "Job Title" },
+  email:         { key: "email",         label: "Email",         type: "email",  colorKey: "accent" },
+  phone:         { key: "phone",         label: "Phone",         type: "tel",    phoneKey: true },
+  website:       { key: "website",       label: "Website",                       colorKey: "blue", autoHttps: true },
+  address:       { key: "address",       label: "Address" },
+  company:       { key: "company",       label: "Company" },
+  accountSize:   { key: "accountSize",   label: "Account Size" },
+  source:        { key: "source",        label: "Source" },
+  campaign:      { key: "campaign",      label: "Campaign" },
+  trucks:        { key: "trucks",        label: "# of Trucks",  type: "number", numKey: true },
+  contractValue: { key: "contractValue", label: "Contract ($)", type: "number", numKey: true },
+};
+
+const DEFAULT_CONTAINERS = [
+  { id: "pipeline",  title: "Pipeline Management",   type: "pipeline", width: "full", fieldColumns: 2, collapsible: false, collapsed: false, visible: true,  fields: [] },
+  { id: "name_role", title: "Name & Role",           type: "fields",   width: "full", fieldColumns: 3, collapsible: false, collapsed: false, visible: true,  fields: ["firstName", "lastName", "title"] },
+  { id: "contact",   title: "Contact Info",          type: "fields",   width: "half", fieldColumns: 1, collapsible: false, collapsed: false, visible: true,  fields: ["email", "phone", "website", "address"] },
+  { id: "company",   title: "Company & Acquisition", type: "fields",   width: "half", fieldColumns: 1, collapsible: false, collapsed: false, visible: true,  fields: ["company", "accountSize", "source", "campaign", "trucks", "contractValue"] },
+  { id: "notes",     title: "Notes",                 type: "notes",    width: "full", fieldColumns: 1, collapsible: true,  collapsed: false, visible: true,  fields: [] },
+  { id: "social",    title: "Social Media",          type: "social",   width: "full", fieldColumns: 2, collapsible: true,  collapsed: false, visible: true,  fields: [] },
+  { id: "tags",      title: "Tags",                  type: "tags",     width: "full", fieldColumns: 1, collapsible: true,  collapsed: false, visible: true,  fields: [] },
+];
+
+const SectionDragCtx = createContext(null);
 
 const DEFAULT_FIELD_SETTINGS = {
   email: true, phone: true, website: true, address: true, city: true,
@@ -33,6 +65,47 @@ const DEFAULT_FIELD_SETTINGS = {
   social_twitter: true, social_youtube: true, social_yelp: true,
   social_pinterest: true, social_tiktok: true,
 };
+
+const LEAD_STATE_OPTS = [
+  { value: "prospect",   label: "Prospect" },
+  { value: "lead",       label: "Lead" },
+  { value: "warm",       label: "Warm Lead" },
+  { value: "hot",        label: "Hot Lead" },
+  { value: "customer",   label: "Customer" },
+  { value: "backburner", label: "Backburner" },
+  { value: "lost",       label: "Lost" },
+];
+
+function groupContainers(visible) {
+  const rows = [];
+  let i = 0;
+  while (i < visible.length) {
+    if (visible[i].width === "full") {
+      rows.push([visible[i]]);
+      i++;
+    } else {
+      const group = [visible[i]];
+      i++;
+      while (i < visible.length && visible[i].width !== "full") {
+        group.push(visible[i]);
+        i++;
+      }
+      rows.push(group);
+    }
+  }
+  return rows;
+}
+
+function mergeContainers(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_CONTAINERS;
+  const defaults = Object.fromEntries(DEFAULT_CONTAINERS.map(c => [c.id, c]));
+  const savedIds = new Set(saved.map(c => c.id));
+  const merged = saved.map(s => ({ ...(defaults[s.id] || {}), ...s }));
+  DEFAULT_CONTAINERS.forEach(def => {
+    if (!savedIds.has(def.id)) merged.push(def);
+  });
+  return merged;
+}
 
 function contactToForm(c) {
   return {
@@ -78,23 +151,29 @@ export default function ContactDetailPanel({
   const toast = useAppToast();
   const isNew = !contact;
 
-  const [form, setForm] = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
-  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
-  const [auditLog, setAuditLog] = useState([]);
-  const [auditOpen, setAuditOpen] = useState(false);
-  const [fieldVis, setFieldVis] = useState(DEFAULT_FIELD_SETTINGS);
+  const [form, setForm]               = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
+  const [saveStatus, setSaveStatus]   = useState(null);
+  const [auditLog, setAuditLog]       = useState([]);
+  const [fieldVis, setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
   const [noteClicked, setNoteClicked] = useState(false);
-  const [editMode, setEditMode] = useState(isNew); // new contacts start in edit mode
+  const [editMode, setEditMode]       = useState(isNew);
+  const [containers, setContainers]   = useState(DEFAULT_CONTAINERS);
+  const [layoutMode, setLayoutMode]   = useState(false);
+  const [secOver, setSecOver]         = useState(null);
+  const [addingContainer, setAddingContainer] = useState(false);
+  const [newContTitle, setNewContTitle]       = useState("");
+  const [newContType, setNewContType]         = useState("fields");
+  const secDragging = useRef(null);
 
-  const firstNameRef = useRef(null);
-  const statusTimerRef = useRef(null);
-  const formRef = useRef(form);
-  const dirtyRef = useRef(false);  // true when form has unsaved changes
-  const editModeRef = useRef(editMode);
-  formRef.current = form;
+  const firstNameRef    = useRef(null);
+  const statusTimerRef  = useRef(null);
+  const formRef         = useRef(form);
+  const dirtyRef        = useRef(false);
+  const editModeRef     = useRef(editMode);
+  formRef.current    = form;
   editModeRef.current = editMode;
 
-  // ── Auto-save implementation ──────────────────────────────────────────────
+  // ── Auto-save ─────────────────────────────────────────────────────────────
   const doSaveRef = useRef(null);
   doSaveRef.current = async () => {
     if (isNew || !dirtyRef.current) return;
@@ -108,18 +187,15 @@ export default function ContactDetailPanel({
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
       statusTimerRef.current = setTimeout(() => setSaveStatus(null), 2000);
     } catch (err) {
-      dirtyRef.current = true; // re-mark dirty so retry is possible
+      dirtyRef.current = true;
       setSaveStatus(null);
       toast.error(err?.message || "Auto-save failed");
     }
   };
 
-  // ── Cleanup status timer on unmount ──────────────────────────────────────
-  useEffect(() => () => {
-    clearTimeout(statusTimerRef.current);
-  }, []);
+  useEffect(() => () => { clearTimeout(statusTimerRef.current); }, []);
 
-  // ── Reset form when contact changes ───────────────────────────────────────
+  // ── Reset on contact change ────────────────────────────────────────────────
   useEffect(() => {
     dirtyRef.current = false;
     const next = contact ? contactToForm(contact) : emptyForm(currentUser);
@@ -127,40 +203,83 @@ export default function ContactDetailPanel({
     setForm(next);
     setSaveStatus(null);
     setAuditLog([]);
-    setAuditOpen(false);
     setEditMode(!contact);
     onDirtyChange?.(false);
     onFormChange?.(next);
   }, [contact?.id]); // eslint-disable-line
 
-  // ── Auto-focus first name on contact load or new ──────────────────────────
   useEffect(() => {
     const t = setTimeout(() => firstNameRef.current?.focus(), 60);
     return () => clearTimeout(t);
   }, [contact?.id]);
 
-  // ── Audit log ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!contact?.id) return;
-    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => { });
+    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
   }, [contact?.id]);
 
-  // ── Field visibility settings ─────────────────────────────────────────────
+  // ── Field visibility ──────────────────────────────────────────────────────
   useEffect(() => {
     db.getSettings(contact?.clientId || null, "contact_fields")
       .then(res => {
-        if (res?.config && Object.keys(res.config).length > 0) {
+        if (res?.config && Object.keys(res.config).length > 0)
           setFieldVis({ ...DEFAULT_FIELD_SETTINGS, ...res.config });
-        }
       })
-      .catch(() => { });
+      .catch(() => {});
   }, [contact?.clientId]);
 
-  // ── Enter → edit mode | Escape → save + view mode ────────────────────────
+  // ── Layout: load from backend ─────────────────────────────────────────────
+  useEffect(() => {
+    db.getSettings(clientId || null, "contact_layout")
+      .then(res => {
+        if (!Array.isArray(res?.config)) return;
+        setContainers(mergeContainers(res.config));
+      })
+      .catch(() => {});
+  }, [clientId]); // eslint-disable-line
+
+  const saveLayout = useCallback(async (conts) => {
+    try { await db.saveSettings(clientId || null, "contact_layout", conts); } catch {}
+  }, [clientId]);
+
+  const updateContainer = useCallback((id, patch) => {
+    setContainers(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...patch } : c);
+      saveLayout(next);
+      return next;
+    });
+  }, [saveLayout]);
+
+  const handleSecDrop = useCallback((srcVisIdx, dstVisIdx) => {
+    setContainers(prev => {
+      const visible = prev.filter(c => c.visible);
+      const srcId = visible[srcVisIdx]?.id;
+      const dstId = visible[dstVisIdx]?.id;
+      if (!srcId || !dstId || srcId === dstId) return prev;
+      const next = [...prev];
+      const srcAbs = next.findIndex(c => c.id === srcId);
+      const [moved] = next.splice(srcAbs, 1);
+      const dstAbs = next.findIndex(c => c.id === dstId);
+      next.splice(dstAbs, 0, moved);
+      saveLayout(next);
+      return next;
+    });
+  }, [saveLayout]);
+
+  const addContainer = useCallback(() => {
+    const title = newContTitle.trim();
+    if (!title) return;
+    const id = "custom_" + Date.now();
+    const newCont = { id, title, type: newContType, width: "full", fieldColumns: 1, collapsible: false, collapsed: false, visible: true, fields: [] };
+    setContainers(prev => { const next = [...prev, newCont]; saveLayout(next); return next; });
+    setAddingContainer(false);
+    setNewContTitle("");
+  }, [newContTitle, newContType, saveLayout]);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Enter" && !isNew && !editModeRef.current) {
-        // only activate if not already typing in an input/textarea
         const tag = document.activeElement?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         e.preventDefault();
@@ -183,7 +302,6 @@ export default function ContactDetailPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [isNew]); // eslint-disable-line
 
-  // ── Setters — only mark dirty, never auto-save on keystroke ─────────────
   const set = (k, v) => {
     const next = { ...formRef.current, [k]: v };
     formRef.current = next;
@@ -202,14 +320,11 @@ export default function ContactDetailPanel({
     onDirtyChange?.(true);
   };
 
-
-  // ── Build payload ─────────────────────────────────────────────────────────
   function buildPayload(f) {
     const fd = f || formRef.current;
     const tagsArr = fd.tags ? fd.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     return {
-      ...(contact || {}),
-      ...fd,
+      ...(contact || {}), ...fd,
       id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
       pool: contact?.pool || pool,
       clientId: contact?.clientId || clientId,
@@ -228,7 +343,6 @@ export default function ContactDetailPanel({
     };
   }
 
-  // ── Manual save (new contacts only) ──────────────────────────────────────
   async function handleAddNew() {
     setSaveStatus("saving");
     try {
@@ -242,76 +356,54 @@ export default function ContactDetailPanel({
     }
   }
 
-  // ── Derived display values ─────────────────────────────────────────────────
-  const personName = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
-  const heroName = personName || form.company || form.email || (isNew ? "New Contact" : "Unknown Contact");
-  const avatarLetter = personName
+  // ── Derived display values ────────────────────────────────────────────────
+  const personName    = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
+  const heroName      = personName || form.company || form.email || (isNew ? "New Contact" : "Unknown Contact");
+  const avatarLetter  = personName
     ? ((form.firstName?.[0] || "") + (form.lastName?.[0] || "")).toUpperCase()
     : (form.company?.[0] || form.email?.[0] || (isNew ? "+" : "?")).toUpperCase();
-
-  const d = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
-  // Use accent color if stage color is dim/muted (makes avatar pop more)
-  const avatarColor = (d.color === T.muted || d.color === T.dim) ? T.accent : d.color;
-  const show = (key) => fieldVis[key] !== false;
+  const d             = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
+  const avatarColor   = (d.color === T.muted || d.color === T.dim) ? T.accent : d.color;
+  const show          = (key) => fieldVis[key] !== false;
   const enabledSocials = SOCIAL_FIELDS.filter(({ key }) => fieldVis[`social_${key}`] !== false);
+  const parsedTags    = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
 
-  const taStyle = {
-    width: "100%", marginTop: 4,
-    background: T.surface, border: "1px solid " + T.border,
-    borderRadius: 6, padding: "8px 11px",
-    color: T.text, fontSize: 12,
-    outline: "none", fontFamily: "inherit",
-    resize: "vertical", boxSizing: "border-box",
-  };
-
-  const parsedTags = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-
-  // key handlers for number fields
   const numKey = (e) => {
-    if (["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(e.key)) return;
+    if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
     if (!/^[\d()]$/.test(e.key)) e.preventDefault();
   };
   const phoneKey = (e) => {
-    if (["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(e.key)) return;
+    if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
     if (!/^[\d()\-+ ]$/.test(e.key)) e.preventDefault();
   };
+
+  const visibleContainers = containers.filter(c => c.visible);
+  const hiddenContainers  = containers.filter(c => !c.visible);
+  const rows              = groupContainers(visibleContainers);
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
 
-      {/* ── Profile card ─────────────────────────────────────────────────── */}
+      {/* ── Profile card ─────────────────────────────────────────────── */}
       <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 14, marginBottom: 16, overflow: "hidden" }}>
 
         {/* Banner */}
-        <div style={{
-          height: 88, position: "relative",
-          background: `linear-gradient(135deg, ${avatarColor}35 0%, ${avatarColor}12 50%, transparent 100%)`,
-        }}>
-          <div style={{ position: "absolute", top: 14, right: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ height: 88, position: "relative", background: `linear-gradient(135deg, ${avatarColor}35 0%, ${avatarColor}12 50%, transparent 100%)` }}>
+          <div style={{ position: "absolute", top: 12, right: 14, display: "flex", alignItems: "center", gap: 8 }}>
             {saveStatus === "saving" && (
               <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
                 <Spinner size={10} color={T.muted} /> Saving…
               </span>
             )}
-            {saveStatus === "saved" && (
-              <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>
-            )}
-            {isNew && saveStatus === null && (
-              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
-            )}
-            {!isNew && !editMode && saveStatus === null && (
-              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>
-            )}
-            {!isNew && editMode && saveStatus === null && (
-              <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
-            )}
+            {saveStatus === "saved" && <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>}
+            {isNew && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
+            {!isNew && !editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>}
+            {!isNew && editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
           </div>
         </div>
 
         {/* Profile body */}
         <div style={{ padding: "0 24px 20px" }}>
-
-          {/* Avatar row — avatar overlaps banner */}
           <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: -40, marginBottom: 16 }}>
             <div style={{
               width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
@@ -325,7 +417,6 @@ export default function ContactDetailPanel({
             </div>
           </div>
 
-          {/* Name + subtitle */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
               {heroName}
@@ -337,7 +428,6 @@ export default function ContactDetailPanel({
             )}
           </div>
 
-          {/* Status indicators */}
           {!isNew && (
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
               <span style={{
@@ -363,7 +453,6 @@ export default function ContactDetailPanel({
             </div>
           )}
 
-          {/* Contact chips */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {form.email && heroName !== form.email && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.accent, background: T.accent + "0d", border: "1px solid " + T.accent + "25", borderRadius: 20, padding: "5px 13px", maxWidth: 240, overflow: "hidden" }}>
@@ -386,161 +475,170 @@ export default function ContactDetailPanel({
             )}
           </div>
         </div>
-
       </div>
 
-      {/* ── Name & Role ───────────────────────────────────────────────────── */}
-      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
-        <SectionHeader>Name &amp; Role</SectionHeader>
-        <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          {editMode ? (
-            <>
-              <FieldInput ref={firstNameRef} label="First Name" value={form.firstName} onChange={v => set("firstName", v)} placeholder="First" />
-              <FieldInput label="Last Name" value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last" />
-              <FieldInput label="Job Title" value={form.title} onChange={v => set("title", v)} placeholder="Owner / Manager" />
-            </>
-          ) : (
-            <>
-              <ViewRow label="First Name" value={form.firstName} />
-              <ViewRow label="Last Name" value={form.lastName} />
-              <ViewRow label="Job Title" value={form.title} />
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Pipeline Management ──────────────────────────────────────────── */}
-      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
-        <SectionHeader>Pipeline Management</SectionHeader>
-        <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          {editMode ? (
-            <>
-              <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
-              <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
-            </>
-          ) : (
-            <>
-              <ViewRow label="Lead State" value={LEAD_STATE_OPTS.find(o => o.value === (form.leadState || "prospect"))?.label || "Prospect"} />
-              <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Contact Info + Company & Acquisition ─────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-        <Section title="Contact Info">
-          {editMode ? (
-            <>
-              {show("email") && <InlineInput label="Email" type="email" value={form.email} onChange={v => set("email", v)} placeholder="email@company.com" color={T.accent} />}
-              {show("phone") && <InlineInput label="Phone" type="tel" value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} />}
-              {show("website") && <InlineInput label="Website" value={form.website} onChange={v => set("website", v)} placeholder="https://..." color={T.blue}
-                onBlur={() => {
-                  const v = form.website.trim();
-                  if (v && !/^https?:\/\//i.test(v)) set("website", "https://" + v);
-                }}
-              />}
-              {show("address") && <InlineInput label="Address" value={form.address} onChange={v => set("address", v)} placeholder="123 Main St, City, ST" />}
-            </>
-          ) : (
-            <>
-              {show("email") && <ViewRow label="Email" value={form.email} color={T.accent} />}
-              {show("phone") && <ViewRow label="Phone" value={form.phone} />}
-              {show("website") && <ViewRow label="Website" value={form.website} color={T.blue} />}
-              {show("address") && <ViewRow label="Address" value={form.address} />}
-            </>
-          )}
-        </Section>
-
-        <Section title="Company &amp; Acquisition">
-          {editMode ? (
-            <>
-              {show("company") && <InlineInput label="Company" value={form.company} onChange={v => set("company", v)} placeholder="Acme Corp" />}
-              {show("accountSize") && <InlineInput label="Account Size" value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="1-5" />}
-              {show("source") && <InlineInput label="Source" value={form.source} onChange={v => set("source", v)} placeholder="Referral" />}
-              {show("campaign") && <InlineInput label="Campaign" value={form.campaign} onChange={v => set("campaign", v)} placeholder="Q1 Outreach" />}
-              {show("trucks") && <InlineInput label="# of Trucks" type="number" value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} />}
-              {show("contractValue") && <InlineInput label="Contract ($)" type="number" value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} />}
-            </>
-          ) : (
-            <>
-              {show("company") && <ViewRow label="Company" value={form.company} />}
-              {show("accountSize") && <ViewRow label="Account Size" value={form.accountSize} />}
-              {show("source") && <ViewRow label="Source" value={form.source} />}
-              {show("campaign") && <ViewRow label="Campaign" value={form.campaign} />}
-              {show("trucks") && <ViewRow label="# of Trucks" value={form.trucks} />}
-              {show("contractValue") && <ViewRow label="Contract ($)" value={form.contractValue} />}
-            </>
-          )}
-        </Section>
-      </div>
-
-      {/* ── Notes ────────────────────────────────────────────────────────── */}
-      {show("notes") && (
-        <Section title="Notes" style={{ marginBottom: 12 }}>
-          {editMode ? (
-            <div
-              onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }}
-              style={{ position: "relative" }}
-            >
-              {noteClicked && (
-                <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, fontFamily: "inherit", letterSpacing: "0.03em" }}>
-                  {(() => {
-                    const now = new Date();
-                    const mm = String(now.getMonth() + 1).padStart(2, "0");
-                    const dd = String(now.getDate()).padStart(2, "0");
-                    const yy = String(now.getFullYear()).slice(2);
-                    const day = now.toLocaleDateString("en-US", { weekday: "short" });
-                    const h = String(now.getHours()).padStart(2, "0");
-                    const m = String(now.getMinutes()).padStart(2, "0");
-                    return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
-                  })()}
-                </div>
-              )}
-              <textarea
-                value={form.notes}
-                onChange={e => set("notes", e.target.value)}
-                onFocus={e => (e.target.style.borderColor = T.accent)}
-                onBlur={e => (e.target.style.borderColor = T.border)}
-                onKeyDown={e => e.stopPropagation()}
-                placeholder="Add notes about this contact…"
-                style={{ ...taStyle, minHeight: 80 }}
-              />
-            </div>
-          ) : (
-            form.notes
-              ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
-              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
-          )}
-        </Section>
-      )}
-
-      {/* ── Social Media ─────────────────────────────────────────────────── */}
-      {enabledSocials.length > 0 && (
-        <Section title="Social Media" style={{ marginBottom: 12 }}>
-          {editMode ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-              {enabledSocials.map(({ key, label, color, placeholder }) => (
-                <InlineInput key={key} label={label} value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={placeholder} color={color} />
-              ))}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-              {enabledSocials.map(({ key, label, color }) =>
-                form.socialLinks?.[key] ? <ViewRow key={key} label={label} value={form.socialLinks[key]} color={color} /> : null
-              )}
-            </div>
-          )}
-        </Section>
-      )}
-
-      {/* ── CRM metadata ─────────────────────────────────────────────────── */}
+      {/* ── Layout toolbar ───────────────────────────────────────────── */}
       {!isNew && (
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0,
-          background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-          marginBottom: 12, overflow: "hidden",
-        }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingLeft: 2 }}>
+          <span style={{ fontSize: 11, color: T.muted }}>
+            {layoutMode
+              ? <span style={{ color: T.accent, fontWeight: 600 }}>Drag containers to reorder · double-click titles to rename</span>
+              : null}
+          </span>
+          <button
+            onClick={() => setLayoutMode(lm => !lm)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 8,
+              border: "1px solid " + (layoutMode ? T.accent + "60" : T.border),
+              background: layoutMode ? T.accent + "15" : T.card,
+              color: layoutMode ? T.accent : T.muted,
+              cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+              fontWeight: 600, letterSpacing: "0.02em",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {layoutMode ? (
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Done Editing
+              </>
+            ) : (
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                Customize Layout
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* ── Layout mode: hidden containers panel ─────────────────────── */}
+      {layoutMode && hiddenContainers.length > 0 && (
+        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "12px 16px", marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+            Hidden Containers
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {hiddenContainers.map(c => (
+              <button
+                key={c.id}
+                onClick={() => updateContainer(c.id, { visible: true })}
+                style={{
+                  padding: "5px 14px", borderRadius: 20, border: "1px solid " + T.border,
+                  background: T.surface, color: T.dim, cursor: "pointer",
+                  fontSize: 11, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> {c.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Container rows ────────────────────────────────────────────── */}
+      {rows.map((row, rowIdx) => (
+        <div
+          key={rowIdx}
+          style={{ display: "grid", gridTemplateColumns: row.map(() => "1fr").join(" "), gap: 12, marginBottom: 12 }}
+        >
+          {row.map(container => {
+            const visIdx = visibleContainers.indexOf(container);
+            return (
+              <DraggableBlock
+                key={container.id}
+                index={visIdx}
+                secDragging={secDragging}
+                secOver={secOver}
+                setSecOver={setSecOver}
+                onDrop={handleSecDrop}
+              >
+                <ContainerBlock
+                  container={container}
+                  layoutMode={layoutMode}
+                  editMode={editMode}
+                  form={form}
+                  set={set}
+                  setSocial={setSocial}
+                  show={show}
+                  numKey={numKey}
+                  phoneKey={phoneKey}
+                  enabledSocials={enabledSocials}
+                  noteClicked={noteClicked}
+                  setNoteClicked={setNoteClicked}
+                  parsedTags={parsedTags}
+                  firstNameRef={firstNameRef}
+                  onUpdate={(patch) => updateContainer(container.id, patch)}
+                  onHide={() => updateContainer(container.id, { visible: false })}
+                  onFieldReorder={(next, crossMeta) => {
+                    setContainers(prev => {
+                      const updated = prev.map(c => {
+                        if (c.id === container.id) return { ...c, fields: next.map(f => f.key) };
+                        if (crossMeta && c.id === crossMeta.fromContainerId)
+                          return { ...c, fields: c.fields.filter(k => k !== crossMeta.removedKey) };
+                        return c;
+                      });
+                      saveLayout(updated);
+                      return updated;
+                    });
+                  }}
+                />
+              </DraggableBlock>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* ── Layout mode: add container ────────────────────────────────── */}
+      {layoutMode && (
+        <div style={{ marginBottom: 12 }}>
+          {!addingContainer ? (
+            <button
+              onClick={() => setAddingContainer(true)}
+              style={{
+                width: "100%", padding: "10px 16px", border: "2px dashed " + T.border,
+                borderRadius: 8, background: "transparent", color: T.muted,
+                cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+              }}
+            >
+              + Add Container
+            </button>
+          ) : (
+            <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "14px 16px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>New Container</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  autoFocus
+                  value={newContTitle}
+                  onChange={e => setNewContTitle(e.target.value)}
+                  placeholder="Container title..."
+                  onKeyDown={e => {
+                    if (e.key === "Enter") addContainer();
+                    if (e.key === "Escape") { setAddingContainer(false); setNewContTitle(""); }
+                  }}
+                  style={{ flex: 1, background: T.surface, border: "1px solid " + T.border, borderRadius: 6, padding: "7px 11px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit" }}
+                />
+                <select
+                  value={newContType}
+                  onChange={e => setNewContType(e.target.value)}
+                  style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 6, padding: "7px 11px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit", cursor: "pointer" }}
+                >
+                  <option value="fields">Fields</option>
+                  <option value="notes">Notes</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <button onClick={addContainer} style={{ padding: "7px 16px", borderRadius: 6, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>Add</button>
+                <button onClick={() => { setAddingContainer(false); setNewContTitle(""); }} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid " + T.border, background: T.surface, color: T.dim, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CRM metadata ─────────────────────────────────────────────── */}
+      {!isNew && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, background: T.card, border: "1px solid " + T.border, borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
           {[
             ["Owner", contact.ownedBy || "—"],
             ["Added By", contact.addedBy || "—"],
@@ -555,13 +653,9 @@ export default function ContactDetailPanel({
         </div>
       )}
 
-      {/* ── Cancellation info ────────────────────────────────────────────── */}
+      {/* ── Cancellation info ─────────────────────────────────────────── */}
       {contact?.isCanceled && (
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0,
-          background: T.red + "08", border: "1px solid " + T.red + "30",
-          borderRadius: 8, marginBottom: 12, overflow: "hidden",
-        }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, background: T.red + "08", border: "1px solid " + T.red + "30", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
           {[
             ["Canceled By", contact.canceledBy || "—"],
             ["Canceled At", fmt.date(contact.canceledAt)],
@@ -574,137 +668,513 @@ export default function ContactDetailPanel({
           ))}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* ── Tags ─────────────────────────────────────────────────────────── */}
-      {show("tags") && (
-        <Section title="Tags" style={{ marginBottom: 12 }}>
-          {editMode ? (
-            <>
-              <input
-                type="text"
-                value={form.tags}
-                onChange={e => set("tags", e.target.value)}
-                onFocus={e => (e.target.style.borderColor = T.accent)}
-                onBlur={e => (e.target.style.borderColor = T.border)}
-                placeholder="tag1, tag2, tag3  (comma-separated)"
-                style={{
-                  width: "100%", background: T.surface, border: "1px solid " + T.border,
-                  borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
-                  outline: "none", fontFamily: "inherit", boxSizing: "border-box",
-                }}
-              />
-              {parsedTags.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
-                  {parsedTags.map(tag => (
-                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            parsedTags.length > 0
-              ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {parsedTags.map(tag => (
-                  <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
-                ))}
-              </div>
-              : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No tags</div>
-          )}
-        </Section>
+// ══════════════════════════════════════════════════════════════════════════════
+// ContainerBlock — polymorphic container renderer + layout controls
+// ══════════════════════════════════════════════════════════════════════════════
+
+function ContainerBlock({
+  container, layoutMode, editMode,
+  form, set, setSocial, show, numKey, phoneKey,
+  enabledSocials, noteClicked, setNoteClicked, parsedTags,
+  firstNameRef, onUpdate, onHide, onFieldReorder,
+}) {
+  const T = useTheme();
+  const dragCtx = useContext(SectionDragCtx);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleVal, setTitleVal]         = useState(container.title);
+
+  useEffect(() => { setTitleVal(container.title); }, [container.title]);
+
+  const isCollapsed = container.collapsible && container.collapsed;
+
+  const taStyle = {
+    width: "100%", marginTop: 4,
+    background: T.surface, border: "1px solid " + T.border,
+    borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
+    outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+  };
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const header = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 7,
+      padding: "8px 16px",
+      borderBottom: isCollapsed ? "none" : "1px solid " + T.border,
+      minHeight: 37,
+    }}>
+      {/* Drag grip */}
+      {dragCtx && (
+        <span
+          draggable
+          onDragStart={dragCtx.onDragStart}
+          onDragEnd={dragCtx.onDragEnd}
+          style={{
+            fontSize: 15, color: T.muted, cursor: "grab",
+            userSelect: "none", flexShrink: 0, lineHeight: 1, touchAction: "none",
+            opacity: layoutMode ? 0.8 : 0.35,
+          }}
+        >⠿</span>
       )}
 
-      {/* ── Audit Log ──────────────────────────────────────────────────────
-      {!isNew && (
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
-          <button
-            onClick={() => setAuditOpen(o => !o)}
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
-          >
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              Audit Log <span style={{ color: T.dim, fontWeight: 500 }}>({auditLog.length})</span>
-            </span>
-            <span style={{ fontSize: 12, color: T.muted, transform: auditOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▾</span>
-          </button>
-          {auditOpen && (
-            <div style={{ borderTop: "1px solid " + T.border }}>
-              {auditLog.length === 0 ? (
-                <div style={{ padding: "14px 16px", fontSize: 12, color: T.muted, fontStyle: "italic" }}>No audit events yet.</div>
-              ) : auditLog.map((entry, i) => {
-                const cfg  = ACTION_CFG[entry.action] || { label: entry.action, color: T.muted, icon: "·" };
-                const meta = entry.metadata || {};
-                return (
-                  <div key={entry.id} style={{ display: "flex", gap: 11, padding: "10px 16px", borderBottom: i < auditLog.length - 1 ? "1px solid " + T.border + "66" : "none" }}>
-                    <div style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: cfg.color + "18", border: "1px solid " + cfg.color + "40", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: cfg.color, marginTop: 1 }}>
-                      {cfg.icon}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "1px 6px", borderRadius: 4, background: cfg.color + "18", color: cfg.color, border: "1px solid " + cfg.color + "35" }}>
-                          {cfg.label}
-                        </span>
-                        <span style={{ fontSize: 10, color: T.muted }}>by {entry.performedBy || "system"} · {fmt.date(entry.ts)}</span>
-                      </div>
-                      {entry.action === "CREATE" && (
-                        <div style={{ fontSize: 11, color: T.dim }}>
-                          {meta.name}{meta.company ? ` · ${meta.company}` : ""}
-                          {meta.email ? <span style={{ color: T.muted }}> · {meta.email}</span> : null}
-                        </div>
-                      )}
-                      {entry.action === "UPDATE" && meta.changes && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
-                          {Object.entries(meta.changes).map(([field, { from, to }]) => (
-                            <span key={field} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: T.accent + "12", color: T.dim, border: "1px solid " + T.border }}>
-                              {field}: <span style={{ color: T.muted, textDecoration: "line-through" }}>{String(from)}</span>{" → "}<span style={{ color: T.text, fontWeight: 600 }}>{String(to)}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {entry.action === "CANCEL"  && meta.reason         && <div style={{ fontSize: 11, color: T.dim, fontStyle: "italic" }}>"{meta.reason}"</div>}
-                      {entry.action === "RESTORE" && meta.previousReason && <div style={{ fontSize: 11, color: T.muted }}>Previously canceled: <span style={{ fontStyle: "italic" }}>"{meta.previousReason}"</span></div>}
-                    </div>
-                  </div>
-                );
-              })}
+      {/* Title — inline editable in layout mode */}
+      {layoutMode && editingTitle ? (
+        <input
+          autoFocus
+          value={titleVal}
+          onChange={e => setTitleVal(e.target.value)}
+          onBlur={() => {
+            setEditingTitle(false);
+            const t = titleVal.trim();
+            if (t && t !== container.title) onUpdate({ title: t });
+            else setTitleVal(container.title);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") e.target.blur();
+            if (e.key === "Escape") { setTitleVal(container.title); setEditingTitle(false); }
+          }}
+          style={{
+            flex: 1, background: T.surface, border: "1px solid " + T.accent + "60",
+            borderRadius: 4, padding: "2px 7px", color: T.text, fontSize: 10,
+            fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+            outline: "none", fontFamily: "inherit",
+          }}
+        />
+      ) : (
+        <span
+          onDoubleClick={layoutMode ? () => setEditingTitle(true) : undefined}
+          title={layoutMode ? "Double-click to rename" : undefined}
+          style={{
+            fontSize: 10, fontWeight: 700, color: T.muted,
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            cursor: layoutMode ? "text" : "default", flex: 1,
+          }}
+        >
+          {container.title}
+        </span>
+      )}
+
+      {/* Collapse toggle (always visible if collapsible) */}
+      {container.collapsible && (
+        <button
+          onClick={() => onUpdate({ collapsed: !container.collapsed })}
+          style={{
+            padding: "0 4px", background: "none", border: "none", color: T.muted,
+            cursor: "pointer", fontSize: 11, lineHeight: 1,
+            transform: container.collapsed ? "rotate(-90deg)" : "none",
+            transition: "transform 0.15s", flexShrink: 0,
+          }}
+        >▾</button>
+      )}
+
+      {/* Layout mode controls */}
+      {layoutMode && !editingTitle && (
+        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+          {/* Column count — fields type only */}
+          {container.type === "fields" && (
+            <div style={{ display: "flex", gap: 0, background: T.surface, borderRadius: 4, border: "1px solid " + T.border, overflow: "hidden" }}>
+              {[1, 2, 3].map(n => (
+                <button
+                  key={n}
+                  onClick={() => onUpdate({ fieldColumns: n })}
+                  title={`${n} column${n > 1 ? "s" : ""}`}
+                  style={{
+                    padding: "2px 7px", border: "none",
+                    background: container.fieldColumns === n ? T.accent : "transparent",
+                    color: container.fieldColumns === n ? "#fff" : T.muted,
+                    cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 600,
+                    borderRight: n < 3 ? "1px solid " + T.border : "none",
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
             </div>
           )}
+          {/* Width toggle */}
+          <button
+            onClick={() => onUpdate({ width: container.width === "full" ? "half" : "full" })}
+            title={container.width === "full" ? "Switch to half-width" : "Switch to full-width"}
+            style={{
+              padding: "2px 7px", borderRadius: 4, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, cursor: "pointer", fontSize: 10, fontFamily: "inherit",
+            }}
+          >
+            {container.width === "full" ? "⟺ Full" : "⟩ Half"}
+          </button>
+          {/* Collapsible toggle */}
+          <button
+            onClick={() => onUpdate({ collapsible: !container.collapsible })}
+            title={container.collapsible ? "Remove collapse" : "Make collapsible"}
+            style={{
+              padding: "2px 7px", borderRadius: 4,
+              border: "1px solid " + (container.collapsible ? T.accent + "50" : T.border),
+              background: container.collapsible ? T.accent + "15" : T.surface,
+              color: container.collapsible ? T.accent : T.muted,
+              cursor: "pointer", fontSize: 10, fontFamily: "inherit",
+            }}
+          >↕</button>
+          {/* Hide */}
+          <button
+            onClick={onHide}
+            title="Hide container"
+            style={{
+              padding: "2px 7px", borderRadius: 4, border: "1px solid " + T.border,
+              background: T.surface, color: T.muted, cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+            }}
+          >✕</button>
         </div>
-      )} */}
+      )}
     </div>
   );
-}
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+  // ── Body ──────────────────────────────────────────────────────────────────
+  let body = null;
+  if (!isCollapsed) {
+    switch (container.type) {
 
-function SectionHeader({ children }) {
-  const T = useTheme();
+      case "pipeline":
+        body = (
+          <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {editMode ? (
+              <>
+                <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
+                <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
+              </>
+            ) : (
+              <>
+                <ViewRow label="Lead State" value={LEAD_STATE_OPTS.find(o => o.value === (form.leadState || "prospect"))?.label || "Prospect"} />
+                <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
+              </>
+            )}
+          </div>
+        );
+        break;
+
+      case "fields": {
+        const fieldObjs = (container.fields || []).map(k => FIELD_DEFS[k]).filter(Boolean);
+        body = (
+          <div style={{ padding: "12px 16px" }}>
+            <DraggableFieldList
+              containerId={container.id}
+              fields={fieldObjs}
+              columns={container.fieldColumns || 1}
+              editMode={editMode}
+              form={form}
+              set={set}
+              show={show}
+              numKey={numKey}
+              phoneKey={phoneKey}
+              firstFieldRef={container.id === "name_role" ? firstNameRef : undefined}
+              onReorder={onFieldReorder}
+            />
+          </div>
+        );
+        break;
+      }
+
+      case "notes":
+        body = show("notes") ? (
+          <div style={{ padding: "12px 16px" }}>
+            {editMode ? (
+              <div onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }} style={{ position: "relative" }}>
+                {noteClicked && (
+                  <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, letterSpacing: "0.03em" }}>
+                    {(() => {
+                      const now = new Date();
+                      const mm = String(now.getMonth() + 1).padStart(2, "0");
+                      const dd = String(now.getDate()).padStart(2, "0");
+                      const yy = String(now.getFullYear()).slice(2);
+                      const day = now.toLocaleDateString("en-US", { weekday: "short" });
+                      const h = String(now.getHours()).padStart(2, "0");
+                      const m = String(now.getMinutes()).padStart(2, "0");
+                      return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
+                    })()}
+                  </div>
+                )}
+                <textarea
+                  value={form.notes}
+                  onChange={e => set("notes", e.target.value)}
+                  onFocus={e => (e.target.style.borderColor = T.accent)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
+                  onKeyDown={e => e.stopPropagation()}
+                  placeholder="Add notes about this contact…"
+                  style={{ ...taStyle, minHeight: 80 }}
+                />
+              </div>
+            ) : (
+              form.notes
+                ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "social":
+        body = enabledSocials.length > 0 ? (
+          <div style={{ padding: "12px 16px" }}>
+            {editMode ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                {enabledSocials.map(({ key, label, color, placeholder }) => (
+                  <InlineInput key={key} label={label} value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={placeholder} color={color} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                {enabledSocials.map(({ key, label, color }) =>
+                  form.socialLinks?.[key] ? <ViewRow key={key} label={label} value={form.socialLinks[key]} color={color} /> : null
+                )}
+              </div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "tags":
+        body = show("tags") ? (
+          <div style={{ padding: "12px 16px" }}>
+            {editMode ? (
+              <>
+                <input
+                  type="text"
+                  value={form.tags}
+                  onChange={e => set("tags", e.target.value)}
+                  onFocus={e => (e.target.style.borderColor = T.accent)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
+                  placeholder="tag1, tag2, tag3  (comma-separated)"
+                  style={{
+                    width: "100%", background: T.surface, border: "1px solid " + T.border,
+                    borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
+                    outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                  }}
+                />
+                {parsedTags.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+                    {parsedTags.map(tag => (
+                      <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              parsedTags.length > 0
+                ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {parsedTags.map(tag => (
+                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                  ))}
+                </div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No tags</div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "custom":
+        body = (
+          <div style={{ padding: "12px 16px" }}>
+            {editMode ? (
+              <textarea
+                value={form[container.id] || ""}
+                onChange={e => set(container.id, e.target.value)}
+                onFocus={ev => (ev.target.style.borderColor = T.accent)}
+                onBlur={ev => (ev.target.style.borderColor = T.border)}
+                onKeyDown={e => e.stopPropagation()}
+                placeholder={`Enter ${container.title}…`}
+                style={{ ...taStyle, minHeight: 60 }}
+              />
+            ) : (
+              form[container.id]
+                ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form[container.id]}</div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>Empty</div>
+            )}
+          </div>
+        );
+        break;
+
+      default: break;
+    }
+  }
+
   return (
-    <div style={{ padding: "8px 16px", borderBottom: "1px solid " + T.border, fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-      {children}
+    <div style={{
+      background: T.card,
+      border: "1px solid " + (layoutMode ? T.accent + "45" : T.border),
+      borderRadius: 8, overflow: "hidden",
+      boxShadow: layoutMode ? "0 0 0 1px " + T.accent + "12" : "none",
+    }}>
+      {header}
+      {body}
     </div>
   );
 }
 
-function Section({ title, children, style }) {
+// ══════════════════════════════════════════════════════════════════════════════
+// DraggableFieldList
+// ══════════════════════════════════════════════════════════════════════════════
+
+function DraggableFieldList({ containerId, fields, columns = 1, editMode, form, set, show, numKey, phoneKey, onReorder, firstFieldRef }) {
   const T = useTheme();
+  const dragIdx = useRef(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  const visible = fields.filter(f => show(f.key));
+
   return (
-    <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden", ...style }}>
-      <SectionHeader>{title}</SectionHeader>
-      <div style={{ padding: "12px 16px" }}>{children}</div>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: columns > 1 ? "0 16px" : "0" }}>
+      {visible.map((field, i) => {
+        const color   = field.colorKey ? T[field.colorKey] : (field.color || undefined);
+        const isAbove = dragOver === i && dragIdx.current !== null && dragIdx.current > i;
+        const isBelow = dragOver === i && dragIdx.current !== null && dragIdx.current < i;
+
+        return (
+          <div
+            key={field.key}
+            draggable={editMode}
+            onDragStart={e => {
+              if (_secDragIdx !== null) return;
+              dragIdx.current = i;
+              _fieldDrag = { field, fromContainerId: containerId };
+              e.dataTransfer.effectAllowed = "move";
+              e.stopPropagation();
+            }}
+            onDragOver={e => {
+              if (_secDragIdx !== null) return;
+              e.preventDefault(); e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              if (dragOver !== i) setDragOver(i);
+            }}
+            onDragLeave={e => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(null);
+            }}
+            onDrop={e => {
+              if (_secDragIdx !== null) return;
+              e.preventDefault(); e.stopPropagation();
+              setDragOver(null);
+
+              // Cross-container drop
+              if (_fieldDrag && _fieldDrag.fromContainerId !== containerId) {
+                const dropped = _fieldDrag.field;
+                const fromId  = _fieldDrag.fromContainerId;
+                _fieldDrag = null; dragIdx.current = null;
+                const next = [...visible];
+                next.splice(i, 0, dropped);
+                const hidden = fields.filter(f => !visible.some(v => v.key === f.key));
+                onReorder([...next, ...hidden], { fromContainerId: fromId, removedKey: dropped.key });
+                return;
+              }
+
+              // Same-container reorder
+              const src = dragIdx.current;
+              if (src !== null && src !== i) {
+                const next = [...visible];
+                const [moved] = next.splice(src, 1);
+                next.splice(i, 0, moved);
+                const hidden = fields.filter(f => !visible.some(v => v.key === f.key));
+                onReorder([...next, ...hidden]);
+              }
+              dragIdx.current = null; _fieldDrag = null;
+            }}
+            onDragEnd={() => { setDragOver(null); dragIdx.current = null; _fieldDrag = null; }}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: editMode ? 6 : 0,
+              borderTop:    isAbove ? `2px solid ${T.accent}` : "2px solid transparent",
+              borderBottom: isBelow ? `2px solid ${T.accent}` : "2px solid transparent",
+              transition: "border-color 0.08s",
+            }}
+          >
+            {editMode && (
+              <div style={{ flexShrink: 0, paddingTop: 14, cursor: "grab", color: T.muted, fontSize: 13, userSelect: "none", lineHeight: 1, opacity: 0.5 }}>
+                ⠿
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {editMode ? (
+                <InlineInput
+                  inputRef={i === 0 && firstFieldRef ? firstFieldRef : undefined}
+                  label={field.label}
+                  type={field.type}
+                  value={form[field.key]}
+                  onChange={v => set(field.key, v)}
+                  color={color}
+                  onKeyDown={field.numKey ? numKey : field.phoneKey ? phoneKey : undefined}
+                  onBlur={field.autoHttps ? () => {
+                    const v = (form[field.key] || "").trim();
+                    if (v && !/^https?:\/\//i.test(v)) set(field.key, "https://" + v);
+                  } : undefined}
+                />
+              ) : (
+                <ViewRow label={field.label} value={form[field.key]} color={color} />
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-const LEAD_STATE_OPTS = [
-  { value: "prospect", label: "Prospect" },
-  { value: "lead", label: "Lead" },
-  { value: "warm", label: "Warm Lead" },
-  { value: "hot", label: "Hot Lead" },
-  { value: "customer", label: "Customer" },
-  { value: "backburner", label: "Backburner" },
-  { value: "lost", label: "Lost" },
-];
+// ══════════════════════════════════════════════════════════════════════════════
+// DraggableBlock — wraps a container with section-level DnD
+// ══════════════════════════════════════════════════════════════════════════════
+
+function DraggableBlock({ index, secDragging, secOver, setSecOver, onDrop, children }) {
+  const T = useTheme();
+  const isAbove = secOver === index && secDragging.current !== null && secDragging.current > index;
+  const isBelow = secOver === index && secDragging.current !== null && secDragging.current < index;
+
+  const gripCtx = {
+    onDragStart: e => {
+      _secDragIdx = index;
+      secDragging.current = index;
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragEnd: () => {
+      _secDragIdx = null;
+      secDragging.current = null;
+      setSecOver(null);
+    },
+  };
+
+  return (
+    <SectionDragCtx.Provider value={gripCtx}>
+      <div
+        onDragOver={e => {
+          if (_secDragIdx === null || _secDragIdx === index) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (secOver !== index) setSecOver(index);
+        }}
+        onDragLeave={e => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setSecOver(null);
+        }}
+        onDrop={e => {
+          if (_secDragIdx === null || _secDragIdx === index) return;
+          e.preventDefault();
+          const src = _secDragIdx;
+          _secDragIdx = null;
+          secDragging.current = null;
+          onDrop(src, index);
+          setSecOver(null);
+        }}
+        style={{
+          borderTop:    isAbove ? `3px solid ${T.accent}` : "3px solid transparent",
+          borderBottom: isBelow ? `3px solid ${T.accent}` : "3px solid transparent",
+          transition: "border-color 0.1s",
+        }}
+      >
+        {children}
+      </div>
+    </SectionDragCtx.Provider>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Primitive sub-components
+// ══════════════════════════════════════════════════════════════════════════════
 
 function LeadStateSelect({ value, onChange }) {
   const T = useTheme();
@@ -741,7 +1211,8 @@ function InlineStageSelect({ label = "Stage", value, onChange }) {
   const d = STAGE_DEF[value] || STAGE_DEF.new;
   return (
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
-      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>      <select
+      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
+      <select
         value={value}
         onChange={e => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
@@ -764,7 +1235,6 @@ function InlineStageSelect({ label = "Stage", value, onChange }) {
   );
 }
 
-
 function ViewRow({ label, value, color }) {
   const T = useTheme();
   if (!value && value !== 0) return null;
@@ -776,7 +1246,7 @@ function ViewRow({ label, value, color }) {
   );
 }
 
-function InlineInput({ label, value, onChange, placeholder, type = "text", color, onKeyDown, onBlur }) {
+function InlineInput({ label, value, onChange, placeholder, type = "text", color, onKeyDown, onBlur, inputRef }) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
   const handleKeyDown = (e) => {
@@ -794,6 +1264,7 @@ function InlineInput({ label, value, onChange, placeholder, type = "text", color
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
       <input
+        ref={inputRef}
         data-field-nav
         type={type === "number" ? "text" : type}
         inputMode={type === "number" ? "numeric" : undefined}
@@ -817,7 +1288,8 @@ function InlineInput({ label, value, onChange, placeholder, type = "text", color
   );
 }
 
-const FieldInput = forwardRef(function FieldInput({ label, value, onChange, placeholder, type = "text", onKeyDown }, ref) {
+// Keep for any potential external use
+export const FieldInput = forwardRef(function FieldInput({ label, value, onChange, placeholder, type = "text", onKeyDown }, ref) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
   const handleKeyDown = (e) => {
@@ -835,10 +1307,7 @@ const FieldInput = forwardRef(function FieldInput({ label, value, onChange, plac
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, transition: "color 0.15s" }}>{label}</label>
       <input
-        data-field-nav
-        ref={ref}
-        type={type}
-        value={value || ""}
+        data-field-nav ref={ref} type={type} value={value || ""}
         onChange={e => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
@@ -857,7 +1326,7 @@ const FieldInput = forwardRef(function FieldInput({ label, value, onChange, plac
   );
 });
 
-function MetricCard({ label, color, children }) {
+function MetricCard({ label, children }) {
   const T = useTheme();
   return (
     <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "12px 16px" }}>
