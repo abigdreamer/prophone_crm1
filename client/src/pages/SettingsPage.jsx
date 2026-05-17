@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  LayoutGrid, Users, FolderOpen, ChevronLeft, ChevronRight,
-} from "lucide-react";
 
 import ClientsPage from "./ClientsPage";
 import ComingSoon from "../components/layout/ComingSoon";
@@ -15,15 +12,6 @@ import * as db from "../services/api";
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
-
-const SIDEBAR_OPEN = 230;
-const SIDEBAR_COLLAPSED = 60;
-
-const NAV_ITEMS = [
-  { id: "contact_fields", label: "Contact Fields", Icon: LayoutGrid },
-  { id: "clients",        label: "Clients",        Icon: FolderOpen },
-  { id: "user_settings",  label: "User",           Icon: Users      },
-];
 
 const CONTACT_FIELD_GROUPS = [
   {
@@ -316,91 +304,18 @@ function ContactFieldSettings({ clientId }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const T = useTheme();
   const { clientId } = usePool();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
-  // URL Source of Truth for Tab State
   const activeTab = searchParams.get("tab") || "contact_fields";
-  const [collapsed, setCollapsed] = useState(false);
-
-  const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_OPEN;
 
   return (
-    <div style={{ display: "flex", height: "100%", margin: "-20px", overflow: "hidden" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          width: sidebarWidth,
-          background: T.surface,
-          borderRight: "1px solid " + T.border,
-          transition: "width 0.2s",
-          position: "relative",
-        }}
-      >
-        <button
-          onClick={() => setCollapsed((p) => !p)}
-          style={{
-            position: "absolute",
-            right: -12,
-            top: 18,
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            border: "1px solid " + T.border,
-            background: T.surface,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 10,
-          }}
-        >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
-
-        <div style={{ padding: 12 }}>
-          {NAV_ITEMS.map(({ id, label, Icon }) => {
-            const active = activeTab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setSearchParams({ tab: id })}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  background: active ? T.accent + "15" : "transparent",
-                  color: active ? T.accent : T.dim,
-                  border: "none",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  marginBottom: 6,
-                  transition: "0.2s",
-                  textAlign: "left",
-                }}
-              >
-                <Icon size={18} />
-                {!collapsed && label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content Area */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
-        {activeTab === "contact_fields" && (
-          <ContactFieldSettings clientId={clientId} />
-        )}
-
-        {activeTab === "clients" && <ClientsPage />}
-
-        {activeTab === "user_settings" && <ComingSoon page="User Settings" />}
-      </div>
+    <div style={{ padding: "28px 32px", overflowY: "auto", height: "100%" }}>
+      {activeTab === "contact_fields" && (
+        <ContactFieldSettings clientId={clientId} />
+      )}
+      {activeTab === "clients" && <ClientsPage />}
+      {activeTab === "user_settings" && <ComingSoon page="User Settings" />}
     </div>
   );
 }

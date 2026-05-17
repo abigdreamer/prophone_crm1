@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BarChart2, Eye, Users, Zap, RefreshCw, AlertCircle, X,
   Mail, Download, ChevronLeft, ChevronRight, Search, MapPin,
@@ -930,10 +931,8 @@ function NewsletterSection({ T }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const T = useTheme();
-  const [activeSection, setActiveSection] = useState("posthog");
-  const [collapsed, setCollapsed] = useState(false);
-
-  const sidebarW = collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W;
+  const [searchParams] = useSearchParams();
+  const activeSection = searchParams.get("section") || "posthog";
 
   return (
     <div style={{ display: "flex", height: "100%", margin: "-20px", overflow: "hidden" }}>
@@ -941,67 +940,8 @@ export default function ReportsPage() {
         @keyframes ph-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
-
-      {/* Sidebar */}
-      <div style={{
-        width: sidebarW, flexShrink: 0,
-        background: T.surface,
-        borderRight: "1px solid " + T.border,
-        transition: "width 0.2s",
-        position: "relative",
-        display: "flex", flexDirection: "column",
-      }}>
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          style={{
-            position: "absolute", right: -12, top: 18,
-            width: 24, height: 24, borderRadius: "50%",
-            border: "1px solid " + T.border,
-            background: T.surface, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            zIndex: 10, color: T.dim,
-          }}
-        >
-          {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-        </button>
-
-        {/* Header */}
-        {!collapsed && (
-          <div style={{ padding: "16px 16px 8px", borderBottom: "1px solid " + T.border + "66" }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: T.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Reports</div>
-          </div>
-        )}
-
-        {/* Nav */}
-        <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV_ITEMS.map(({ id, label, Icon }) => {
-            const active = activeSection === id;
-            return (
-              <button key={id} onClick={() => setActiveSection(id)} style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10,
-                padding: collapsed ? "10px 0" : "9px 10px",
-                justifyContent: collapsed ? "center" : "flex-start",
-                background: active ? T.accent + "15" : "transparent",
-                color: active ? T.accent : T.dim,
-                border: "none", borderRadius: 9,
-                cursor: "pointer", fontWeight: active ? 700 : 500,
-                fontSize: 13, transition: "0.15s",
-                fontFamily: "inherit",
-              }}
-                title={collapsed ? label : undefined}
-              >
-                <Icon size={16} />
-                {!collapsed && label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
-        {activeSection === "posthog" && <PosthogSection T={T} />}
+        {activeSection === "posthog"    && <PosthogSection T={T} />}
         {activeSection === "newsletter" && <NewsletterSection T={T} />}
       </div>
     </div>

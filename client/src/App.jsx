@@ -16,7 +16,9 @@ import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
 import PoolSwitcher from './components/PoolSwitcher';
 import Sidebar from './components/Sidebar';
-import MarketingSidebar from './components/MarketingSidebar';
+import MarketingSubNav from './components/MarketingSubNav';
+import ReportsSubNav from './components/ReportsSubNav';
+import SettingsSubNav from './components/SettingsSubNav';
 import LifecycleChart from './components/LifecycleChart';
 import UserChip from './components/layout/UserChip';
 import ThemeSwitcher from './components/layout/ThemeSwitcher';
@@ -152,6 +154,8 @@ function AppLayout({ currentUser, onSignOut }) {
   const pageRoot = page.split('/')[0];
   const isContacts = pageRoot === 'contacts';
   const isMarketing = ['domains', 'templates', 'campaigns', 'sequences'].includes(pageRoot);
+  const isReports = pageRoot === 'reports';
+  const isSettings = pageRoot === 'settings';
 
   useEffect(() => {
     if (pageRoot !== 'templates') setTemplateEditing(false);
@@ -760,15 +764,13 @@ function AppLayout({ currentUser, onSignOut }) {
           </>
         )}
 
-        {isMarketing && !templateEditing && (
-          <MarketingSidebar
-            page={pageRoot} onNavigate={navigateTo}
-            collapsed={mktgCollapsed} onToggleCollapse={handleToggleMktgCollapse}
-            mobileOpen={mktgMobileOpen} onMobileClose={() => setMktgMobileOpen(false)}
-          />
-        )}
-
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {/* ── Section sub-navbars ───────────────────────────────────────── */}
+          {isMarketing && !templateEditing && (
+            <MarketingSubNav page={pageRoot} onNavigate={navigateTo} />
+          )}
+          {isReports && <ReportsSubNav />}
+          {isSettings && <SettingsSubNav />}
           {/* ── Center filter bar (contacts only, not in modal modes) ─────── */}
           {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && centerMode !== 'sendEmail' && (
             <div style={{

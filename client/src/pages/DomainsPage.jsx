@@ -1284,22 +1284,10 @@ export default function DomainsPage() {
   );
 
   const stats = [
-    { label: 'TOTAL', value: domains.length, color: T.text },
-    {
-      label: 'VERIFIED',
-      value: domains.filter((d) => d.status === 'verified').length,
-      color: T.green,
-    },
-    {
-      label: 'PENDING',
-      value: domains.filter((d) => d.status === 'pending').length,
-      color: T.amber,
-    },
-    {
-      label: 'FAILED',
-      value: domains.filter((d) => d.status === 'failed').length,
-      color: T.red,
-    },
+    { label: 'Total',    value: domains.length,                                        color: T.accent, sub: 'domains added'    },
+    { label: 'Verified', value: domains.filter((d) => d.status === 'verified').length, color: T.green,  sub: 'sending ready'    },
+    { label: 'Pending',  value: domains.filter((d) => d.status === 'pending').length,  color: T.amber,  sub: 'awaiting DNS'     },
+    { label: 'Failed',   value: domains.filter((d) => d.status === 'failed').length,   color: T.red,    sub: 'needs attention'  },
   ];
 
   return (
@@ -1321,19 +1309,6 @@ export default function DomainsPage() {
           minWidth: 0,
         }}
       >
-        {/* Breadcrumb */}
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: T.muted,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            marginBottom: 10,
-          }}
-        >
-          Marketing · Setup
-        </div>
 
         {/* Header */}
         <div
@@ -1415,32 +1390,21 @@ export default function DomainsPage() {
               <div
                 key={s.label}
                 style={{
-                  background: T.card,
+                  background: `linear-gradient(135deg, ${s.color}12 0%, ${T.card} 65%)`,
                   border: `1px solid ${T.border}`,
-                  borderRadius: 10,
+                  borderLeft: `3px solid ${s.color}`,
+                  borderRadius: 12,
                   padding: '18px 20px',
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 800,
-                    color: s.color,
-                    lineHeight: 1,
-                    marginBottom: 6,
-                  }}
-                >
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+                  {s.label}
+                </div>
+                <div style={{ fontSize: 32, fontWeight: 900, color: s.color, lineHeight: 1, letterSpacing: '-0.02em', marginBottom: 5 }}>
                   {s.value}
                 </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: T.muted,
-                    letterSpacing: '0.08em',
-                  }}
-                >
-                  {s.label}
+                <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>
+                  {s.sub}
                 </div>
               </div>
             ))}
