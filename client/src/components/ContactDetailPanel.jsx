@@ -156,7 +156,7 @@ export default function ContactDetailPanel({
   const [auditLog, setAuditLog]       = useState([]);
   const [fieldVis, setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
   const [noteClicked, setNoteClicked] = useState(false);
-  const [editMode, setEditMode]       = useState(isNew);
+  const [editMode, setEditMode]       = useState(true);
   const [containers, setContainers]   = useState(DEFAULT_CONTAINERS);
   const [layoutMode, setLayoutMode]   = useState(false);
   const [secOver, setSecOver]         = useState(null);
@@ -203,7 +203,7 @@ export default function ContactDetailPanel({
     setForm(next);
     setSaveStatus(null);
     setAuditLog([]);
-    setEditMode(!contact);
+    setEditMode(true);
     onDirtyChange?.(false);
     onFormChange?.(next);
   }, [contact?.id]); // eslint-disable-line
