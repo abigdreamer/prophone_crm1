@@ -210,9 +210,10 @@ export default function ContactDetailPanel({
   }, [contact?.id]); // eslint-disable-line
 
   useEffect(() => {
+    if (contact) return; // existing contacts: search bar keeps focus; user presses Enter to focus form
     const t = setTimeout(() => firstNameRef.current?.focus(), 60);
     return () => clearTimeout(t);
-  }, [contact?.id]);
+  }, [contact?.id]); // eslint-disable-line
 
   useEffect(() => {
     if (!contact?.id) return;
