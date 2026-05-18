@@ -455,6 +455,7 @@ export default function ContactsPage({
     {sendEmailOpen && (
       <CampaignSendModal
         contactIds={[...selectedIds]}
+        contacts={contacts.filter(c => selectedIds.has(c.id))}
         onClose={() => setSendEmailOpen(false)}
         onSent={() => { setSendEmailOpen(false); setSelectedIds(new Set()); }}
       />

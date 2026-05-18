@@ -77,7 +77,7 @@ function CampaignCard({ campaign, selected, onClick, T }) {
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
-export default function CampaignSendModal({ contactIds = [], onClose, onSent }) {
+export default function CampaignSendModal({ contactIds = [], contacts = [], onClose, onSent }) {
   const T = useTheme();
   const toast = useAppToast();
 
@@ -91,6 +91,15 @@ export default function CampaignSendModal({ contactIds = [], onClose, onSent }) 
   const [result, setResult] = useState(null);
 
   const contactCount = contactIds.length;
+
+  // Live count: how many selected contacts match the active domain filters
+  const filteredCount = domainFilters.length === 0
+    ? contactCount
+    : contacts.filter(c => {
+        if (!c.email) return false;
+        const domain = c.email.split("@")[1]?.toLowerCase();
+        return domain && domainFilters.some(f => domain === f || domain.endsWith("." + f));
+      }).length;
 
   useEffect(() => {
     db.getCampaigns()
@@ -182,7 +191,14 @@ export default function CampaignSendModal({ contactIds = [], onClose, onSent }) 
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>Send Campaign Email</div>
             <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
-              {contactCount} contact{contactCount !== 1 ? "s" : ""} selected
+              {domainFilters.length > 0 ? (
+                <>
+                  <span style={{ color: T.accent, fontWeight: 700 }}>{filteredCount.toLocaleString()}</span>
+                  <span> of {contactCount.toLocaleString()} contacts match filters</span>
+                </>
+              ) : (
+                <>{contactCount.toLocaleString()} contact{contactCount !== 1 ? "s" : ""} selected</>
+              )}
             </div>
           </div>
           <button
@@ -244,8 +260,24 @@ export default function CampaignSendModal({ contactIds = [], onClose, onSent }) 
           {step === 2 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                  Filter by email provider
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Filter by email provider
+                  </div>
+                  {/* Live count badge */}
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "4px 10px", borderRadius: 20,
+                    background: domainFilters.length > 0 ? T.accent + "15" : T.surface,
+                    border: "1px solid " + (domainFilters.length > 0 ? T.accent + "40" : T.border),
+                  }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: domainFilters.length > 0 ? T.accent : T.text, lineHeight: 1 }}>
+                      {filteredCount.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: 10, color: T.muted }}>
+                      {domainFilters.length > 0 ? `of ${contactCount.toLocaleString()}` : "contacts"}
+                    </span>
+                  </div>
                 </div>
                 <div style={{ fontSize: 11, color: T.dim, marginBottom: 12, lineHeight: 1.6 }}>
                   Select providers to limit who receives this email. Leave all unselected to send to everyone.
@@ -341,7 +373,9 @@ export default function CampaignSendModal({ contactIds = [], onClose, onSent }) 
                 {[
                   ["Campaign",  selectedCampaign.name],
                   ["Template",  selectedCampaign.template?.name || "—"],
-                  ["Recipients", `${contactCount} contact${contactCount !== 1 ? "s" : ""}`],
+                  ["Recipients", domainFilters.length > 0
+                    ? `${filteredCount.toLocaleString()} of ${contactCount.toLocaleString()} contacts`
+                    : `${contactCount.toLocaleString()} contact${contactCount !== 1 ? "s" : ""}`],
                   ["Domain filter", filterLabel],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "6px 0", borderBottom: "1px solid " + T.border + "66" }}>
