@@ -932,7 +932,7 @@ function NewsletterSection({ T }) {
 export default function ReportsPage() {
   const T = useTheme();
   const [searchParams] = useSearchParams();
-  const activeSection = searchParams.get("section") || "posthog";
+  const activeSection = searchParams.get("section") || "newsletter";
 
   return (
     <div style={{ display: "flex", height: "100%", margin: "-20px", overflow: "hidden" }}>
