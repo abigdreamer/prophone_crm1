@@ -144,8 +144,10 @@ export default function Sidebar({
   function handleSearchKeyDown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
-      // Use first filtered contact (guaranteed to be selected via live-select above)
-      const target = filtered.length > 0 ? filtered[0] : selected;
+      // Use the currently selected contact if it's in the filtered list (user may have
+      // navigated with arrow keys), otherwise fall back to the first filtered result.
+      const inFiltered = selected && filtered.some(c => c.id === selected.id);
+      const target = inFiltered ? selected : filtered[0];
       if (target && onEditInline) { onSelect(target); onEditInline(target); }
       return;
     }

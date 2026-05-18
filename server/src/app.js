@@ -1,6 +1,9 @@
 import 'dotenv/config';
-import { setDefaultResultOrder } from 'dns';
-setDefaultResultOrder('ipv4first');
+import dns from 'dns';
+// Router DNS (192.168.x.x) often fails to resolve external APIs like api.resend.com.
+// Force Node.js to use Google/Cloudflare DNS directly so all outbound SDK calls work.
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1', '1.0.0.1']);
+dns.setDefaultResultOrder('ipv4first');
 import express from 'express';
 import cors from 'cors';
 
