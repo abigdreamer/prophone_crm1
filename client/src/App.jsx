@@ -599,7 +599,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
     return (
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/contacts" replace />} />
         <Route
           path="/dashboard"
           element={
@@ -617,7 +617,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage currentUser={currentUser} />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/contacts" replace />} />
       </Routes>
     );
   }

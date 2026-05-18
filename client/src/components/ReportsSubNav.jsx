@@ -3,14 +3,14 @@ import { useTheme } from "../context/ThemeContext";
 import { BarChart2, Mail, ChevronRight } from "lucide-react";
 
 const ITEMS = [
-  { id: "posthog",    label: "Analytics",   Icon: BarChart2 },
-  { id: "newsletter", label: "Newsletter",  Icon: Mail      },
+  { id: "newsletter", label: "Newsletter",       Icon: Mail      },
+  { id: "posthog",    label: "Posthog Analytics", Icon: BarChart2 },
 ];
 
 export default function ReportsSubNav() {
   const T = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeSection = searchParams.get("section") || "posthog";
+  const activeSection = searchParams.get("section") || "newsletter";
 
   return (
     <div style={{
