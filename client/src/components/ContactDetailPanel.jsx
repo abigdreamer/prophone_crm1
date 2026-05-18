@@ -171,8 +171,10 @@ export default function ContactDetailPanel({
   const formRef         = useRef(form);
   const dirtyRef        = useRef(false);
   const editModeRef     = useRef(editMode);
-  formRef.current    = form;
-  editModeRef.current = editMode;
+  const layoutModeRef   = useRef(layoutMode);
+  formRef.current      = form;
+  editModeRef.current  = editMode;
+  layoutModeRef.current = layoutMode;
 
   // ── Auto-save ─────────────────────────────────────────────────────────────
   const doSaveRef = useRef(null);
@@ -293,6 +295,9 @@ export default function ContactDetailPanel({
       if (isNew) {
         e.stopImmediatePropagation();
         handleAddNew();
+      } else if (layoutModeRef.current) {
+        e.stopImmediatePropagation();
+        setLayoutMode(false);
       } else if (editModeRef.current) {
         e.stopImmediatePropagation();
         if (dirtyRef.current) doSaveRef.current?.();
@@ -399,8 +404,29 @@ export default function ContactDetailPanel({
             )}
             {saveStatus === "saved" && <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>}
             {isNew && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
-            {!isNew && !editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>}
-            {!isNew && editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
+            {!isNew && !layoutMode && !editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>}
+            {!isNew && !layoutMode && editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
+            {!isNew && layoutMode && <span style={{ fontSize: 10, color: T.accent, fontStyle: "italic", fontWeight: 600 }}>Press Esc to exit layout</span>}
+            {!isNew && (
+              <button
+                onClick={() => setLayoutMode(lm => !lm)}
+                title={layoutMode ? "Exit layout mode" : "Customize layout"}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 26, height: 26, borderRadius: 6,
+                  border: "1px solid " + (layoutMode ? T.accent + "60" : T.border + "80"),
+                  background: layoutMode ? T.accent + "20" : T.card + "cc",
+                  color: layoutMode ? T.accent : T.muted,
+                  cursor: "pointer", flexShrink: 0,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -479,41 +505,6 @@ export default function ContactDetailPanel({
         </div>
       </div>
 
-      {/* ── Layout toolbar ───────────────────────────────────────────── */}
-      {!isNew && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingLeft: 2 }}>
-          <span style={{ fontSize: 11, color: T.muted }}>
-            {layoutMode
-              ? <span style={{ color: T.accent, fontWeight: 600 }}>Drag containers to reorder · double-click titles to rename</span>
-              : null}
-          </span>
-          <button
-            onClick={() => setLayoutMode(lm => !lm)}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "6px 14px", borderRadius: 8,
-              border: "1px solid " + (layoutMode ? T.accent + "60" : T.border),
-              background: layoutMode ? T.accent + "15" : T.card,
-              color: layoutMode ? T.accent : T.muted,
-              cursor: "pointer", fontSize: 11, fontFamily: "inherit",
-              fontWeight: 600, letterSpacing: "0.02em",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {layoutMode ? (
-              <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Done Editing
-              </>
-            ) : (
-              <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                Customize Layout
-              </>
-            )}
-          </button>
-        </div>
-      )}
 
       {/* ── Layout mode: hidden containers panel ─────────────────────── */}
       {layoutMode && hiddenContainers.length > 0 && (
