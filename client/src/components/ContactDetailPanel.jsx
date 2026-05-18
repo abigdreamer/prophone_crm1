@@ -280,8 +280,6 @@ export default function ContactDetailPanel({
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Enter" && !isNew && !editModeRef.current) {
-        const tag = document.activeElement?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         e.preventDefault();
         setEditMode(true);
         setTimeout(() => firstNameRef.current?.focus(), 60);
