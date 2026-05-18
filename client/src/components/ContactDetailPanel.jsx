@@ -166,6 +166,7 @@ export default function ContactDetailPanel({
   const secDragging = useRef(null);
 
   const firstNameRef    = useRef(null);
+  const panelRef        = useRef(null);
   const statusTimerRef  = useRef(null);
   const formRef         = useRef(form);
   const dirtyRef        = useRef(false);
@@ -279,9 +280,11 @@ export default function ContactDetailPanel({
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === "Enter" && !isNew && !editModeRef.current) {
+      if (e.key === "Enter" && !isNew) {
+        const isInsidePanel = panelRef.current?.contains(document.activeElement);
+        if (isInsidePanel) return;
         e.preventDefault();
-        setEditMode(true);
+        if (!editModeRef.current) setEditMode(true);
         setTimeout(() => firstNameRef.current?.focus(), 60);
         return;
       }
@@ -380,7 +383,7 @@ export default function ContactDetailPanel({
   const rows              = groupContainers(visibleContainers);
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
+    <div ref={panelRef} style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
 
       {/* ── Profile card ─────────────────────────────────────────────── */}
       <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 14, marginBottom: 16, overflow: "hidden" }}>
