@@ -684,7 +684,11 @@ export const getCampaignAnalytics = async (req, res) => {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    const statusGroups = await repo.groupRecipientsByStatus(req.params.id);
+    const [statusGroups, sends] = await Promise.all([
+      repo.groupRecipientsByStatus(req.params.id),
+      repo.getSendAnalytics(req.params.id),
+    ]);
+
     const counts = {};
     for (const g of statusGroups) counts[g.status] = g._count.status;
 
@@ -698,6 +702,11 @@ export const getCampaignAnalytics = async (req, res) => {
 
     const base = sent || total;
 
+    // Per-send aggregates (unique opens and total opens grouped by send_id)
+    const totalUniqueOpens = sends.reduce((n, s) => n + s.uniqueOpen,  0);
+    const totalRawOpens    = sends.reduce((n, s) => n + s.totalOpen,   0);
+    const totalRawClicks   = sends.reduce((n, s) => n + s.totalClicks, 0);
+
     sendSuccess(res, {
       totals: { total, sent, delivered, opened, clicked, bounced, unsubscribed: unsubbed },
       rates: {
@@ -706,6 +715,14 @@ export const getCampaignAnalytics = async (req, res) => {
         bounceRate:      base ? +(bounced / base * 100).toFixed(1) : 0,
         deliveryRate:    base ? +(delivered / base * 100).toFixed(1) : 0,
         unsubscribeRate: base ? +(unsubbed / base * 100).toFixed(1) : 0,
+      },
+      // Per-send breakdown: each entry is one send instance for one contact
+      sends,
+      sendSummary: {
+        totalSends:       sends.length,
+        totalUniqueOpens,
+        totalRawOpens,
+        totalRawClicks,
       },
     });
   } catch (err) {
