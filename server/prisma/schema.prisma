@@ -266,6 +266,7 @@ model CampaignRecipient {
   abVariant  String?   @map("ab_variant")
   status     String    @default("pending")
   messageId  String?   @map("message_id")
+  sendId     String?   @map("send_id")
   sentAt     DateTime? @map("sent_at")
   openedAt   DateTime? @map("opened_at")
   clickedAt  DateTime? @map("clicked_at")
@@ -279,6 +280,7 @@ model CampaignRecipient {
 
   @@unique([campaignId, contactId])
   @@index([campaignId])
+  @@index([sendId])
   @@map("campaign_recipients")
 }
 
@@ -286,6 +288,7 @@ model CampaignRecipientEvent {
   id          String   @id @default(uuid())
   recipientId String   @map("recipient_id")
   campaignId  String   @map("campaign_id")
+  sendId      String?  @map("send_id")
   event       String
   metadata    Json?
   createdAt   DateTime @default(now()) @map("created_at")
@@ -295,6 +298,7 @@ model CampaignRecipientEvent {
 
   @@index([recipientId])
   @@index([campaignId])
+  @@index([sendId])
   @@map("campaign_recipient_events")
 }
 

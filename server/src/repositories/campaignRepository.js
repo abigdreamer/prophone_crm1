@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma.js';
 import { icontains, skipDups } from '../lib/db-compat.js';
 import { tracking } from '../config/tracking.js';
@@ -106,6 +107,7 @@ export async function upsertRecipients(campaignId, contactIds) {
         update: {
           status:    'pending',
           messageId: null,
+          sendId:    null,
           sentAt:    null,
           openedAt:  null,
           clickedAt: null,
@@ -171,14 +173,14 @@ export async function findPendingRecipientsForSend(campaignId) {
 export async function markRecipientSent(id, messageId) {
   return prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sendId: randomUUID(), sentAt: new Date() },
   });
 }
 
 export async function resetRecipientsForResend(campaignId, statuses) {
   return prisma.campaignRecipient.updateMany({
     where: { campaignId, status: { in: statuses } },
-    data:  { status: 'pending', sentAt: null, messageId: null },
+    data:  { status: 'pending', sentAt: null, messageId: null, sendId: null },
   });
 }
 
@@ -238,9 +240,9 @@ export async function applyEmailEvent(messageId, event) {
   ]);
 }
 
-export async function logEvent(recipientId, campaignId, event, metadata = null) {
+export async function logEvent(recipientId, campaignId, event, metadata = null, sendId = null) {
   return prisma.campaignRecipientEvent.create({
-    data: { recipientId, campaignId, event, metadata },
+    data: { recipientId, campaignId, event, metadata, sendId },
   }).catch(() => {});
 }
 
@@ -279,7 +281,7 @@ export async function applyTrackingEvent(recipientId, event) {
       where:  { id: recipientId },
       select: {
         id: true, campaignId: true, contactId: true,
-        openedAt: true, clickedAt: true,
+        openedAt: true, clickedAt: true, sendId: true,
       },
     });
 
@@ -330,6 +332,17 @@ export async function applyTrackingEvent(recipientId, event) {
     const activityRows = [];
     const eventRows    = [];
 
+    // Derive send_id: use stored value; fall back to messageId lookup or recipientId for legacy rows.
+    // We do this inside the transaction so the read and writes are consistent.
+    let sendId = recipient.sendId;
+    if (!sendId) {
+      const full = await tx.campaignRecipient.findUnique({
+        where:  { id: recipient.id },
+        select: { messageId: true },
+      });
+      sendId = full?.messageId ?? recipient.id;
+    }
+
     // Backfilled open activity (appears first in the timeline)
     if (openBackfilled) {
       activityRows.push({
@@ -343,6 +356,7 @@ export async function applyTrackingEvent(recipientId, event) {
       eventRows.push({
         recipientId: recipient.id,
         campaignId:  recipient.campaignId,
+        sendId,
         event:       'opened',
       });
     }
@@ -359,6 +373,7 @@ export async function applyTrackingEvent(recipientId, event) {
     eventRows.push({
       recipientId: recipient.id,
       campaignId:  recipient.campaignId,
+      sendId,
       event:       isOpen ? 'opened' : 'clicked',
     });
 
@@ -391,6 +406,61 @@ export async function findSuppressedContactIds(contactIds) {
     distinct: ['contactId'],
   });
   return new Set(rows.map(r => r.contactId));
+}
+
+/**
+ * Return per-send analytics for a campaign, grouped by send_id.
+ *
+ * For events that pre-date the send_id column (sendId = null), the effective
+ * send_id is derived in priority order: stored sendId → recipient.messageId
+ * (unique Resend message ID) → recipient.id.
+ *
+ * Each group reports:
+ *   uniqueOpen  – 1 if any open event exists for this send, else 0
+ *   totalOpen   – raw count of open events (pixel may fire multiple times)
+ *   totalClicks – count of click events
+ *   clicks      – click event detail array for link-level attribution
+ */
+export async function getSendAnalytics(campaignId) {
+  const recipients = await prisma.campaignRecipient.findMany({
+    where:   { campaignId },
+    select: {
+      id: true, contactId: true, messageId: true, sendId: true,
+      sentAt: true,
+      events: {
+        select: { id: true, event: true, sendId: true, metadata: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+
+  return recipients.map(r => {
+    // Derive effective send_id for recipient and its legacy events
+    const effectiveSendId = r.sendId ?? r.messageId ?? r.id;
+
+    const openEvents  = [];
+    const clickEvents = [];
+
+    for (const evt of r.events) {
+      // Each event may have its own sendId; if absent, inherit from recipient
+      const evtSendId = evt.sendId ?? effectiveSendId;
+      // Only include events that belong to this send instance
+      if (evtSendId !== effectiveSendId) continue;
+      if (evt.event === 'opened')  openEvents.push(evt);
+      if (evt.event === 'clicked') clickEvents.push(evt);
+    }
+
+    return {
+      sendId:      effectiveSendId,
+      recipientId: r.id,
+      contactId:   r.contactId,
+      sentAt:      r.sentAt,
+      uniqueOpen:  openEvents.length  > 0 ? 1 : 0,
+      totalOpen:   openEvents.length,
+      totalClicks: clickEvents.length,
+      clicks:      clickEvents.map(e => ({ id: e.id, metadata: e.metadata, createdAt: e.createdAt })),
+    };
+  });
 }
 
 export async function getContactsForFilter(clientId, filter) {
