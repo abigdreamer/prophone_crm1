@@ -45,6 +45,17 @@ function CampaignCard({ campaign, selected, onClick, T }) {
       onMouseEnter={e => { if (!selected) { e.currentTarget.style.borderColor = T.accent + "55"; e.currentTarget.style.background = T.card; } }}
       onMouseLeave={e => { if (!selected) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.surface; } }}
     >
+      {/* Checkbox */}
+      <div style={{
+        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+        border: "2px solid " + (selected ? T.accent : T.border),
+        background: selected ? T.accent : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "all 0.15s",
+      }}>
+        {selected && <span style={{ color: "#fff", fontSize: 10, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+      </div>
+
       <div style={{
         width: 32, height: 32, borderRadius: 8, flexShrink: 0,
         background: (selected ? T.accent : T.blue) + "18",
@@ -62,7 +73,6 @@ function CampaignCard({ campaign, selected, onClick, T }) {
           <span style={{ color: statusColor, fontWeight: 600 }}>{campaign.status}</span>
         </div>
       </div>
-      {selected && <CheckCircle size={14} color={T.accent} style={{ flexShrink: 0 }} />}
     </div>
   );
 }
@@ -74,11 +84,21 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
   const [step, setStep] = useState(1);
   const [campaigns, setCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [domainFilters, setDomainFilters] = useState([]);
   const [customDomain, setCustomDomain] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
+
+  const selectedCampaigns = campaigns.filter(c => selectedIds.has(c.id));
+
+  function toggleCampaign(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   const contactCount = contactIds.length;
 
@@ -101,19 +121,31 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
   }
 
   async function handleSend() {
-    if (!selectedCampaign) return;
+    if (!selectedCampaigns.length) return;
     setSending(true);
+    let totalSent = 0, totalSkipped = 0, errors = 0;
     try {
-      const res = await db.quickSendCampaign(selectedCampaign.id, {
-        contactIds,
-        domainFilter: domainFilters,
-      });
-      setResult(res);
+      for (const campaign of selectedCampaigns) {
+        try {
+          const res = await db.quickSendCampaign(campaign.id, {
+            contactIds,
+            domainFilter: domainFilters,
+          });
+          totalSent    += res.sent    ?? 0;
+          totalSkipped += res.skipped ?? 0;
+        } catch {
+          errors++;
+        }
+      }
+      const combined = { sent: totalSent, skipped: totalSkipped, errors, campaigns: selectedCampaigns.length };
+      setResult(combined);
       setStep(4);
-      toast.success(`Sent to ${res.sent} contact${res.sent !== 1 ? "s" : ""}.`);
-      onSent?.(res);
-    } catch (err) {
-      toast.error(err?.message || "Send failed. Check campaign configuration.");
+      if (errors === selectedCampaigns.length) {
+        toast.error("All campaigns failed to send. Check campaign configuration.");
+      } else {
+        toast.success(`Sent ${totalSent} email${totalSent !== 1 ? "s" : ""} across ${selectedCampaigns.length} campaign${selectedCampaigns.length !== 1 ? "s" : ""}.`);
+      }
+      onSent?.(combined);
     } finally {
       setSending(false);
     }
@@ -186,8 +218,18 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
         {/* Step 1 — Pick campaign */}
         {step === 1 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 560 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-              Choose a campaign
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Choose campaigns
+              </div>
+              {selectedIds.size > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
+                  background: T.accent + "18", border: "1px solid " + T.accent + "40", color: T.accent,
+                }}>
+                  {selectedIds.size} selected
+                </span>
+              )}
             </div>
             {loadingCampaigns ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 20, color: T.muted, fontSize: 12 }}>
@@ -202,8 +244,8 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
               campaigns.map(c => (
                 <CampaignCard
                   key={c.id} campaign={c}
-                  selected={selectedCampaign?.id === c.id}
-                  onClick={() => setSelectedCampaign(c)}
+                  selected={selectedIds.has(c.id)}
+                  onClick={() => toggleCampaign(c.id)}
                   T={T}
                 />
               ))
@@ -299,16 +341,14 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
         )}
 
         {/* Step 3 — Confirm */}
-        {step === 3 && selectedCampaign && (
+        {step === 3 && selectedCampaigns.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 520 }}>
             <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 10, padding: 18 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
                 Send summary
               </div>
               {[
-                ["Campaign",     selectedCampaign.name],
-                ["Template",     selectedCampaign.template?.name || "—"],
-                ["Recipients",   `${contactCount} contact${contactCount !== 1 ? "s" : ""}`],
+                ["Recipients",    `${contactCount} contact${contactCount !== 1 ? "s" : ""}`],
                 ["Domain filter", filterLabel],
               ].map(([label, value]) => (
                 <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid " + T.border + "66" }}>
@@ -316,6 +356,27 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
                   <span style={{ fontSize: 12, color: T.text, fontWeight: 600, textAlign: "right", maxWidth: "55%", wordBreak: "break-word" }}>{value}</span>
                 </div>
               ))}
+              {/* Campaign list */}
+              <div style={{ paddingTop: 10 }}>
+                <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 6 }}>
+                  Campaigns ({selectedCampaigns.length})
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {selectedCampaigns.map(c => (
+                    <div key={c.id} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "6px 10px", borderRadius: 7,
+                      background: T.accent + "0a", border: "1px solid " + T.accent + "25",
+                    }}>
+                      <Mail size={11} color={T.accent} style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: T.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {c.name}
+                      </span>
+                      <span style={{ fontSize: 10, color: T.muted }}>{c.template?.name || "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div style={{
@@ -346,11 +407,17 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
             </div>
             <div style={{ fontSize: 13, color: T.muted, marginBottom: 8, lineHeight: 1.7 }}>
               <span style={{ color: T.green, fontWeight: 800, fontSize: 28, display: "block", lineHeight: 1.2, marginBottom: 4 }}>{result.sent}</span>
-              email{result.sent !== 1 ? "s" : ""} sent successfully.
+              email{result.sent !== 1 ? "s" : ""} sent across{" "}
+              <strong style={{ color: T.text }}>{result.campaigns} campaign{result.campaigns !== 1 ? "s" : ""}</strong>.
               {result.skipped > 0 && (
                 <div style={{ marginTop: 4 }}>
                   <span style={{ color: T.muted }}>{result.skipped} skipped</span>
                   <span style={{ fontSize: 11 }}> (no email, filtered, or suppressed)</span>
+                </div>
+              )}
+              {result.errors > 0 && (
+                <div style={{ marginTop: 4, color: T.red, fontSize: 11 }}>
+                  {result.errors} campaign{result.errors !== 1 ? "s" : ""} failed — check configuration.
                 </div>
               )}
             </div>
@@ -393,14 +460,14 @@ export default function SendEmailInline({ contactIds = [], onBack, onSent }) {
           {step < 3 ? (
             <button
               onClick={() => setStep(s => s + 1)}
-              disabled={step === 1 && !selectedCampaign}
+              disabled={step === 1 && selectedIds.size === 0}
               style={{
                 padding: "9px 22px", borderRadius: 8,
-                background: (step === 1 && !selectedCampaign) ? T.border : T.accent,
+                background: (step === 1 && selectedIds.size === 0) ? T.border : T.accent,
                 border: "none",
-                color: (step === 1 && !selectedCampaign) ? T.muted : "#fff",
+                color: (step === 1 && selectedIds.size === 0) ? T.muted : "#fff",
                 fontSize: 12, fontWeight: 700,
-                cursor: (step === 1 && !selectedCampaign) ? "not-allowed" : "pointer",
+                cursor: (step === 1 && selectedIds.size === 0) ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
                 display: "flex", alignItems: "center", gap: 6,
               }}

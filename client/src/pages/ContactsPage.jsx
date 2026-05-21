@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { RefreshCw, Mail, XCircle } from "lucide-react";
+import { RefreshCw, Mail, XCircle, ChevronDown } from "lucide-react";
 import { useAppToast } from "../context/ToastContext";
 import Card from "../components/ui/Card";
 import { StagePill } from "../components/ui/Pill";
@@ -72,6 +72,8 @@ export default function ContactsPage({
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [bulkCanceling, setBulkCanceling] = useState(false);
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const selectMenuRef = useRef(null);
   const toast = useAppToast();
 
   const q = (search || "").trim();
@@ -161,6 +163,23 @@ export default function ContactsPage({
       return next;
     });
   }
+
+  function selectBulk(n) {
+    const ids = rows.slice(0, n).map(c => c.id);
+    setSelectedIds(new Set(ids));
+    setSelectMenuOpen(false);
+  }
+
+  useEffect(() => {
+    if (!selectMenuOpen) return;
+    function handleClickOutside(e) {
+      if (selectMenuRef.current && !selectMenuRef.current.contains(e.target)) {
+        setSelectMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [selectMenuOpen]);
 
   async function handleBulkCancel() {
     setBulkCanceling(true);
@@ -312,14 +331,80 @@ export default function ContactsPage({
             <thead>
               <tr style={{ background: T.surface }}>
                 {!showingCanceled && (
-                  <th style={{ padding: "8px 11px", width: 32 }}>
-                    <input
-                      type="checkbox"
-                      checked={allPageSelected}
-                      ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
-                      onChange={toggleSelectAll}
-                      style={{ cursor: "pointer", accentColor: T.accent }}
-                    />
+                  <th style={{ padding: "8px 6px", width: 52 }}>
+                    <div ref={selectMenuRef} style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 2 }}>
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
+                        onChange={toggleSelectAll}
+                        style={{ cursor: "pointer", accentColor: T.accent }}
+                      />
+                      <button
+                        onClick={e => { e.stopPropagation(); setSelectMenuOpen(v => !v); }}
+                        title="Bulk select"
+                        style={{
+                          background: "none", border: "none", padding: "1px 2px",
+                          cursor: "pointer", color: T.muted, display: "flex", alignItems: "center",
+                          borderRadius: 3,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = T.accent; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = T.muted; }}
+                      >
+                        <ChevronDown size={11} />
+                      </button>
+
+                      {selectMenuOpen && (
+                        <div style={{
+                          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
+                          background: T.card, border: "1px solid " + T.border,
+                          borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,.25)",
+                          minWidth: 160, overflow: "hidden",
+                        }}>
+                          {[
+                            { label: "Select first 100",  n: 100 },
+                            { label: "Select first 500",  n: 500 },
+                            { label: "Select first 1000", n: 1000 },
+                          ].map(({ label, n }) => (
+                            <button
+                              key={n}
+                              onClick={() => selectBulk(n)}
+                              disabled={rows.length === 0}
+                              style={{
+                                display: "block", width: "100%", textAlign: "left",
+                                padding: "8px 14px", background: "none", border: "none",
+                                fontSize: 12, fontWeight: 600, color: rows.length === 0 ? T.muted : T.text,
+                                cursor: rows.length === 0 ? "not-allowed" : "pointer",
+                                fontFamily: "inherit",
+                              }}
+                              onMouseEnter={e => { if (rows.length > 0) e.currentTarget.style.background = T.accent + "12"; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
+                            >
+                              {label}
+                              {rows.length < n && (
+                                <span style={{ fontSize: 10, color: T.muted, marginLeft: 4 }}>
+                                  ({rows.length} available)
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                          <div style={{ borderTop: "1px solid " + T.border, margin: "2px 0" }} />
+                          <button
+                            onClick={() => { setSelectedIds(new Set()); setSelectMenuOpen(false); }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left",
+                              padding: "8px 14px", background: "none", border: "none",
+                              fontSize: 12, fontWeight: 600, color: T.muted,
+                              cursor: "pointer", fontFamily: "inherit",
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = T.border + "44"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
+                          >
+                            Deselect all
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </th>
                 )}
                 {(showingCanceled
