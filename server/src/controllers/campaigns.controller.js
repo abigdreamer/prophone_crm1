@@ -693,12 +693,16 @@ export const getCampaignAnalytics = async (req, res) => {
     for (const g of statusGroups) counts[g.status] = g._count.status;
 
     const total      = campaign.recipientsCount || 1;
-    const sent       = counts.sent       || campaign.sentCount       || 0;
-    const delivered  = counts.delivered  || campaign.deliveredCount  || 0;
-    const opened     = counts.opened     || campaign.openedCount     || 0;
-    const clicked    = counts.clicked    || campaign.clickedCount    || 0;
-    const bounced    = counts.bounced    || campaign.bouncedCount    || 0;
-    const unsubbed   = counts.unsubscribed || campaign.unsubscribedCount || 0;
+    // Use campaign-level counters as primary — they are incremented on each event
+    // and never decremented, so they reflect cumulative totals correctly even
+    // when a recipient's status advances (delivered → opened → clicked).
+    // status-group counts only show the *current* status, which drops lower statuses.
+    const sent       = campaign.sentCount          || counts.sent          || 0;
+    const delivered  = campaign.deliveredCount     || counts.delivered     || 0;
+    const opened     = campaign.openedCount        || counts.opened        || 0;
+    const clicked    = campaign.clickedCount       || counts.clicked       || 0;
+    const bounced    = campaign.bouncedCount       || counts.bounced       || 0;
+    const unsubbed   = campaign.unsubscribedCount  || counts.unsubscribed  || 0;
 
     const base = sent || total;
 
