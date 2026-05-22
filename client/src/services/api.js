@@ -342,8 +342,9 @@ export async function previewCampaignRecipients(campaignId, filter) {
   return r.data ?? r;
 }
 
-export async function sendCampaign(id) {
-  const r = await request('POST', `/api/campaigns/${id}/send`);
+export async function sendCampaign(id, { limit } = {}) {
+  const body = limit ? { limit } : undefined;
+  const r = await request('POST', `/api/campaigns/${id}/send`, body);
   return r.data ?? r;
 }
 
@@ -360,6 +361,13 @@ export async function duplicateCampaign(id) {
 export async function getCampaignAnalytics(id) {
   const r = await request('GET', `/api/campaigns/${id}/analytics`);
   return r.data ?? r;
+}
+
+export function exportCampaignUrl(id, format = 'excel') {
+  const base = typeof window !== 'undefined'
+    ? window.location.origin
+    : (import.meta.env?.VITE_API_URL || '');
+  return `${base}/api/campaigns/${id}/export?format=${format}`;
 }
 
 // Real campaign send to specific contacts — full tracking, recipients stored, stats updated.

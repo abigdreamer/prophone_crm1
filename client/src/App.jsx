@@ -373,6 +373,11 @@ function AppLayout({ currentUser, onSignOut }) {
     });
   }, []);
 
+  // Replace the entire selection with a specific set of IDs (used by sidebar limit picker)
+  const handleSelectBulk = useCallback((ids) => {
+    setSelectedIds(new Set(ids));
+  }, []);
+
   const handleSendEmail = useCallback(() => {
     if (selected && selectedIds.size === 0) {
       setSelectedIds(new Set([selected.id]));
@@ -745,6 +750,7 @@ function AppLayout({ currentUser, onSignOut }) {
                 selectedIds={selectedIds}
                 onToggleSelect={handleToggleSelect}
                 onToggleSelectAll={handleToggleSelectAll}
+                onSelectBulk={handleSelectBulk}
               />
             </div>
             {/* Sidebar ↔ center drag handle */}

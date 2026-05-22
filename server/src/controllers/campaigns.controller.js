@@ -13,6 +13,8 @@ import {
   buildEmailHeaders,
   buildUnsubUrl,
 } from '../services/email.js';
+import * as XLSX from 'xlsx';
+import PDFDocument from 'pdfkit';
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -218,16 +220,19 @@ export const removeRecipients = async (req, res) => {
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
-const SEND_BATCH_SIZE = 100;
+const SEND_BATCH_SIZE  = 100;
+const BATCH_DELAY_MS   = parseInt(process.env.CAMPAIGN_BATCH_DELAY_MS || '0', 10);
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const sendCampaign = async (req, res) => {
   const campaignId = req.params.id;
   try {
     const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
-    if (campaign.status === 'sent')    return sendError(res, 'Campaign already sent', 400);
     if (campaign.status === 'sending') return sendError(res, 'Campaign is already sending', 400);
     if (!campaign.templateId)          return sendError(res, 'Campaign has no template selected', 400);
+
+    const sendLimit = req.body?.limit ? parseInt(req.body.limit, 10) : null;
 
     // Fetch template(s)
     const template = await templateRepo.findById(campaign.templateId);
@@ -254,8 +259,8 @@ export const sendCampaign = async (req, res) => {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
 
-    // Load all pending recipients with contact data (no pagination — need all for send)
-    const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
+    // Load pending recipients — apply optional cap so large lists can be sent in batches over time
+    const allRecipients = await repo.findPendingRecipientsForSend(campaignId, sendLimit || null);
     if (!allRecipients.length) return sendError(res, 'No pending recipients', 400);
 
     // Suppress contacts that have previously bounced or unsubscribed
@@ -334,7 +339,7 @@ export const sendCampaign = async (req, res) => {
         const results = await sendBatchEmails(emails);
 
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
 
         batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
@@ -342,14 +347,18 @@ export const sendCampaign = async (req, res) => {
 
         totalSent += emails.length;
       } catch (batchErr) {
-        // Log but continue with remaining batches; partial sends still count
         console.error(`[sendCampaign] batch ${Math.floor(i / SEND_BATCH_SIZE) + 1} error:`, batchErr.message);
+      }
+
+      // Rate-limit: pause between batches to avoid triggering spam filters
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
+        await sleep(BATCH_DELAY_MS);
       }
     }
 
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   totalSent,
+      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -457,8 +466,9 @@ export const sendToContacts = async (req, res) => {
       return sendError(res, 'All matched contacts are suppressed (bounced or unsubscribed)', 400);
     }
 
-    // Upsert recipients — resets status to 'pending' for already-sent contacts so they can be re-sent
-    await repo.upsertRecipients(campaignId, toSend.map(c => c.id));
+    // Only create recipient rows for contacts not already in the campaign.
+    // Never reset contacts who have already received the email (item 6).
+    await repo.addRecipients(campaignId, toSend.map(c => c.id));
 
     // Fetch the pending recipient rows for these contacts
     const pendingRecipients = await repo.findPendingRecipientsForContacts(campaignId, toSend.map(c => c.id));
@@ -517,7 +527,7 @@ export const sendToContacts = async (req, res) => {
       try {
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
         batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
           .forEach(r => sentContactIdsQuick.push(r.contact.id));
@@ -525,12 +535,16 @@ export const sendToContacts = async (req, res) => {
       } catch (batchErr) {
         console.error('[sendToContacts] batch error:', batchErr.message);
       }
+
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < pendingRecipients.length) {
+        await sleep(BATCH_DELAY_MS);
+      }
     }
 
     // Mark sent — same fields as sendCampaign so the campaigns list shows correct status/stats
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   (campaign.sentCount || 0) + totalSent,
+      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -566,6 +580,8 @@ export const sendToContacts = async (req, res) => {
 
 // ── Resend ────────────────────────────────────────────────────────────────────
 
+// 'sent' and 'delivered' = received but did not open (non-openers).
+// 'bounced' and 'pending' are also valid resend targets when explicitly requested.
 const VALID_RESEND_STATUSES = ['pending', 'sent', 'delivered', 'bounced'];
 
 export const resendCampaign = async (req, res) => {
@@ -576,11 +592,13 @@ export const resendCampaign = async (req, res) => {
     if (campaign.status === 'sending') return sendError(res, 'Campaign is currently sending', 400);
     if (!campaign.templateId) return sendError(res, 'Campaign has no template selected', 400);
 
-    // Which recipient statuses to resend to
+    // Which recipient statuses to resend to.
+    // Default: 'sent' + 'delivered' = contacts who received but did not open.
+    // Resend never adds new contacts — only retargets existing recipients.
     const raw = req.body?.recipientStatuses;
     const statuses = Array.isArray(raw)
       ? raw.filter(s => VALID_RESEND_STATUSES.includes(s))
-      : ['bounced'];
+      : ['sent', 'delivered'];
     if (!statuses.length) return sendError(res, 'No valid recipient statuses provided', 400);
 
     // Reset matching recipients back to pending
@@ -660,15 +678,19 @@ export const resendCampaign = async (req, res) => {
       try {
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
         totalSent += emails.length;
       } catch (batchErr) {
         console.error(`[resendCampaign] batch error:`, batchErr.message);
       }
+
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
+        await sleep(BATCH_DELAY_MS);
+      }
     }
 
-    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: (campaign.sentCount || 0) + totalSent });
+    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: { increment: totalSent } });
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
@@ -684,25 +706,24 @@ export const getCampaignAnalytics = async (req, res) => {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    const [statusGroups, sends] = await Promise.all([
+    const [statusGroups, sends, eventStats] = await Promise.all([
       repo.groupRecipientsByStatus(req.params.id),
       repo.getSendAnalytics(req.params.id),
+      repo.getStatisticsFromEvents(req.params.id),
     ]);
 
     const counts = {};
     for (const g of statusGroups) counts[g.status] = g._count.status;
 
-    const total      = campaign.recipientsCount || 1;
-    // Use campaign-level counters as primary — they are incremented on each event
-    // and never decremented, so they reflect cumulative totals correctly even
-    // when a recipient's status advances (delivered → opened → clicked).
-    // status-group counts only show the *current* status, which drops lower statuses.
-    const sent       = campaign.sentCount          || counts.sent          || 0;
-    const delivered  = campaign.deliveredCount     || counts.delivered     || 0;
-    const opened     = campaign.openedCount        || counts.opened        || 0;
-    const clicked    = campaign.clickedCount       || counts.clicked       || 0;
-    const bounced    = campaign.bouncedCount       || counts.bounced       || 0;
-    const unsubbed   = campaign.unsubscribedCount  || counts.unsubscribed  || 0;
+    const total     = campaign.recipientsCount || 1;
+    // Primary: event-based counts (unique recipient per event type — most accurate).
+    // Fallback: campaign-level counters → status-group counts for legacy data pre-events.
+    const sent      = eventStats.sent         || campaign.sentCount         || counts.sent          || 0;
+    const delivered = eventStats.delivered    || campaign.deliveredCount    || counts.delivered     || 0;
+    const opened    = eventStats.opened       || campaign.openedCount       || counts.opened        || 0;
+    const clicked   = eventStats.clicked      || campaign.clickedCount      || counts.clicked       || 0;
+    const bounced   = eventStats.bounced      || campaign.bouncedCount      || counts.bounced       || 0;
+    const unsubbed  = eventStats.unsubscribed || campaign.unsubscribedCount || counts.unsubscribed  || 0;
 
     const base = sent || total;
 
@@ -758,6 +779,125 @@ export const duplicateCampaign = async (req, res) => {
     sendSuccess(res, result);
   } catch (err) {
     sendServerError(res, err, 'duplicateCampaign');
+  }
+};
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export const exportCampaign = async (req, res) => {
+  const { format = 'excel' } = req.query;
+  const campaignId = req.params.id;
+
+  try {
+    const campaign = await repo.findById(campaignId);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+
+    const [eventStats, { rows: recipients }] = await Promise.all([
+      repo.getStatisticsFromEvents(campaignId),
+      repo.findRecipients(campaignId, { limit: 10000 }),
+    ]);
+
+    const sent      = eventStats.sent      || campaign.sentCount         || 0;
+    const delivered = eventStats.delivered || campaign.deliveredCount    || 0;
+    const opened    = eventStats.opened    || campaign.openedCount       || 0;
+    const clicked   = eventStats.clicked   || campaign.clickedCount      || 0;
+    const bounced   = eventStats.bounced   || campaign.bouncedCount      || 0;
+    const unsubbed  = eventStats.unsubscribed || campaign.unsubscribedCount || 0;
+
+    const base = sent || 1;
+    const stats = {
+      sent, delivered, opened, clicked, bounced, unsubscribed: unsubbed,
+      openRate:    +((opened  / base) * 100).toFixed(1),
+      clickRate:   +((clicked / base) * 100).toFixed(1),
+      bounceRate:  +((bounced / base) * 100).toFixed(1),
+    };
+
+    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_');
+
+    if (format === 'pdf') {
+      const doc = new PDFDocument({ margin: 40 });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+      doc.pipe(res);
+
+      doc.fontSize(20).text(campaign.name, { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(11).text(`Status: ${campaign.status}   |   Sent: ${campaign.sentAt ? new Date(campaign.sentAt).toLocaleString() : 'N/A'}`);
+      doc.moveDown(1);
+
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown(0.3);
+      const summaryRows = [
+        ['Sent', stats.sent], ['Delivered', stats.delivered],
+        ['Opened', `${stats.opened} (${stats.openRate}%)`],
+        ['Clicked', `${stats.clicked} (${stats.clickRate}%)`],
+        ['Bounced', `${stats.bounced} (${stats.bounceRate}%)`],
+        ['Unsubscribed', stats.unsubscribed],
+      ];
+      doc.fontSize(11);
+      for (const [label, value] of summaryRows) {
+        doc.text(`${label}: ${value}`);
+      }
+      doc.moveDown(1);
+
+      doc.fontSize(14).text('Recipients', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(9);
+      doc.text('Name                               Email                              Status      Opened    Clicked');
+      doc.moveTo(40, doc.y).lineTo(570, doc.y).stroke();
+      doc.moveDown(0.2);
+      for (const r of recipients) {
+        const name   = `${r.contact?.firstName || ''} ${r.contact?.lastName || ''}`.trim().padEnd(34).slice(0, 34);
+        const email  = (r.contact?.email || '').padEnd(34).slice(0, 34);
+        const status = (r.status || '').padEnd(11).slice(0, 11);
+        const opened  = r.openedAt  ? new Date(r.openedAt).toLocaleDateString()  : '-';
+        const clicked = r.clickedAt ? new Date(r.clickedAt).toLocaleDateString() : '-';
+        doc.text(`${name} ${email} ${status} ${opened.padEnd(9)} ${clicked}`);
+        if (doc.y > 720) { doc.addPage(); doc.fontSize(9); }
+      }
+
+      doc.end();
+      return;
+    }
+
+    // Excel export (default)
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['Campaign Name', campaign.name],
+      ['Status', campaign.status],
+      ['Sent At', campaign.sentAt ? new Date(campaign.sentAt).toLocaleString() : ''],
+      ['Completed At', campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : ''],
+      [],
+      ['Metric', 'Count', 'Rate'],
+      ['Sent', stats.sent, ''],
+      ['Delivered', stats.delivered, ''],
+      ['Opened', stats.opened, `${stats.openRate}%`],
+      ['Clicked', stats.clicked, `${stats.clickRate}%`],
+      ['Bounced', stats.bounced, `${stats.bounceRate}%`],
+      ['Unsubscribed', stats.unsubscribed, ''],
+    ]);
+
+    const recipientRows = recipients.map(r => ({
+      'First Name': r.contact?.firstName || '',
+      'Last Name':  r.contact?.lastName  || '',
+      'Email':      r.contact?.email     || '',
+      'Status':     r.status             || '',
+      'Sent At':    r.sentAt    ? new Date(r.sentAt).toLocaleString()    : '',
+      'Opened At':  r.openedAt  ? new Date(r.openedAt).toLocaleString()  : '',
+      'Clicked At': r.clickedAt ? new Date(r.clickedAt).toLocaleString() : '',
+      'Bounced At': r.bouncedAt ? new Date(r.bouncedAt).toLocaleString() : '',
+    }));
+    const recipientSheet = XLSX.utils.json_to_sheet(recipientRows);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, summarySheet,   'Summary');
+    XLSX.utils.book_append_sheet(wb, recipientSheet, 'Recipients');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    sendServerError(res, err, 'exportCampaign');
   }
 };
 

@@ -5,7 +5,7 @@ import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye,
+  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye, Download,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -13,6 +13,7 @@ import {
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
   cancelCampaign, restoreCampaign, duplicateCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
+  exportCampaignUrl,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
@@ -1615,6 +1616,30 @@ export default function CampaignDetailPage() {
               <Send size={12} /> Resend Campaign
             </button>
           )}
+          <a
+            href={exportCampaignUrl(campaign.id, 'excel')}
+            download
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
+              fontFamily: "inherit", textDecoration: "none",
+            }}
+          >
+            <Download size={13} /> Excel
+          </a>
+          <a
+            href={exportCampaignUrl(campaign.id, 'pdf')}
+            download
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
+              fontFamily: "inherit", textDecoration: "none",
+            }}
+          >
+            <Download size={13} /> PDF
+          </a>
           <button
             onClick={load}
             style={{

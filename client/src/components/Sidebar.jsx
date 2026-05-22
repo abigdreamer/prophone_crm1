@@ -59,12 +59,15 @@ export default function Sidebar({
   selected, onSelect, onAddNew, onEditInline, onImport,
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
-  selectedIds, onToggleSelect, onToggleSelectAll,
+  selectedIds, onToggleSelect, onToggleSelectAll, onSelectBulk,
 }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
   const [statusF, setStatusF] = useState("all");
   const [sortF, setSortF] = useState("recent");
+  const [limitF, setLimitF] = useState(0); // 0 = no cap; >0 = hard cap
+  const [showCustom, setShowCustom] = useState(false);
+  const [customVal, setCustomVal] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [displayLimit, setDisplayLimit] = useState(150);
   const listRef = useRef(null);
@@ -75,6 +78,14 @@ export default function Sidebar({
   const showingCanceled = viewMode === VIEW_MODE.CANCELED;
   const selEnabled = !!onToggleSelect && !showingCanceled;
 
+  // Apply a hard display-cap and auto-check those contacts
+  function applyLimit(n) {
+    setLimitF(n);
+    if (n > 0 && selEnabled && onSelectBulk) {
+      onSelectBulk(filtered.slice(0, n).map(c => c.id));
+    }
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => { searchRef?.current?.focus(); }, 150);
     return () => clearTimeout(timer);
@@ -83,14 +94,19 @@ export default function Sidebar({
   // Reset filters when viewMode changes
   useEffect(() => { setStageF("all"); setStatusF("all"); }, [viewMode]);
 
-  // Reset display limit when any filter or sort changes
-  useEffect(() => { setDisplayLimit(150); }, [viewMode, stageF, statusF, search, sortF]);
+  // Reset scroll-based display limit when any filter/sort/limit changes
+  useEffect(() => { setDisplayLimit(limitF || 150); }, [viewMode, stageF, statusF, search, sortF, limitF]);
 
-  // Infinite scroll — attach once; reads filteredLenRef so closure stays fresh
+  // Keep a ref for limitF so the scroll closure always reads the latest value
+  const limitFRef = useRef(0);
+  limitFRef.current = limitF;
+
+  // Infinite scroll — disabled when a hard cap (limitF) is active
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     function onScroll() {
+      if (limitFRef.current > 0) return; // hard cap set — don't grow
       if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
         setDisplayLimit(prev => {
           const next = prev + 150;
@@ -100,7 +116,7 @@ export default function Sidebar({
     }
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []); // eslint-disable-line — intentional: attach once, ref keeps value fresh
+  }, []); // eslint-disable-line — intentional: attach once, refs keep values fresh
 
   const stageOpts = STAGE_GROUPS[viewMode] || ALL_STAGES;
   const viewModeStages = STAGE_GROUPS[viewMode]; // undefined = ALL, [] = backburner
@@ -204,7 +220,10 @@ export default function Sidebar({
               {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
             </div>
             <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
-              {filtered.length.toLocaleString()} leads
+              {limitF > 0 && filtered.length > limitF
+                ? <><span style={{ color: col, fontWeight: 700 }}>{Math.min(limitF, filtered.length).toLocaleString()}</span> of {filtered.length.toLocaleString()} leads</>
+                : <>{filtered.length.toLocaleString()} leads</>
+              }
               {selEnabled && (() => {
                 const totalSelected = filtered.filter(c => selectedIds?.has(c.id)).length;
                 return totalSelected > 0
@@ -269,21 +288,81 @@ export default function Sidebar({
             <option value="score">Score</option>
           </select>
 
-          {/* {!showingCanceled && ( */}
-            <select value={stageF} onChange={e => setStageF(e.target.value)} style={selStyle}>
-              <option value="all">All Stages</option>
-              {stageOpts.map(s => <option key={s} value={s}>{STAGE_DEF[s]?.label}</option>)}
-            </select>
-          {/* )} */}
+          <select value={stageF} onChange={e => setStageF(e.target.value)} style={selStyle}>
+            <option value="all">All Stages</option>
+            {stageOpts.map(s => <option key={s} value={s}>{STAGE_DEF[s]?.label}</option>)}
+          </select>
 
-          {/* {!showingCanceled && ( */}
-            <select value={statusF} onChange={e => setStatusF(e.target.value)} style={selStyle}>
-              <option value="all">All Status</option>
-              <option value={STATUS.ACTIVE}>Active</option>
-              <option value={STATUS.PENDING}>Pending</option>
-                            <option value={STATUS.CANCELED}>Canceled</option>
+          <select value={statusF} onChange={e => setStatusF(e.target.value)} style={selStyle}>
+            <option value="all">All Status</option>
+            <option value={STATUS.ACTIVE}>Active</option>
+            <option value={STATUS.PENDING}>Pending</option>
+            <option value={STATUS.CANCELED}>Canceled</option>
+          </select>
+
+          {/* Limit picker: preset dropdown + optional custom input */}
+          <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+            <select
+              value={showCustom ? "custom" : limitF}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === "custom") {
+                  setShowCustom(true);
+                  setLimitF(0);
+                  setCustomVal("");
+                } else {
+                  setShowCustom(false);
+                  setCustomVal("");
+                  applyLimit(parseInt(val, 10));
+                }
+              }}
+              style={{
+                ...selStyle,
+                color: (limitF > 0 || showCustom) ? col : T.dim,
+                borderColor: (limitF > 0 || showCustom) ? col + "70" : T.border,
+              }}
+              title="Limit contacts shown and auto-select them"
+            >
+              <option value={0}>All</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value={500}>500</option>
+              <option value={1000}>1k</option>
+              <option value="custom">Custom…</option>
             </select>
-          {/* )} */}
+
+            {showCustom && (
+              <input
+                type="number"
+                min={1}
+                value={customVal}
+                onChange={e => setCustomVal(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    const n = parseInt(customVal, 10);
+                    if (n > 0) applyLimit(n);
+                  }
+                  if (e.key === "Escape") {
+                    setShowCustom(false);
+                    setCustomVal("");
+                    applyLimit(0);
+                  }
+                }}
+                onBlur={() => {
+                  const n = parseInt(customVal, 10);
+                  if (n > 0) applyLimit(n);
+                }}
+                placeholder="e.g. 750"
+                autoFocus
+                style={{
+                  width: 64, padding: "4px 6px",
+                  background: T.bg, border: "1px solid " + col + "70",
+                  borderRadius: 6, color: col, fontSize: 10,
+                  outline: "none", fontFamily: "inherit",
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -383,8 +462,11 @@ export default function Sidebar({
           })
         )}
         {filtered.length > 0 && displayLimit < filtered.length && (
-          <div style={{ padding: "14px 16px", textAlign: "center", color: T.muted, fontSize: 10, borderTop: "1px solid " + T.border }}>
-            Showing {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — scroll to load more
+          <div style={{ padding: "14px 16px", textAlign: "center", fontSize: 10, borderTop: "1px solid " + T.border, color: limitF > 0 ? col : T.muted }}>
+            {limitF > 0
+              ? <>Showing first {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — change limit to see more</>
+              : <>Showing {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — scroll to load more</>
+            }
           </div>
         )}
       </div>

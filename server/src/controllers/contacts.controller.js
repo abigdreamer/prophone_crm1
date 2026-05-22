@@ -324,20 +324,27 @@ async function importContacts(req, res) {
   const invalid = [];
   const errors = [];
 
+  // Return the first non-empty token from a delimiter-separated string.
+  // Handles "a@x.com, b@y.com" → "a@x.com" and "555-1234 | 555-5678" → "555-1234".
+  const firstToken = (raw, sep) =>
+    String(raw ?? '').split(sep).map(v => v.trim()).find(Boolean) ?? '';
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     // Coerce every cell to string first — Excel can produce numbers for
     // cells that look numeric (zip codes, company IDs, phone numbers, etc.)
     const s = f => String(r[f] ?? '').trim();
 
-    const email = s('email');
-    const phone = s('phone');
+    // Normalize: if the field contains multiple values, keep only the first one
+    const email = firstToken(s('email'), /[,|]/);
+    const phone = firstToken(s('phone'), /[,|;]/);
 
-    // if (!email && !phone) {
-    //   invalid.push(i);
-    //   errors.push({ row: i + 1, reason: 'Missing both email and phone' });
-    //   continue;
-    // }
+    // Skip records that have no email address — cannot be contacted or de-duplicated
+    if (!email) {
+      invalid.push(i);
+      errors.push({ row: i + 1, reason: 'Missing email address' });
+      continue;
+    }
 
     let firstName = s('firstName') || s('first_name');
     let lastName = s('lastName') || s('last_name');

@@ -17,6 +17,7 @@ import {
   sendToContacts,
   resendCampaign,
   getCampaignAnalytics,
+  exportCampaign,
   listPublishedTemplates,
 } from '../controllers/campaigns.controller.js';
 
@@ -42,6 +43,7 @@ router.get('/:id/recipients/preview', previewRecipients);
 router.post('/:id/send',         sendCampaign);
 router.post('/:id/send-to',      sendToContacts);
 router.post('/:id/resend',       resendCampaign);
-router.get('/:id/analytics',  getCampaignAnalytics);
+router.get('/:id/analytics',     getCampaignAnalytics);
+router.get('/:id/export',        exportCampaign);
 
 export default router;
