@@ -164,12 +164,13 @@ export const restoreCampaign = async (req, res) => {
 
 export const listRecipients = async (req, res) => {
   try {
-    const { status, variant, search, page = '1', limit = '50' } = req.query;
+    const { status, event, variant, search, page = '1', limit = '50' } = req.query;
     const take = Math.min(parseInt(limit, 10) || 50, 200);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
 
     const { rows, total } = await repo.findRecipients(req.params.id, {
       status,
+      event,
       abVariant: variant,
       search,
       skip,
