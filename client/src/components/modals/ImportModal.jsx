@@ -415,6 +415,45 @@ function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateActi
   );
 }
 
+// ── Step 3b: Importing progress ───────────────────────────────────────────────
+function StepImporting({ progress, total }) {
+  const T = useTheme();
+  const done = progress >= 100;
+  const barColor = done ? T.green : T.accent;
+  return (
+    <div style={{ textAlign: "center", padding: "36px 8px" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 28 }}>
+        Importing {total.toLocaleString()} contacts…
+      </div>
+
+      {/* Track */}
+      <div style={{
+        height: 10, borderRadius: 5, background: T.border,
+        overflow: "hidden", marginBottom: 14,
+      }}>
+        <div style={{
+          height: "100%", borderRadius: 5,
+          width: `${progress}%`,
+          background: barColor,
+          transition: "width 0.35s ease, background 0.35s",
+        }} />
+      </div>
+
+      {/* Percentage */}
+      <div style={{
+        fontSize: 32, fontWeight: 800, lineHeight: 1,
+        color: barColor, marginBottom: 8,
+        transition: "color 0.35s",
+      }}>
+        {progress}%
+      </div>
+      <div style={{ fontSize: 12, color: T.muted }}>
+        {done ? "Finishing up…" : "Please wait while your contacts are being imported."}
+      </div>
+    </div>
+  );
+}
+
 // ── Step 4: Result summary ────────────────────────────────────────────────────
 function StepSummary({ result, onClose, onStartOver }) {
   const T = useTheme();
@@ -524,6 +563,7 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
   const [mapping, setMapping] = useState([]);
   const [duplicateAction, setDuplicateAction] = useState("ignore");
   const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [importError, setImportError] = useState("");
 
@@ -534,6 +574,10 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
     setFileName(fn);
     setStep(1);
   }
+
+  // Return the first non-empty value from a delimited string (e.g. "a@x.com, b@y.com" → "a@x.com")
+  const firstValue = (raw, sep = /[,|]/) =>
+    String(raw ?? "").split(sep).map(v => v.trim()).find(Boolean) ?? "";
 
   // Convert raw rows using current mapping to contact-shaped objects
   const mapRows = useCallback(() => {
@@ -552,6 +596,12 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
           } else {
             contact.firstName = contact.firstName || full;
           }
+        } else if (field === "email") {
+          // Multiple emails separated by comma or pipe → use the first one
+          contact.email = firstValue(row[h], /[,|]/);
+        } else if (field === "phone") {
+          // Multiple phone numbers separated by comma, pipe, or semicolon → use the first one
+          contact.phone = firstValue(row[h], /[,|;]/);
         } else if (SOCIAL_KEYS.has(field)) {
           const v = (row[h] ?? "").trim();
           if (v) socialLinks[field] = v;
@@ -567,10 +617,40 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
   async function handleImport() {
     setImporting(true);
     setImportError("");
+    setProgress(0);
     try {
-      const rows = mapRows();
-      const res = await db.importContacts({ rows, clientId, pool, duplicateAction });
-      setResult(res);
+      const allMapped = mapRows();
+
+      // Skip rows with no email address
+      const withEmail    = allMapped.filter(r => r.email?.trim());
+      const noEmailCount = allMapped.length - withEmail.length;
+
+      const CHUNK = 500;
+      const chunks = [];
+      for (let i = 0; i < withEmail.length; i += CHUNK) chunks.push(withEmail.slice(i, i + CHUNK));
+
+      const combined = {
+        total:    rawRows.length,
+        imported: 0,
+        updated:  0,
+        skipped:  noEmailCount,
+        errors:   [],
+      };
+
+      if (chunks.length === 0) {
+        setProgress(100);
+      } else {
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const res = await db.importContacts({ rows: chunks[ci], clientId, pool, duplicateAction });
+          combined.imported += res.imported || 0;
+          combined.updated  += res.updated  || 0;
+          combined.skipped  += res.skipped  || 0;
+          if (res.errors?.length) combined.errors.push(...res.errors);
+          setProgress(Math.round(((ci + 1) / chunks.length) * 100));
+        }
+      }
+
+      setResult(combined);
       setStep(3);
       onImported?.();
     } catch (err) {
@@ -623,7 +703,10 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
 
           {step === 0 && <StepUpload onParsed={handleParsed} />}
           {step === 1 && <StepMap headers={headers} mapping={mapping} setMapping={setMapping} />}
-          {step === 2 && (
+          {step === 2 && importing && (
+            <StepImporting progress={progress} total={rawRows.length} />
+          )}
+          {step === 2 && !importing && (
             <StepPreview
               headers={headers} rows={rawRows} mapping={mapping}
               duplicateAction={duplicateAction} setDuplicateAction={setDuplicateAction}
@@ -649,7 +732,7 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
             display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0,
           }}>
             <div style={{ fontSize: 11, color: T.muted }}>
-              {step === 2 && `${rawRows.length} row${rawRows.length !== 1 ? "s" : ""} ready`}
+              {step === 2 && !importing && `${rawRows.length} row${rawRows.length !== 1 ? "s" : ""} ready`}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {step > 0 && step < 3 && (

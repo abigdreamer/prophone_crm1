@@ -64,6 +64,7 @@ export default function ContactsPage({
 }) {
   const T = useTheme();
   const [sortBy, setSortBy] = useState("lastActivityAt");
+  const [displayLimit, setDisplayLimit] = useState(null); // null = no cap
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [restoreTarget, setRestoreTarget] = useState(null);
@@ -79,7 +80,7 @@ export default function ContactsPage({
   const q = (search || "").trim();
   const showingCanceled = viewMode === VIEW_MODE.CANCELED;
 
-  useEffect(() => { setPage(1); }, [sortBy, q, viewMode]);
+  useEffect(() => { setPage(1); }, [sortBy, q, viewMode, displayLimit]);
   useEffect(() => { setSelectedIds(new Set()); }, [viewMode, q]);
 
   const client = useClientById(clientId);
@@ -110,11 +111,15 @@ export default function ContactsPage({
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const rangeStart = rows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(safePage * PAGE_SIZE, rows.length);
+  // Apply optional display cap — lets the user focus on the first N filtered results
+  const cappedRows = displayLimit ? rows.slice(0, displayLimit) : rows;
+  const isLimited   = displayLimit !== null && rows.length > displayLimit;
+
+  const totalPages = Math.max(1, Math.ceil(cappedRows.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const pageRows   = cappedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const rangeStart = cappedRows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const rangeEnd   = Math.min(safePage * PAGE_SIZE, cappedRows.length);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -165,7 +170,7 @@ export default function ContactsPage({
   }
 
   function selectBulk(n) {
-    const ids = rows.slice(0, n).map(c => c.id);
+    const ids = cappedRows.slice(0, n).map(c => c.id);
     setSelectedIds(new Set(ids));
     setSelectMenuOpen(false);
   }
@@ -296,12 +301,28 @@ export default function ContactsPage({
         </div>
       )}
 
-      {/* Minimal header — count + refresh + sort only */}
+      {/* Minimal header — count + limit + sort + refresh */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
-          {rows.length.toLocaleString()} contacts
+          {isLimited
+            ? <>{cappedRows.length.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>of {rows.length.toLocaleString()}</span> contacts</>
+            : <>{rows.length.toLocaleString()} contacts</>
+          }
         </span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select
+            value={displayLimit ?? ""}
+            onChange={e => { setDisplayLimit(e.target.value ? parseInt(e.target.value, 10) : null); }}
+            style={{ ...selectStyle, color: displayLimit ? T.accent : T.text, borderColor: displayLimit ? T.accent + "60" : T.border }}
+            title="Limit displayed records"
+          >
+            <option value="">Show all</option>
+            <option value="100">First 100</option>
+            <option value="250">First 250</option>
+            <option value="500">First 500</option>
+            <option value="1000">First 1,000</option>
+            <option value="2000">First 2,000</option>
+          </select>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={selectStyle}>
             <option value="lastActivityAt">Recent Activity</option>
             <option value="name">Name A–Z</option>
@@ -369,21 +390,21 @@ export default function ContactsPage({
                             <button
                               key={n}
                               onClick={() => selectBulk(n)}
-                              disabled={rows.length === 0}
+                              disabled={cappedRows.length === 0}
                               style={{
                                 display: "block", width: "100%", textAlign: "left",
                                 padding: "8px 14px", background: "none", border: "none",
-                                fontSize: 12, fontWeight: 600, color: rows.length === 0 ? T.muted : T.text,
-                                cursor: rows.length === 0 ? "not-allowed" : "pointer",
+                                fontSize: 12, fontWeight: 600, color: cappedRows.length === 0 ? T.muted : T.text,
+                                cursor: cappedRows.length === 0 ? "not-allowed" : "pointer",
                                 fontFamily: "inherit",
                               }}
                               onMouseEnter={e => { if (rows.length > 0) e.currentTarget.style.background = T.accent + "12"; }}
                               onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
                             >
                               {label}
-                              {rows.length < n && (
+                              {cappedRows.length < n && (
                                 <span style={{ fontSize: 10, color: T.muted, marginLeft: 4 }}>
-                                  ({rows.length} available)
+                                  ({cappedRows.length} available)
                                 </span>
                               )}
                             </button>
@@ -511,7 +532,8 @@ export default function ContactsPage({
       {totalPages > 1 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", gap: 8 }}>
           <span style={{ fontSize: 11, color: T.muted, flexShrink: 0 }}>
-            {rangeStart}–{rangeEnd} of {rows.length.toLocaleString()}
+            {rangeStart}–{rangeEnd} of {cappedRows.length.toLocaleString()}
+            {isLimited && <span style={{ color: T.accent }}> (limited)</span>}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <button

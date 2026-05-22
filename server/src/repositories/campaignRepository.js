@@ -159,9 +159,10 @@ export async function assignVariants(campaignId) {
 
 // ── Send helpers ──────────────────────────────────────────────────────────────
 
-export async function findPendingRecipientsForSend(campaignId) {
+export async function findPendingRecipientsForSend(campaignId, limit = null) {
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
+    ...(limit ? { take: limit } : {}),
     include: {
       contact: {
         select: { id: true, firstName: true, lastName: true, email: true, company: true },
@@ -170,11 +171,14 @@ export async function findPendingRecipientsForSend(campaignId) {
   });
 }
 
-export async function markRecipientSent(id, messageId) {
-  return prisma.campaignRecipient.update({
+export async function markRecipientSent(id, messageId, campaignId = null) {
+  const sendId = randomUUID();
+  const result = await prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sendId: randomUUID(), sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sendId, sentAt: new Date() },
   });
+  if (campaignId) logEvent(id, campaignId, 'sent', null, sendId).catch(() => {});
+  return result;
 }
 
 export async function resetRecipientsForResend(campaignId, statuses) {
@@ -189,7 +193,7 @@ export async function resetRecipientsForResend(campaignId, statuses) {
 export async function findRecipientByMessageId(messageId) {
   return prisma.campaignRecipient.findFirst({
     where:  { messageId },
-    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true },
+    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true, sendId: true },
   });
 }
 
@@ -234,9 +238,11 @@ export async function applyEmailEvent(messageId, event) {
       return;
   }
 
+  const logEventType = event === 'complained' ? 'unsubscribed' : event;
   await Promise.all([
     prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
     prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
+    logEvent(recipient.id, recipient.campaignId, logEventType, null, recipient.sendId),
   ]);
 }
 
@@ -461,6 +467,22 @@ export async function getSendAnalytics(campaignId) {
       clicks:      clickEvents.map(e => ({ id: e.id, metadata: e.metadata, createdAt: e.createdAt })),
     };
   });
+}
+
+/**
+ * Count unique recipients per event type from the events table.
+ * Used for computing analytics independent of the campaign-level counters.
+ */
+export async function getStatisticsFromEvents(campaignId) {
+  const groups = await prisma.campaignRecipientEvent.groupBy({
+    by:    ['event', 'recipientId'],
+    where: { campaignId },
+  });
+  const counts = {};
+  for (const g of groups) {
+    counts[g.event] = (counts[g.event] || 0) + 1;
+  }
+  return counts;
 }
 
 export async function getContactsForFilter(clientId, filter) {
