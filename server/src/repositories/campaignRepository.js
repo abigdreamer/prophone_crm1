@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import prisma from '../lib/prisma.js';
 import { icontains, skipDups } from '../lib/db-compat.js';
 import { tracking } from '../config/tracking.js';
@@ -49,16 +50,17 @@ export async function restoreCampaign(id) {
   });
 }
 
-export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
+export async function findRecipients(campaignId, { status, event, abVariant, search, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
-  if (status) {
-    const tsFilter = TIMESTAMP_FILTERS[status];
-    if (tsFilter) {
-      Object.assign(where, tsFilter);
-    } else {
-      where.status = status;
-    }
+
+  if (event) {
+    // Event-based filter: return all recipients who ever had this event (e.g. 'opened'),
+    // regardless of their current status. This matches the stat-card counts from getStatisticsFromEvents.
+    where.events = { some: { event } };
+  } else if (status) {
+    where.status = status;
   }
+
   if (abVariant) where.abVariant = abVariant;
   if (search) {
     where.contact = {
@@ -101,6 +103,30 @@ export async function addRecipients(campaignId, contactIds) {
   const count = await prisma.campaignRecipient.count({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
   return result;
+}
+
+// Upsert recipients for re-send flows: resets status to 'pending' if the row already exists
+// so the contact can be sent to again. Uniqueness within a batch is enforced by the caller.
+export async function upsertRecipients(campaignId, contactIds) {
+  await Promise.all(
+    contactIds.map(contactId =>
+      prisma.campaignRecipient.upsert({
+        where:  { campaignId_contactId: { campaignId, contactId } },
+        create: { campaignId, contactId, status: 'pending' },
+        update: {
+          status:    'pending',
+          messageId: null,
+          sendId:    null,
+          sentAt:    null,
+          openedAt:  null,
+          clickedAt: null,
+          bouncedAt: null,
+        },
+      })
+    )
+  );
+  const count = await prisma.campaignRecipient.count({ where: { campaignId } });
+  await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
 }
 
 export async function removeAllRecipients(campaignId) {
@@ -154,9 +180,10 @@ export async function assignVariants(campaignId) {
 
 // ── Send helpers ──────────────────────────────────────────────────────────────
 
-export async function findPendingRecipientsForSend(campaignId) {
+export async function findPendingRecipientsForSend(campaignId, limit = null) {
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
+    ...(limit ? { take: limit } : {}),
     include: {
       contact: {
         select: { id: true, firstName: true, lastName: true, email: true, company: true },
@@ -165,17 +192,20 @@ export async function findPendingRecipientsForSend(campaignId) {
   });
 }
 
-export async function markRecipientSent(id, messageId) {
-  return prisma.campaignRecipient.update({
+export async function markRecipientSent(id, messageId, campaignId = null) {
+  const sendId = randomUUID();
+  const result = await prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sendId, sentAt: new Date() },
   });
+  if (campaignId) logEvent(id, campaignId, 'sent', null, sendId).catch(() => {});
+  return result;
 }
 
 export async function resetRecipientsForResend(campaignId, statuses) {
   return prisma.campaignRecipient.updateMany({
     where: { campaignId, status: { in: statuses } },
-    data:  { status: 'pending', sentAt: null, messageId: null },
+    data:  { status: 'pending', sentAt: null, messageId: null, sendId: null },
   });
 }
 
@@ -191,7 +221,7 @@ export async function updateRecipientStatus(id, status) {
 export async function findRecipientByMessageId(messageId) {
   return prisma.campaignRecipient.findFirst({
     where:  { messageId },
-    select: { id: true, campaignId: true, status: true, deliveredAt: true, openedAt: true, clickedAt: true },
+    select: { id: true, campaignId: true, status: true, openedAt: true, clickedAt: true, sendId: true },
   });
 }
 
@@ -272,26 +302,27 @@ export async function applyEmailEvent(messageId, event) {
       return;
   }
 
+  const logEventType = event === 'complained' ? 'unsubscribed' : event;
   await Promise.all([
     prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
     prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
-    logEvent(recipient.id, recipient.campaignId, event),
+    logEvent(recipient.id, recipient.campaignId, logEventType, null, recipient.sendId),
   ]);
 
   console.log(`[applyEmailEvent] Updated recipient=${recipient.id} to status=${recipientData.status || 'unchanged'}`);
 }
 
-export async function logEvent(recipientId, campaignId, event, metadata = null) {
+export async function logEvent(recipientId, campaignId, event, metadata = null, sendId = null) {
   return prisma.campaignRecipientEvent.create({
-    data: { recipientId, campaignId, event, metadata },
+    data: { recipientId, campaignId, event, metadata, sendId },
   }).catch(() => {});
 }
 
 export async function getRecipientEvents(recipientId) {
   return prisma.campaignRecipientEvent.findMany({
     where:   { recipientId },
-    orderBy: { occurredAt: 'asc' },
-    select:  { id: true, event: true, occurredAt: true, metadata: true },
+    orderBy: { createdAt: 'asc' },
+    select:  { id: true, event: true, createdAt: true, metadata: true },
   });
 }
 
@@ -322,7 +353,7 @@ export async function applyTrackingEvent(recipientId, event) {
       where:  { id: recipientId },
       select: {
         id: true, campaignId: true, contactId: true,
-        deliveredAt: true, openedAt: true, clickedAt: true,
+        openedAt: true, clickedAt: true, sendId: true,
       },
     });
 
@@ -377,25 +408,51 @@ export async function applyTrackingEvent(recipientId, event) {
     };
 
     const activityRows = [];
+    const eventRows    = [];
+
+    // Derive send_id: use stored value; fall back to messageId lookup or recipientId for legacy rows.
+    // We do this inside the transaction so the read and writes are consistent.
+    let sendId = recipient.sendId;
+    if (!sendId) {
+      const full = await tx.campaignRecipient.findUnique({
+        where:  { id: recipient.id },
+        select: { messageId: true },
+      });
+      sendId = full?.messageId ?? recipient.id;
+    }
 
     // Backfilled open activity (appears first in the timeline)
     if (openBackfilled) {
       activityRows.push({
-        contactId: recipient.contactId,
-        type:      'email_opened',
-        note:      'Opened a campaign email (inferred from click)',
-        by:        'System',
-        points:    tracking.openPoints,
+        entityType: 'contact',
+        entityId:   recipient.contactId,
+        type:       'email_opened',
+        note:       'Opened a campaign email (inferred from click)',
+        by:         'System',
+        points:     tracking.openPoints,
+      });
+      eventRows.push({
+        recipientId: recipient.id,
+        campaignId:  recipient.campaignId,
+        sendId,
+        event:       'opened',
       });
     }
 
     // Primary event activity
     activityRows.push({
-      contactId: recipient.contactId,
-      type:      isOpen ? 'email_opened' : 'email_clicked',
-      note:      isOpen ? 'Opened a campaign email' : 'Clicked a link in a campaign email',
-      by:        'System',
-      points:    isOpen ? tracking.openPoints : tracking.clickPoints,
+      entityType: 'contact',
+      entityId:   recipient.contactId,
+      type:       isOpen ? 'email_opened' : 'email_clicked',
+      note:       isOpen ? 'Opened a campaign email' : 'Clicked a link in a campaign email',
+      by:         'System',
+      points:     isOpen ? tracking.openPoints : tracking.clickPoints,
+    });
+    eventRows.push({
+      recipientId: recipient.id,
+      campaignId:  recipient.campaignId,
+      sendId,
+      event:       isOpen ? 'opened' : 'clicked',
     });
 
     await Promise.all([
@@ -403,11 +460,23 @@ export async function applyTrackingEvent(recipientId, event) {
       tx.campaign.update({          where: { id: recipient.campaignId },  data: campaignData  }),
       tx.contact.update({           where: { id: recipient.contactId },   data: contactData   }),
       ...activityRows.map(data => tx.activity.create({ data })),
+      ...eventRows.map(data => tx.campaignRecipientEvent.create({ data })),
     ]);
   });
 }
 
 // Return set of contactIds that have ever bounced or unsubscribed
+export async function findPendingRecipientsForContacts(campaignId, contactIds) {
+  return prisma.campaignRecipient.findMany({
+    where: { campaignId, status: 'pending', contactId: { in: contactIds } },
+    include: {
+      contact: {
+        select: { id: true, firstName: true, lastName: true, email: true, company: true },
+      },
+    },
+  });
+}
+
 export async function findSuppressedContactIds(contactIds) {
   // Check campaign_recipients for bounced/unsubscribed status
   const recipientRows = await prisma.campaignRecipient.findMany({
@@ -425,6 +494,77 @@ export async function findSuppressedContactIds(contactIds) {
   const set = new Set(recipientRows.map(r => r.contactId));
   unsubRows.forEach(r => set.add(r.id));
   return set;
+}
+
+/**
+ * Return per-send analytics for a campaign, grouped by send_id.
+ *
+ * For events that pre-date the send_id column (sendId = null), the effective
+ * send_id is derived in priority order: stored sendId → recipient.messageId
+ * (unique Resend message ID) → recipient.id.
+ *
+ * Each group reports:
+ *   uniqueOpen  – 1 if any open event exists for this send, else 0
+ *   totalOpen   – raw count of open events (pixel may fire multiple times)
+ *   totalClicks – count of click events
+ *   clicks      – click event detail array for link-level attribution
+ */
+export async function getSendAnalytics(campaignId) {
+  const recipients = await prisma.campaignRecipient.findMany({
+    where:   { campaignId },
+    select: {
+      id: true, contactId: true, messageId: true, sendId: true,
+      sentAt: true,
+      events: {
+        select: { id: true, event: true, sendId: true, metadata: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+
+  return recipients.map(r => {
+    // Derive effective send_id for recipient and its legacy events
+    const effectiveSendId = r.sendId ?? r.messageId ?? r.id;
+
+    const openEvents  = [];
+    const clickEvents = [];
+
+    for (const evt of r.events) {
+      // Each event may have its own sendId; if absent, inherit from recipient
+      const evtSendId = evt.sendId ?? effectiveSendId;
+      // Only include events that belong to this send instance
+      if (evtSendId !== effectiveSendId) continue;
+      if (evt.event === 'opened')  openEvents.push(evt);
+      if (evt.event === 'clicked') clickEvents.push(evt);
+    }
+
+    return {
+      sendId:      effectiveSendId,
+      recipientId: r.id,
+      contactId:   r.contactId,
+      sentAt:      r.sentAt,
+      uniqueOpen:  openEvents.length  > 0 ? 1 : 0,
+      totalOpen:   openEvents.length,
+      totalClicks: clickEvents.length,
+      clicks:      clickEvents.map(e => ({ id: e.id, metadata: e.metadata, createdAt: e.createdAt })),
+    };
+  });
+}
+
+/**
+ * Count unique recipients per event type from the events table.
+ * Used for computing analytics independent of the campaign-level counters.
+ */
+export async function getStatisticsFromEvents(campaignId) {
+  const groups = await prisma.campaignRecipientEvent.groupBy({
+    by:    ['event', 'recipientId'],
+    where: { campaignId },
+  });
+  const counts = {};
+  for (const g of groups) {
+    counts[g.event] = (counts[g.event] || 0) + 1;
+  }
+  return counts;
 }
 
 export async function getContactsForFilter(clientId, filter) {

@@ -54,8 +54,8 @@ export function injectUnsubscribeFooter(html, unsubUrl, companyAddress) {
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td align="center" style="padding:20px 24px 24px;border-top:1px solid #e5e7eb;">
-      <p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">
-        You are receiving this email because you subscribed to updates.<br>
+     <p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">
+        You are receiving this email as part of our outreach.<br>
         <a href="${unsubUrl}" style="color:#9ca3af;text-decoration:underline;">Unsubscribe</a>
         ${companyAddress ? `&nbsp;|&nbsp;${companyAddress}` : ''}
       </p>

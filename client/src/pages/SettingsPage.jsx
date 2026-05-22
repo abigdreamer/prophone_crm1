@@ -1,11 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  LayoutGrid,
-  Users,
-  FolderOpen,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import ClientsPage from "./ClientsPage";
 import ComingSoon from "../components/layout/ComingSoon";
@@ -20,15 +14,6 @@ import * as db from "../services/api";
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SIDEBAR_OPEN = 230;
-const SIDEBAR_COLLAPSED = 60;
-
-const NAV_ITEMS = [
-  { id: "contact_fields", label: "Contact Fields", Icon: LayoutGrid },
-  { id: "clients", label: "Clients", Icon: FolderOpen },
-  { id: "user_settings", label: "User", Icon: Users },
-];
-
 const CONTACT_FIELD_GROUPS = [
   {
     group: "Contact Info",
@@ -37,7 +22,6 @@ const CONTACT_FIELD_GROUPS = [
       { key: "phone", label: "Show Phone" },
       { key: "website", label: "Show Website" },
       { key: "address", label: "Show Address" },
-      { key: "description", label: "Show Description" },
     ],
   },
   {
@@ -170,7 +154,6 @@ function ContactFieldSettings({ clientId }) {
 
       try {
         const res = await db.getSettings(clientId, "contact_fields");
-
         if (!mounted) return;
 
         if (res?.config && Object.keys(res.config).length > 0) {
@@ -186,9 +169,7 @@ function ContactFieldSettings({ clientId }) {
     }
 
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [clientId]);
 
   const toggleField = useCallback((key) => {
@@ -232,7 +213,6 @@ function ContactFieldSettings({ clientId }) {
 
   return (
     <div>
-      {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>
           Show/Hide Details from Contact
@@ -242,7 +222,6 @@ function ContactFieldSettings({ clientId }) {
         </div>
       </div>
 
-      {/* Groups */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {CONTACT_FIELD_GROUPS.map(({ group, fields, span }) => {
           const keys = fields.map((f) => f.key);
@@ -259,7 +238,6 @@ function ContactFieldSettings({ clientId }) {
                 overflow: "hidden",
               }}
             >
-              {/* Group Header */}
               <div
                 style={{
                   display: "flex",
@@ -276,28 +254,15 @@ function ContactFieldSettings({ clientId }) {
                     ({onCount}/{fields.length})
                   </span>
                 </div>
-
                 <div style={{ display: "flex", gap: 6 }}>
-                  <SmallButton onClick={() => toggleGroup(keys, true)}>
-                    All On
-                  </SmallButton>
-                  <SmallButton onClick={() => toggleGroup(keys, false)}>
-                    All Off
-                  </SmallButton>
+                  <SmallButton onClick={() => toggleGroup(keys, true)}>All On</SmallButton>
+                  <SmallButton onClick={() => toggleGroup(keys, false)}>All Off</SmallButton>
                 </div>
               </div>
 
-              {/* Group Fields */}
-              <div
-                style={
-                  span === 2
-                    ? { display: "grid", gridTemplateColumns: "1fr 1fr" }
-                    : {}
-                }
-              >
+              <div style={span === 2 ? { display: "grid", gridTemplateColumns: "1fr 1fr" } : {}}>
                 {fields.map((f, idx) => {
                   const isOn = vis[f.key] !== false;
-
                   return (
                     <div
                       key={f.key}
@@ -306,22 +271,12 @@ function ContactFieldSettings({ clientId }) {
                         alignItems: "center",
                         justifyContent: "space-between",
                         padding: "13px 18px",
-                        borderBottom:
-                          idx === fields.length - 1
-                            ? "none"
-                            : "1px solid " + T.border + "44",
+                        borderBottom: idx === fields.length - 1 ? "none" : "1px solid " + T.border + "44",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: isOn ? T.text : T.muted,
-                        }}
-                      >
+                      <span style={{ fontSize: 13, fontWeight: 600, color: isOn ? T.text : T.muted }}>
                         {f.label}
                       </span>
-
                       <Toggle checked={isOn} onChange={() => toggleField(f.key)} />
                     </div>
                   );
@@ -332,7 +287,6 @@ function ContactFieldSettings({ clientId }) {
         })}
       </div>
 
-      {/* Save Button */}
       <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
         <button
           onClick={handleSave}
@@ -354,103 +308,23 @@ function ContactFieldSettings({ clientId }) {
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const T = useTheme();
   const { clientId } = usePool();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState("contact_fields");
-  const [collapsed, setCollapsed] = useState(false);
-
-  const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_OPEN;
+  const activeTab = searchParams.get("tab") || "contact_fields";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100%",
-        margin: "-20px",
-        overflow: "hidden",
-      }}
-    >
-      {/* Sidebar */}
-      <div
-        style={{
-          width: sidebarWidth,
-          background: T.surface,
-          borderRight: "1px solid " + T.border,
-          transition: "width 0.2s",
-          position: "relative",
-        }}
-      >
-        {/* Collapse button */}
-        <button
-          onClick={() => setCollapsed((p) => !p)}
-          style={{
-            position: "absolute",
-            right: -12,
-            top: 18,
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            border: "1px solid " + T.border,
-            background: T.surface,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
-
-        {/* Nav */}
-        <div style={{ padding: 12 }}>
-          {NAV_ITEMS.map(({ id, label, Icon }) => {
-            const active = activeTab === id;
-
-            return (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id)}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  background: active ? T.accent + "15" : "transparent",
-                  color: active ? T.accent : T.dim,
-                  border: "none",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  marginBottom: 6,
-                  transition: "0.2s",
-                }}
-              >
-                <Icon size={18} />
-                {!collapsed && label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
-        {activeTab === "contact_fields" && (
-          <ContactFieldSettings clientId={clientId} />
-        )}
-
-        {activeTab === "clients" && <ClientsPage />}
-
-        {activeTab === "user_settings" && <ComingSoon page="User Settings" />}
-      </div>
+    <div style={{ padding: "28px 32px", overflowY: "auto", height: "100%" }}>
+      {activeTab === "contact_fields" && (
+        <ContactFieldSettings clientId={clientId} />
+      )}
+      {activeTab === "clients" && <ClientsPage />}
+      {activeTab === "user_settings" && <ComingSoon page="User Settings" />}
     </div>
   );
 }

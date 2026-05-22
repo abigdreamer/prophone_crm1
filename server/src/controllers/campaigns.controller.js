@@ -1,9 +1,10 @@
+import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
 import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
-import { ENTITY_TYPE, ACTION } from '../constants/index.js';
+import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
 import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
@@ -12,6 +13,28 @@ import {
   buildEmailHeaders,
   buildUnsubUrl,
 } from '../services/email.js';
+import * as XLSX from 'xlsx';
+import PDFDocument from 'pdfkit';
+import { updateDomainTracking } from '../services/domainService.js';
+
+// Track which Resend domain IDs have already had tracking disabled this process lifetime.
+// ProPhone injects its own open/click pixels, so we must stop Resend from double-wrapping.
+const _resendTrackingDisabled = new Set();
+
+async function disableResendDomainTracking(domain) {
+  if (!domain?.resendDomainId) return;
+  if (_resendTrackingDisabled.has(domain.resendDomainId)) return;
+  try {
+    await updateDomainTracking(domain.resendDomainId, {
+      clickTracking:    false,
+      openTracking:     false,
+      trackingSubdomain: null, // removes track.xxx.com from Resend so it stops wrapping hrefs
+    });
+    _resendTrackingDisabled.add(domain.resendDomainId);
+  } catch (err) {
+    console.warn('[disableResendTracking]', err.message);
+  }
+}
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -141,12 +164,13 @@ export const restoreCampaign = async (req, res) => {
 
 export const listRecipients = async (req, res) => {
   try {
-    const { status, variant, search, page = '1', limit = '50' } = req.query;
+    const { status, event, variant, search, page = '1', limit = '50' } = req.query;
     const take = Math.min(parseInt(limit, 10) || 50, 200);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
 
     const { rows, total } = await repo.findRecipients(req.params.id, {
       status,
+      event,
       abVariant: variant,
       search,
       skip,
@@ -164,7 +188,6 @@ export const addRecipients = async (req, res) => {
   try {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
-    if (campaign.status === 'sent') return sendError(res, 'Cannot add recipients to a sent campaign', 400);
 
     let ids = [];
     if (Array.isArray(contactIds) && contactIds.length) {
@@ -218,16 +241,19 @@ export const removeRecipients = async (req, res) => {
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
-const SEND_BATCH_SIZE = 100;
+const SEND_BATCH_SIZE  = 100;
+const BATCH_DELAY_MS   = parseInt(process.env.CAMPAIGN_BATCH_DELAY_MS || '0', 10);
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const sendCampaign = async (req, res) => {
   const campaignId = req.params.id;
   try {
     const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
-    if (campaign.status === 'sent')    return sendError(res, 'Campaign already sent', 400);
     if (campaign.status === 'sending') return sendError(res, 'Campaign is already sending', 400);
     if (!campaign.templateId)          return sendError(res, 'Campaign has no template selected', 400);
+
+    const sendLimit = req.body?.limit ? parseInt(req.body.limit, 10) : null;
 
     // Fetch template(s)
     const template = await templateRepo.findById(campaign.templateId);
@@ -239,23 +265,28 @@ export const sendCampaign = async (req, res) => {
 
     // Resolve sender address: campaign field → verified client domain → env fallback
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
       if (clientDomain) {
         fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          await disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
       }
     }
+    // Disable Resend's own click/open tracking so ProPhone's tracking isn't double-wrapped
+    await disableResendDomainTracking(clientDomain);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
 
-    // Load all pending recipients with contact data (no pagination — need all for send)
-    const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
+    // Load pending recipients — apply optional cap so large lists can be sent in batches over time
+    const allRecipients = await repo.findPendingRecipientsForSend(campaignId, sendLimit || null);
     if (!allRecipients.length) return sendError(res, 'No pending recipients', 400);
 
     // Suppress contacts that have previously bounced or unsubscribed
@@ -283,6 +314,8 @@ export const sendCampaign = async (req, res) => {
     if (!trackingBase) {
       console.warn('[sendCampaign] APP_BASE_URL not set — open/click tracking disabled');
     }
+
+    const sentContactIds = [];
 
     for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
       const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
@@ -361,24 +394,45 @@ export const sendCampaign = async (req, res) => {
         const results = await sendBatchEmails(emails);
 
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
+
+        batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
+          .forEach(r => sentContactIds.push(r.contact.id));
 
         totalSent += emails.length;
       } catch (batchErr) {
-        // Log but continue with remaining batches; partial sends still count
         console.error(`[sendCampaign] batch ${Math.floor(i / SEND_BATCH_SIZE) + 1} error:`, batchErr.message);
+      }
+
+      // Rate-limit: pause between batches to avoid triggering spam filters
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
+        await sleep(BATCH_DELAY_MS);
       }
     }
 
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   totalSent,
+      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
     const by = req.user?.name || req.user?.email || 'system';
     logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND, `Campaign sent to ${totalSent} recipients`, by);
+
+    // Log email_sent activity per contact
+    if (sentContactIds.length) {
+      await prisma.activity.createMany({
+        data: sentContactIds.map(contactId => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   contactId,
+          type:       ACTIVITY_TYPE.EMAIL_SENT,
+          note:       `Campaign email sent: "${campaign.name}"`,
+          by,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
@@ -387,8 +441,206 @@ export const sendCampaign = async (req, res) => {
   }
 };
 
+// ── Send to specific contacts (single or bulk quick-send) ─────────────────────
+
+export const sendToContacts = async (req, res) => {
+  const campaignId = req.params.id;
+  const { contactIds, domainFilter } = req.body ?? {};
+
+  if (!Array.isArray(contactIds) || !contactIds.length) {
+    return sendError(res, 'contactIds array is required', 400);
+  }
+
+  let previousStatus = 'draft';
+
+  try {
+    const campaign = await repo.findById(campaignId);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    previousStatus = campaign.status ?? 'draft';
+    if (!campaign.templateId)           return sendError(res, 'Campaign has no template selected', 400);
+    if (campaign.status === 'sending')  return sendError(res, 'Campaign is currently sending', 400);
+
+    const template = await templateRepo.findById(campaign.templateId);
+    if (!template) return sendError(res, 'Template not found — it may have been deleted', 404);
+
+    // Resolve from-email
+    let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomainQS = await domainRepo.findFirstVerified(campaign.clientId);
+    if (!fromEmail) {
+      if (clientDomainQS) {
+        fromEmail = clientDomainQS.defaultFromEmail || `noreply@${clientDomainQS.domainName}`;
+      } else {
+        const anyDomain = await domainRepo.findAnyVerified();
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          await disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
+      }
+    }
+    await disableResendDomainTracking(clientDomainQS);
+    if (!fromEmail) {
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+    }
+
+    // Fetch contacts — skip canceled, require email
+    const contacts = await prisma.contact.findMany({
+      where: { id: { in: contactIds }, isCanceled: false },
+      select: { id: true, firstName: true, lastName: true, email: true, company: true },
+    });
+
+    // Apply optional domain filter (@gmail.com, @yahoo.com, etc.)
+    const domains = Array.isArray(domainFilter) && domainFilter.length
+      ? domainFilter.map(d => d.toLowerCase().replace(/^@/, ''))
+      : null;
+
+    let filtered = contacts.filter(c => c.email?.includes('@'));
+    if (domains) {
+      filtered = filtered.filter(c => {
+        const emailDomain = c.email.split('@')[1]?.toLowerCase();
+        return domains.includes(emailDomain);
+      });
+    }
+
+    // Deduplicate by lowercased email address
+    const seen = new Set();
+    const deduped = filtered.filter(c => {
+      const key = c.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    if (!deduped.length) {
+      return sendError(res, 'No eligible contacts match the selected filters', 400);
+    }
+
+    // Suppress previously bounced / unsubscribed contacts
+    const dedupedIds = deduped.map(c => c.id);
+    const suppressedIds = await repo.findSuppressedContactIds(dedupedIds);
+    const toSend = deduped.filter(c => !suppressedIds.has(c.id));
+
+    if (!toSend.length) {
+      return sendError(res, 'All matched contacts are suppressed (bounced or unsubscribed)', 400);
+    }
+
+    // Only create recipient rows for contacts not already in the campaign.
+    // Never reset contacts who have already received the email (item 6).
+    await repo.addRecipients(campaignId, toSend.map(c => c.id));
+
+    // Fetch the pending recipient rows for these contacts
+    const pendingRecipients = await repo.findPendingRecipientsForContacts(campaignId, toSend.map(c => c.id));
+
+    // Mark as sending before we start (same pattern as sendCampaign)
+    await repo.updateCampaign(campaignId, {
+      status:  'sending',
+      sentAt:  campaign.sentAt || new Date(),
+    });
+
+    const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+    const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
+    let totalSent = 0;
+    const sentContactIdsQuick = [];
+
+    for (let i = 0; i < pendingRecipients.length; i += SEND_BATCH_SIZE) {
+      const batch = pendingRecipients.slice(i, i + SEND_BATCH_SIZE);
+
+      const emails = batch
+        .filter(r => r.contact?.email?.includes('@'))
+        .map(r => {
+          const vars = {
+            firstName: r.contact.firstName || '',
+            lastName:  r.contact.lastName  || '',
+            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:     r.contact.email     || '',
+            company:   r.contact.company   || '',
+          };
+
+          let html = template.htmlOutput
+            ? substituteIntoHtml(template.htmlOutput, vars)
+            : renderTemplate(template.body, vars);
+
+          if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
+
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+
+          const text    = htmlToPlainText(html);
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+
+          return {
+            _recipientId: r.id,
+            to:       r.contact.email,
+            from:     fromEmail,
+            fromName: campaign.fromName || '',
+            subject:  campaign.subject || template.subject || template.name,
+            html, text, headers,
+          };
+        });
+
+      if (!emails.length) continue;
+
+      try {
+        const results = await sendBatchEmails(emails);
+        await Promise.all(emails.map((e, j) =>
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
+        ));
+        batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
+          .forEach(r => sentContactIdsQuick.push(r.contact.id));
+        totalSent += emails.length;
+      } catch (batchErr) {
+        console.error('[sendToContacts] batch error:', batchErr.message);
+      }
+
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < pendingRecipients.length) {
+        await sleep(BATCH_DELAY_MS);
+      }
+    }
+
+    // Mark sent — same fields as sendCampaign so the campaigns list shows correct status/stats
+    await repo.updateCampaign(campaignId, {
+      status:      'sent',
+      sentCount:   { increment: totalSent },
+      completedAt: new Date(),
+    });
+
+    const by = req.user?.name || req.user?.email || 'system';
+    logActivity(ENTITY_TYPE.CAMPAIGN, campaignId, ACTION.SEND,
+      `Quick-sent to ${totalSent} contact${totalSent !== 1 ? 's' : ''}`, by);
+
+    // Log email_sent activity per contact
+    if (sentContactIdsQuick.length) {
+      await prisma.activity.createMany({
+        data: sentContactIdsQuick.map(contactId => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   contactId,
+          type:       ACTIVITY_TYPE.EMAIL_SENT,
+          note:       `Campaign email sent: "${campaign.name}"`,
+          by,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    sendSuccess(res, {
+      sent:    totalSent,
+      skipped: contactIds.length - totalSent,
+      total:   contactIds.length,
+    });
+  } catch (err) {
+    // Roll back to previous status so the campaign isn't stuck in 'sending'
+    await repo.updateCampaign(campaignId, { status: previousStatus ?? 'draft' }).catch(() => {});
+    sendServerError(res, err, 'sendToContacts');
+  }
+};
+
 // ── Resend ────────────────────────────────────────────────────────────────────
 
+// 'sent' and 'delivered' = received but did not open (non-openers).
+// 'bounced' and 'pending' are also valid resend targets when explicitly requested.
 const VALID_RESEND_STATUSES = ['pending', 'sent', 'delivered', 'bounced'];
 
 export const resendCampaign = async (req, res) => {
@@ -399,11 +651,13 @@ export const resendCampaign = async (req, res) => {
     if (campaign.status === 'sending') return sendError(res, 'Campaign is currently sending', 400);
     if (!campaign.templateId) return sendError(res, 'Campaign has no template selected', 400);
 
-    // Which recipient statuses to resend to
+    // Which recipient statuses to resend to.
+    // Default: 'sent' + 'delivered' = contacts who received but did not open.
+    // Resend never adds new contacts — only retargets existing recipients.
     const raw = req.body?.recipientStatuses;
     const statuses = Array.isArray(raw)
       ? raw.filter(s => VALID_RESEND_STATUSES.includes(s))
-      : ['bounced'];
+      : ['sent', 'delivered'];
     if (!statuses.length) return sendError(res, 'No valid recipient statuses provided', 400);
 
     // Reset matching recipients back to pending
@@ -418,17 +672,21 @@ export const resendCampaign = async (req, res) => {
       : null;
 
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomainRS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
-      if (clientDomain) {
-        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      if (clientDomainRS) {
+        fromEmail = clientDomainRS.defaultFromEmail || `noreply@${clientDomainRS.domainName}`;
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          await disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
       }
     }
+    await disableResendDomainTracking(clientDomainRS);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
@@ -483,15 +741,19 @@ export const resendCampaign = async (req, res) => {
       try {
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
         totalSent += emails.length;
       } catch (batchErr) {
         console.error(`[resendCampaign] batch error:`, batchErr.message);
       }
+
+      if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
+        await sleep(BATCH_DELAY_MS);
+      }
     }
 
-    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: (campaign.sentCount || 0) + totalSent });
+    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: { increment: totalSent } });
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
@@ -507,19 +769,31 @@ export const getCampaignAnalytics = async (req, res) => {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    const total = campaign.recipientsCount || 1;
-
-    // Count based on timestamps — each is independent, no overriding
-    const [sent, delivered, opened, clicked, bounced, unsubbed] = await Promise.all([
-      repo.countByTimestamp(req.params.id, 'sentAt'),
-      repo.countByTimestamp(req.params.id, 'deliveredAt'),
-      repo.countByTimestamp(req.params.id, 'openedAt'),
-      repo.countByTimestamp(req.params.id, 'clickedAt'),
-      repo.countByTimestamp(req.params.id, 'bouncedAt'),
-      repo.countByStatus(req.params.id, 'unsubscribed'),
+    const [statusGroups, sends, eventStats] = await Promise.all([
+      repo.groupRecipientsByStatus(req.params.id),
+      repo.getSendAnalytics(req.params.id),
+      repo.getStatisticsFromEvents(req.params.id),
     ]);
 
+    const counts = {};
+    for (const g of statusGroups) counts[g.status] = g._count.status;
+
+    const total     = campaign.recipientsCount || 1;
+    // Primary: event-based counts (unique recipient per event type — most accurate).
+    // Fallback: campaign-level counters → status-group counts for legacy data pre-events.
+    const sent      = eventStats.sent         || campaign.sentCount         || counts.sent          || 0;
+    const delivered = eventStats.delivered    || campaign.deliveredCount    || counts.delivered     || 0;
+    const opened    = eventStats.opened       || campaign.openedCount       || counts.opened        || 0;
+    const clicked   = eventStats.clicked      || campaign.clickedCount      || counts.clicked       || 0;
+    const bounced   = eventStats.bounced      || campaign.bouncedCount      || counts.bounced       || 0;
+    const unsubbed  = eventStats.unsubscribed || campaign.unsubscribedCount || counts.unsubscribed  || 0;
+
     const base = sent || total;
+
+    // Per-send aggregates (unique opens and total opens grouped by send_id)
+    const totalUniqueOpens = sends.reduce((n, s) => n + s.uniqueOpen,  0);
+    const totalRawOpens    = sends.reduce((n, s) => n + s.totalOpen,   0);
+    const totalRawClicks   = sends.reduce((n, s) => n + s.totalClicks, 0);
 
     sendSuccess(res, {
       totals: { total, sent, delivered, opened, clicked, bounced, unsubscribed: unsubbed },
@@ -530,9 +804,252 @@ export const getCampaignAnalytics = async (req, res) => {
         deliveryRate:    base ? +(delivered / base * 100).toFixed(1) : 0,
         unsubscribeRate: base ? +(unsubbed / base * 100).toFixed(1) : 0,
       },
+      // Per-send breakdown: each entry is one send instance for one contact
+      sends,
+      sendSummary: {
+        totalSends:       sends.length,
+        totalUniqueOpens,
+        totalRawOpens,
+        totalRawClicks,
+      },
     });
   } catch (err) {
     sendServerError(res, err, 'getCampaignAnalytics');
+  }
+};
+
+// ── Duplicate campaign ────────────────────────────────────────────────────────
+
+export const duplicateCampaign = async (req, res) => {
+  try {
+    const src = await repo.findById(req.params.id);
+    if (!src) return sendError(res, 'Campaign not found', 404);
+
+    const copy = await repo.createCampaign({
+      name:        src.name + ' (Copy)',
+      type:        src.type,
+      clientId:    src.clientId,
+      templateId:  src.templateId,
+      templateIdB: src.templateIdB,
+      subject:     src.subject,
+      subjectB:    src.subjectB,
+      fromName:    src.fromName,
+      fromEmail:   src.fromEmail,
+      status:      'draft',
+    });
+
+    const result = await repo.findById(copy.id);
+    sendSuccess(res, result);
+  } catch (err) {
+    sendServerError(res, err, 'duplicateCampaign');
+  }
+};
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+export const exportCampaign = async (req, res) => {
+  const { format = 'excel', sheets = '' } = req.query;
+  const campaignId = req.params.id;
+
+  try {
+    const campaign = await repo.findById(campaignId);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+
+    const [eventStats, recipientsResult] = await Promise.all([
+      repo.getStatisticsFromEvents(campaignId),
+      format === 'pdf' ? Promise.resolve({ rows: [] }) : repo.findRecipients(campaignId, { limit: 10000 }),
+    ]);
+    const allRecipients = recipientsResult.rows;
+
+    const sent      = eventStats.sent         || campaign.sentCount         || 0;
+    const delivered = eventStats.delivered    || campaign.deliveredCount    || 0;
+    const opened    = eventStats.opened       || campaign.openedCount       || 0;
+    const clicked   = eventStats.clicked      || campaign.clickedCount      || 0;
+    const bounced   = eventStats.bounced      || campaign.bouncedCount      || 0;
+    const unsubbed  = eventStats.unsubscribed || campaign.unsubscribedCount || 0;
+
+    const base = sent || 1;
+    const stats = {
+      sent, delivered, opened, clicked, bounced, unsubscribed: unsubbed,
+      openRate:    +((opened  / base) * 100).toFixed(1),
+      clickRate:   +((clicked / base) * 100).toFixed(1),
+      bounceRate:  +((bounced / base) * 100).toFixed(1),
+    };
+
+    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_');
+
+    // ── PDF ──────────────────────────────────────────────────────────────────
+    if (format === 'pdf') {
+      const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+      doc.pipe(res);
+
+      // ── Dark header bar ──
+      doc.rect(0, 0, 612, 80).fillColor('#0f0f13').fill();
+      doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ProPhone', 50, 22);
+      doc.fillColor('#a855f7').fontSize(8).font('Helvetica')
+        .text('CRM  ·  Campaign Report', 50, 50);
+      doc.fillColor('#cccccc').fontSize(11).font('Helvetica-Bold')
+        .text(campaign.name, 200, 30, { width: 362, align: 'right' });
+
+      let y = 104;
+
+      // ── Campaign details ──
+      const details = [
+        ['Subject',   campaign.subject || '—'],
+        ['From',      [(campaign.fromName || ''), campaign.fromEmail ? `<${campaign.fromEmail}>` : ''].filter(Boolean).join(' ') || '—'],
+        ['Template',  campaign.template?.name || '—'],
+        ['Status',    (campaign.status || '—').toUpperCase()],
+        ['Sent',      campaign.sentAt ? new Date(campaign.sentAt).toLocaleString() : '—'],
+        ['Completed', campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : '—'],
+      ];
+      for (const [label, val] of details) {
+        doc.fillColor('#999999').fontSize(9).font('Helvetica').text(label, 50, y, { width: 85 });
+        doc.fillColor('#1a1a1a').fontSize(9).font('Helvetica').text(val,   140, y, { width: 422 });
+        y += 18;
+      }
+
+      y += 12;
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      y += 22;
+
+      // ── Section title ──
+      doc.fillColor('#1a1a1a').fontSize(13).font('Helvetica-Bold').text('Campaign Performance', 50, y);
+      y += 20;
+
+      // ── 6 stat boxes in 2 rows × 3 cols ──
+      const BOX_W = 162, BOX_H = 72, GAP = 5;
+      const statBoxes = [
+        { label: 'Recipients', value: campaign.recipientsCount || 0, rate: null,                    accent: '#6b7280' },
+        { label: 'Sent',       value: stats.sent,                    rate: null,                    accent: '#3b82f6' },
+        { label: 'Delivered',  value: stats.delivered,               rate: null,                    accent: '#14b8a6' },
+        { label: 'Opened',     value: stats.opened,                  rate: `${stats.openRate}%`,    accent: '#22c55e' },
+        { label: 'Clicked',    value: stats.clicked,                 rate: `${stats.clickRate}%`,   accent: '#a855f7' },
+        { label: 'Bounced',    value: stats.bounced,                 rate: `${stats.bounceRate}%`,  accent: '#ef4444' },
+      ];
+      statBoxes.forEach((s, i) => {
+        const col = i % 3, row = Math.floor(i / 3);
+        const bx = 50 + col * (BOX_W + GAP);
+        const by = y + row * (BOX_H + GAP);
+        // box background + left accent bar
+        doc.rect(bx, by, BOX_W, BOX_H).fillColor('#f8f8f8').fill();
+        doc.rect(bx, by, 3, BOX_H).fillColor(s.accent).fill();
+        doc.rect(bx, by, BOX_W, BOX_H).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+        // label
+        doc.fillColor('#888888').fontSize(8).font('Helvetica')
+          .text(s.label.toUpperCase(), bx + 14, by + 12, { width: BOX_W - 20, characterSpacing: 0.5 });
+        // big number
+        doc.fillColor('#111111').fontSize(26).font('Helvetica-Bold')
+          .text(String(s.value), bx + 14, by + 26);
+        // rate badge
+        if (s.rate) {
+          doc.fillColor(s.accent).fontSize(9).font('Helvetica-Bold')
+            .text(s.rate, bx + BOX_W - 42, by + 12, { width: 36, align: 'right' });
+        }
+      });
+      y += 2 * (BOX_H + GAP) + 20;
+
+      // ── Rate summary row ──
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      y += 18;
+
+      const rates = [
+        { label: 'Open Rate',      value: `${stats.openRate}%`   },
+        { label: 'Click Rate',     value: `${stats.clickRate}%`  },
+        { label: 'Bounce Rate',    value: `${stats.bounceRate}%` },
+        { label: 'Unsubscribed',   value: String(stats.unsubscribed) },
+        { label: 'Delivery Rate',  value: `${+(stats.delivered / (stats.sent || 1) * 100).toFixed(1)}%` },
+      ];
+      const rateW = 512 / rates.length;
+      rates.forEach((r, i) => {
+        const rx = 50 + i * rateW;
+        doc.fillColor('#999999').fontSize(7.5).font('Helvetica')
+          .text(r.label.toUpperCase(), rx, y, { width: rateW, align: 'center' });
+        doc.fillColor('#1a1a1a').fontSize(14).font('Helvetica-Bold')
+          .text(r.value, rx, y + 12, { width: rateW, align: 'center' });
+      });
+      y += 44;
+
+      // ── Footer ──
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      doc.fillColor('#bbbbbb').fontSize(7.5).font('Helvetica')
+        .text(`ProPhone CRM  ·  Generated ${new Date().toLocaleString()}`, 50, y + 10, { width: 512, align: 'center' });
+
+      doc.end();
+      return;
+    }
+
+    // ── Excel ────────────────────────────────────────────────────────────────
+    const wb = XLSX.utils.book_new();
+
+    // Summary sheet (always included)
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['ProPhone CRM — Campaign Report'],
+      [],
+      ['Campaign Name', campaign.name],
+      ['Status',        campaign.status],
+      ['Subject',       campaign.subject || ''],
+      ['From',          (campaign.fromName ? campaign.fromName + ' ' : '') + `<${campaign.fromEmail || ''}>`],
+      ['Template',      campaign.template?.name || ''],
+      ['Sent At',       campaign.sentAt     ? new Date(campaign.sentAt).toLocaleString()     : ''],
+      ['Completed At',  campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : ''],
+      [],
+      ['Metric',        'Count', 'Rate'],
+      ['Sent',          stats.sent,          ''],
+      ['Delivered',     stats.delivered,     ''],
+      ['Opened',        stats.opened,        `${stats.openRate}%`],
+      ['Clicked',       stats.clicked,       `${stats.clickRate}%`],
+      ['Bounced',       stats.bounced,       `${stats.bounceRate}%`],
+      ['Unsubscribed',  stats.unsubscribed,  ''],
+      [],
+      ['Report generated', new Date().toLocaleString()],
+    ]);
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    const toRow = (r) => ({
+      'First Name':    r.contact?.firstName        || '',
+      'Last Name':     r.contact?.lastName         || '',
+      'Email':         r.contact?.email            || '',
+      'Company':       r.contact?.company          || '',
+      'Stage':         r.contact?.lifecycleStage   || '',
+      'Status':        r.status                    || '',
+      'Sent At':       r.sentAt    ? new Date(r.sentAt).toLocaleString()    : '',
+      'Opened At':     r.openedAt  ? new Date(r.openedAt).toLocaleString()  : '',
+      'Clicked At':    r.clickedAt ? new Date(r.clickedAt).toLocaleString() : '',
+      'Bounced At':    r.bouncedAt ? new Date(r.bouncedAt).toLocaleString() : '',
+      'Unsubscribed At': r.unsubscribedAt ? new Date(r.unsubscribedAt).toLocaleString() : '',
+    });
+
+    const SHEET_DEFS = {
+      all:          { label: 'All Recipients', filter: () => true },
+      sent:         { label: 'Sent',           filter: r => r.status === 'sent' },
+      delivered:    { label: 'Delivered',      filter: r => r.status === 'delivered' },
+      opened:       { label: 'Opened',         filter: r => r.status === 'opened' },
+      clicked:      { label: 'Clicked',        filter: r => r.status === 'clicked' },
+      bounced:      { label: 'Bounced',        filter: r => r.status === 'bounced' },
+      unsubscribed: { label: 'Unsubscribed',   filter: r => r.status === 'unsubscribed' },
+    };
+
+    const requestedSheets = sheets
+      ? sheets.split(',').map(s => s.trim().toLowerCase()).filter(s => SHEET_DEFS[s])
+      : ['all'];
+
+    for (const key of requestedSheets) {
+      const def = SHEET_DEFS[key];
+      const rows = allRecipients.filter(def.filter).map(toRow);
+      const sheet = XLSX.utils.json_to_sheet(
+        rows.length ? rows : [{ Note: 'No recipients in this category' }],
+      );
+      XLSX.utils.book_append_sheet(wb, sheet, def.label);
+    }
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    sendServerError(res, err, 'exportCampaign');
   }
 };
 
@@ -540,8 +1057,16 @@ export const getCampaignAnalytics = async (req, res) => {
 
 export const listPublishedTemplates = async (req, res) => {
   try {
-    const rows = await templateRepo.findMany({ status: 'published' });
-    sendSuccess(res, rows);
+    const { clientId } = req.query;
+    const where = { status: 'published' };
+    if (clientId) where.clientId = clientId;
+    const rows = await templateRepo.findMany(where);
+    // Backfill fromEmail from body.from for legacy templates saved before the column existed
+    const enriched = rows.map(t => ({
+      ...t,
+      fromEmail: t.fromEmail || (typeof t.body === 'object' ? t.body?.from : null) || '',
+    }));
+    sendSuccess(res, enriched);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
   }

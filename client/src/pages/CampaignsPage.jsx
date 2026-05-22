@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
-  Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw,
+  Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
+  Send, Eye, MousePointerClick,
 } from "lucide-react";
 import { SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
+import { analytics } from "../services/analytics";
 import {
   getCampaigns, createCampaign, cancelCampaign, restoreCampaign,
-  getPublishedTemplates, getActivePool, getClients,
+  duplicateCampaign, getPublishedTemplates, getActivePool, getClients,
 } from "../services/api";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -68,11 +70,37 @@ function CampaignThumb({ campaign }) {
   );
 }
 
-// ── Campaign list row (matches TemplatesPage grid style) ─────────────────────
+// ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1fr 1fr 140px 140px 44px";
+const GRID_COLS = "1fr 200px 110px 80px 80px 80px 44px";
 
-function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
+function StatPill({ icon: Icon, value, color }) {
+  const T = useTheme();
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 4,
+      padding: "3px 8px", borderRadius: 20,
+      background: color + "14", border: "1px solid " + color + "30",
+    }}>
+      <Icon size={11} color={color} />
+      <span style={{ fontSize: 11, fontWeight: 600, color }}>{value ?? 0}</span>
+    </div>
+  );
+}
+
+function StatCell({ icon: Icon, value, color, T }) {
+  if (value === null || value === undefined) {
+    return <div style={{ fontSize: 12, color: T.muted }}>—</div>;
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <Icon size={12} color={color} />
+      <span style={{ fontSize: 12, fontWeight: 600, color }}>{value}</span>
+    </div>
+  );
+}
+
+function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -84,10 +112,8 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
     return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
-  const templateLabel = [campaign.fromName, campaign.template?.name].filter(Boolean).join(" · ") || "No template";
-  const createdLabel  = campaign.createdAt
-    ? new Date(campaign.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : "—";
+  const isSent = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending");
+  const effectiveStatus = campaign.isCanceled ? "canceled" : campaign.status;
 
   return (
     <div
@@ -103,65 +129,74 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore }) {
         transition: "background 0.1s", position: "relative",
       }}
     >
-      {/* CAMPAIGN col: icon + name + subtitle */}
+      {/* TITLE col */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <CampaignThumb campaign={campaign} />
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span
+              title={campaign.name}
+              style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>
               {campaign.name}
             </span>
             {campaign.type === "ab_test" && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, flexShrink: 0,
-                color: T.purple, background: T.purple + "18",
-                border: "1px solid " + T.purple + "30",
-                borderRadius: 3, padding: "1px 5px",
-              }}>A/B</span>
+              <span style={{ fontSize: 9, fontWeight: 700, flexShrink: 0, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 3, padding: "1px 5px" }}>A/B</span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: T.muted, fontFamily: "monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {templateLabel}
+          <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {campaign.fromName || "—"}{campaign.template?.name ? " · " + campaign.template.name : ""}
           </div>
         </div>
       </div>
 
       {/* SUBJECT col */}
-      <div style={{ fontSize: 13, color: T.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16 }}>
-        {campaign.subject
-          ? campaign.subject
-          : <span style={{ color: T.muted, fontStyle: "italic" }}>No subject</span>
-        }
+      <div style={{ minWidth: 0 }}>
+        <div
+          title={campaign.subject || ""}
+          style={{ fontSize: 13, fontWeight: 500, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {campaign.subject || <span style={{ color: T.muted, fontStyle: "italic" }}>No subject</span>}
+        </div>
+        {campaign.type === "ab_test" && campaign.subjectB && (
+          <div
+            title={campaign.subjectB}
+            style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
+            B: {campaign.subjectB}
+          </div>
+        )}
       </div>
 
       {/* STATUS col */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <StatusBadge status={campaign.isCanceled ? "canceled" : campaign.status} />
-      </div>
+      <div><StatusBadge status={effectiveStatus} /></div>
 
-      {/* CREATED col */}
-      <div style={{ fontSize: 13, color: T.muted }}>{createdLabel}</div>
+      {/* SENT col */}
+      <StatCell icon={Send} value={isSent ? campaign.sentCount : null} color="#60a5fa" T={T} />
+
+      {/* OPEN col */}
+      <StatCell icon={Eye} value={isSent ? campaign.openedCount : null} color="#34d399" T={T} />
+
+      {/* CLICK col */}
+      <StatCell icon={MousePointerClick} value={isSent ? campaign.clickedCount : null} color="#a78bfa" T={T} />
 
       {/* ACTIONS col */}
       <div ref={menuRef} style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
         <button
           onClick={() => setMenuOpen(o => !o)}
-          style={{
-            width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-            background: "transparent", border: "1px solid transparent", borderRadius: 7,
-            color: T.muted, cursor: "pointer",
-          }}
+          style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid transparent", borderRadius: 7, color: T.muted, cursor: "pointer" }}
           onMouseEnter={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.borderColor = T.border; }}
           onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
         >
           <MoreVertical size={15} />
         </button>
         {menuOpen && (
-          <div style={{
-            position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200,
-            background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-            minWidth: 150, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0",
-          }}>
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0" }}>
+            <button
+              onClick={() => { setMenuOpen(false); onDuplicate(campaign); }}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={e => e.currentTarget.style.background = T.surface}
+              onMouseLeave={e => e.currentTarget.style.background = "none"}
+            >
+              <Copy size={12} /> Duplicate
+            </button>
             {campaign.isCanceled ? (
               <button
                 onClick={() => { setMenuOpen(false); onRestore(campaign); }}
@@ -275,6 +310,110 @@ function TemplatePickerList({ tpls, selected, onSelect, accent, maxHeight = 220 
   );
 }
 
+// ── Template preview (mini scaled render) ─────────────────────────────────────
+
+const PREV_W = 560;
+
+function PreviewBlock({ block }) {
+  const { type, props: p } = block;
+  if (!p) return null;
+  const pt = p.padding?.top    ?? 0;
+  const pb = p.padding?.bottom ?? 0;
+  const pl = p.padding?.left   ?? 24;
+  const pr = p.padding?.right  ?? 24;
+  switch (type) {
+    case "heading":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <div style={{ margin: 0, fontSize: p.fontSize || 28, fontWeight: p.fontWeight || 700, color: p.color || "#111827", textAlign: p.align || "center", lineHeight: 1.2 }}>{p.text || ""}</div>
+        </div>
+      );
+    case "text":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <p style={{ margin: 0, fontSize: p.fontSize || 15, color: p.color || "#374151", textAlign: p.align || "left", lineHeight: p.lineHeight || 1.6, whiteSpace: "pre-wrap" }}>{p.text || ""}</p>
+        </div>
+      );
+    case "button":
+      return (
+        <div style={{ padding: "16px 24px", textAlign: p.align || "center" }}>
+          <span style={{ display: "inline-block", padding: "12px 28px", background: p.bgColor || "#6366f1", color: p.textColor || "#fff", fontSize: p.fontSize || 14, fontWeight: 600, borderRadius: p.borderRadius || 6 }}>{p.label || "Click Here"}</span>
+        </div>
+      );
+    case "divider":
+      return (
+        <div style={{ padding: `${p.marginTop || 8}px ${p.sidePadding || 24}px ${p.marginBottom || 8}px` }}>
+          <hr style={{ border: "none", borderTop: `${p.thickness || 1}px solid ${p.color || "#e5e7eb"}`, margin: 0 }} />
+        </div>
+      );
+    case "spacer":
+      return <div style={{ height: p.height || 32 }} />;
+    case "image":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, textAlign: p.align || "center" }}>
+          {p.src
+            ? <img src={p.src} alt="" style={{ maxWidth: `${p.width || 100}%`, borderRadius: p.borderRadius || 0, display: "block", margin: "0 auto" }} onError={e => { e.currentTarget.style.display = "none"; }} />
+            : <div style={{ height: 80, background: "#e5e7eb", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 12 }}>Image</div>
+          }
+        </div>
+      );
+    case "footer":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px` }}>
+          <p style={{ margin: 0, fontSize: p.fontSize || 12, color: p.color || "#9ca3af", textAlign: p.align || "center", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{p.text || ""}</p>
+        </div>
+      );
+    case "columns":
+      return (
+        <div style={{ padding: `${pt}px ${pr}px ${pb}px ${pl}px`, display: "flex", gap: 16 }}>
+          <div style={{ flex: 1, fontSize: p.fontSize || 14, color: p.color || "#374151", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{p.leftText || ""}</div>
+          <div style={{ flex: 1, fontSize: p.fontSize || 14, color: p.color || "#374151", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{p.rightText || ""}</div>
+        </div>
+      );
+    default: return null;
+  }
+}
+
+function TemplatePreviewPane({ template }) {
+  const T = useTheme();
+  const wrapRef = useRef(null);
+  const [paneW, setPaneW] = useState(240);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setPaneW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale   = paneW / PREV_W;
+  const blocks  = template?.body?.blocks || [];
+  const emailBg = template?.body?.containerBg || "#ffffff";
+  const pageBg  = template?.body?.backgroundColor || "#f4f4f4";
+  const isHtml  = template?.body?.editorMode === "html";
+  return (
+    <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", background: template ? pageBg : T.bg }}>
+      {!template ? (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Mail size={22} color={T.muted} strokeWidth={1.5} />
+          <div style={{ fontSize: 11, color: T.muted }}>Select a template</div>
+        </div>
+      ) : isHtml && template.htmlOutput ? (
+        <div style={{ position: "absolute", top: 0, left: 0, width: PREV_W, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none" }}
+          dangerouslySetInnerHTML={{ __html: template.htmlOutput }} />
+      ) : blocks.length > 0 ? (
+        <div style={{ position: "absolute", top: 0, left: 0, width: PREV_W, background: emailBg, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none", fontFamily: "'Inter', system-ui, sans-serif" }}>
+          {blocks.map(b => <PreviewBlock key={b.id} block={b} />)}
+        </div>
+      ) : (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <Mail size={20} color={T.muted} strokeWidth={1.5} />
+          <div style={{ fontSize: 11, color: T.muted }}>No content yet</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Wizard Step 1 ─────────────────────────────────────────────────────────────
 
 function WizardStep1({ form, setForm, onNext, onClose }) {
@@ -344,13 +483,18 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientName]);
 
-  // When a template is picked, auto-fill subject (if blank) from template.subject
+  const selectedTpl = tpls.find(t => t.id === form.templateId) || null;
+
+  // When a template is picked, always override subject + fromEmail from template
   const handleSelectTemplate = (id) => {
     const tpl = tpls.find(t => t.id === id);
+    const tplFromEmail = tpl?.fromEmail || tpl?.body?.from || '';
     setForm(f => ({
       ...f,
       templateId: id,
-      subject: f.subject || tpl?.subject || '',
+      subject:   tpl?.subject   || f.subject,
+      fromName:  f.fromName     || clientName || '',
+      fromEmail: tplFromEmail   || f.fromEmail,
     }));
   };
 
@@ -359,7 +503,7 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
     setForm(f => ({
       ...f,
       templateIdB: id,
-      subjectB: f.subjectB || tpl?.subject || '',
+      subjectB: tpl?.subject || f.subjectB,
     }));
   };
 
@@ -436,11 +580,17 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <StepIndicator step={2} />
-      <div style={{ display: "flex", minHeight: 340 }}>
-        <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid " + T.border, padding: "18px 16px", overflowY: "auto" }}>
+      <div style={{ display: "flex", minHeight: 360 }}>
+        {/* Template list */}
+        <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid " + T.border, padding: "18px 14px", overflowY: "auto" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 10, letterSpacing: "0.04em" }}>SELECT TEMPLATE</div>
-          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.accent} maxHeight={260} />
+          <TemplatePickerList tpls={tpls} selected={form.templateId} onSelect={handleSelectTemplate} accent={T.accent} maxHeight={290} />
         </div>
+        {/* Live preview */}
+        <div style={{ width: 260, flexShrink: 0, borderRight: "1px solid " + T.border, overflowY: "hidden" }}>
+          <TemplatePreviewPane template={selectedTpl} />
+        </div>
+        {/* Form fields */}
         <div style={{ flex: 1, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
           <Field label="Subject Line" required value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Your compelling subject line…" />
           {fromRow}
@@ -489,12 +639,13 @@ function NewCampaignModal({ onClose, onCreated }) {
         subject: form.subject.trim(), subjectB: form.type === "ab_test" ? form.subjectB.trim() : "",
         fromName: form.fromName.trim(), fromEmail: form.fromEmail.trim(),
       });
+      analytics.campaignCreated({ clientId: poolClientId || null });
       onCreated(campaign);
     } catch (err) { console.error(err); }
     finally { setSaving(false); }
   }, [form, poolClientId, onCreated]);
 
-  const modalWidth = step === 1 ? 520 : form.type === "ab_test" ? 830 : 660;
+  const modalWidth = step === 1 ? 520 : form.type === "ab_test" ? 830 : 800;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
@@ -639,6 +790,13 @@ export default function CampaignsPage() {
     finally { setActing(false); }
   }, [toRestore]);
 
+  const handleDuplicate = useCallback(async (campaign) => {
+    try {
+      const copy = await duplicateCampaign(campaign.id);
+      navigate("/campaigns/" + copy.id);
+    } catch (err) { console.error(err); }
+  }, [navigate]);
+
   const filtered = campaigns.filter(c => {
     const effectiveStatus = c.isCanceled ? "canceled" : c.status;
     const matchStatus = statusFilter === "all" || effectiveStatus === statusFilter;
@@ -659,7 +817,7 @@ export default function CampaignsPage() {
   const newThisWeek = thisWeekCount(campaigns);
 
   return (
-    <div style={{ width: "100%" }}>
+    <div style={{ width: "100%", padding: "8px 8px 20px" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── Page header ── */}
@@ -679,22 +837,23 @@ export default function CampaignsPage() {
       </div>
 
       {/* ── Stats cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "Total",    value: total,    sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time",  subColor: T.dim,    dot: null     },
-          { label: "Draft",    value: draft,    sub: "not sent yet",                                              subColor: T.muted,  dot: T.muted  },
-          { label: "Sending",  value: active,   sub: active === 0 ? "none active" : "in progress",               subColor: T.amber,  dot: T.amber  },
-          { label: "Sent",     value: sent,     sub: "successfully delivered",                                    subColor: T.green,  dot: T.green  },
-          { label: "Paused",   value: paused,   sub: paused === 0 ? "none paused" : "on hold",                   subColor: T.orange, dot: T.orange },
-          { label: "Canceled", value: canceled, sub: "restorable",                                               subColor: T.red,    dot: T.red    },
-        ].map(({ label, value, sub, subColor, dot }) => (
-          <div key={label} style={{ padding: "18px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-              {dot && <div style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />}
-              <span style={{ fontSize: 11, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 5 }}>{value}</div>
-            <div style={{ fontSize: 11, color: subColor }}>{sub}</div>
+          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time", accent: T.accent },
+          { label: "Draft",   value: draft,  sub: "not sent yet",                                             accent: T.muted  },
+          { label: "Sending", value: active, sub: active === 0 ? "none active" : "in progress",               accent: T.amber  },
+          { label: "Sent",    value: sent,   sub: "successfully delivered",                                   accent: T.green  },
+        ].map(({ label, value, sub, accent }) => (
+          <div key={label} style={{
+            padding: "18px 20px",
+            background: `linear-gradient(135deg, ${accent}12 0%, ${T.card} 65%)`,
+            border: `1px solid ${T.border}`,
+            borderLeft: `3px solid ${accent}`,
+            borderRadius: 12,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: accent, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 5 }}>{value}</div>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -750,7 +909,7 @@ export default function CampaignsPage() {
             padding: "10px 16px", borderBottom: "1px solid " + T.border,
             background: T.card, borderRadius: "12px 12px 0 0",
           }}>
-            {["Campaign", "Subject", "Status", "Created", ""].map((h, i) => (
+            {["Campaign", "Subject", "Status", "Sent", "Open", "Click", ""].map((h, i) => (
               <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
@@ -768,6 +927,7 @@ export default function CampaignsPage() {
                 onOpen={() => navigate("/campaigns/" + c.id)}
                 onCancel={setToCancel}
                 onRestore={setToRestore}
+                onDuplicate={handleDuplicate}
               />
             ))
           )}

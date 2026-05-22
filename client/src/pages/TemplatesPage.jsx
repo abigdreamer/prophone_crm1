@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
+import CodeEditor from "../components/CodeEditor";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import {
@@ -1441,10 +1442,10 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
   const C = useContext(CCtx);
   const [fromOpen,  setFromOpen]  = useState(false);
   const [tagsOpen,  setTagsOpen]  = useState(false);
-  const fromRef  = useRef(null);
-  const tagsRef  = useRef(null);
-  const taRef    = useRef(null);
-  const fileRef  = useRef(null);
+  const fromRef    = useRef(null);
+  const tagsRef    = useRef(null);
+  const editorRef  = useRef(null);
+  const fileRef    = useRef(null);
 
   useEffect(() => {
     function h(e) {
@@ -1465,19 +1466,13 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
   }
 
   function insertAtCursor(text) {
-    const ta = taRef.current;
-    if (!ta) { onHtmlChange((htmlCode || "") + text); return; }
-    const s = ta.selectionStart, e2 = ta.selectionEnd;
-    const next = (htmlCode || "").slice(0, s) + text + (htmlCode || "").slice(e2);
-    onHtmlChange(next);
-    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + text.length; ta.focus(); }, 0);
+    if (editorRef.current) { editorRef.current.insertText(text); return; }
+    onHtmlChange((htmlCode || "") + text);
   }
 
   function insertButton() {
     insertAtCursor(`<a href="#" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;font-family:Arial,sans-serif;">Click Here</a>`);
   }
-
-  const lineCount = Math.max((htmlCode || "").split("\n").length, 30);
 
   // Preview-only mode: full-width iframe
   if (previewMode) {
@@ -1512,11 +1507,11 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
             ⬆ Import .html
           </button>
 
-          {/* Tags */}
+          {/* Merge Tags */}
           <div ref={tagsRef} style={{ position: "relative" }}>
             <button onClick={() => setTagsOpen(p => !p)}
               style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
-              🏷 Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+              🏷 Merge Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
             </button>
             {tagsOpen && (
               <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
@@ -1532,28 +1527,11 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
               </div>
             )}
           </div>
-
-          {/* Button */}
-          <button onClick={insertButton}
-            style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit" }}>
-            ⊡ Button
-          </button>
         </div>
 
         {/* Code area */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-          {/* Line numbers */}
-          <div style={{ width: 44, background: "#0d1117", borderRight: "1px solid #21262d", color: "#484f58", fontSize: 11.5, fontFamily: "monospace", paddingTop: 16, textAlign: "right", paddingRight: 8, lineHeight: "20px", userSelect: "none", overflowY: "hidden", flexShrink: 0 }}>
-            {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
-          </div>
-          <textarea
-            ref={taRef}
-            value={htmlCode || ""}
-            onChange={e => onHtmlChange(e.target.value)}
-            placeholder={"<!-- Paste or write your HTML email here -->"}
-            spellCheck={false}
-            style={{ flex: 1, background: "#0d1117", color: "#c9d1d9", border: "none", outline: "none", resize: "none", fontSize: 12.5, fontFamily: "'Fira Code','Cascadia Code','Consolas','Courier New',monospace", padding: "16px 16px", lineHeight: "20px", overflowY: "auto", overflowX: "auto", whiteSpace: "pre", caretColor: "#58a6ff" }}
-          />
+          <CodeEditor ref={editorRef} value={htmlCode || ""} onChange={onHtmlChange} />
         </div>
       </div>
 
@@ -1561,8 +1539,8 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
       <div style={{ width: 460, background: C.card, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
         {/* Preview header */}
         <div style={{ height: 44, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 7, flexShrink: 0 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Live Preview</span>
+          <Eye size={13} color={C.muted} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Email Preview</span>
         </div>
 
         {/* FROM */}
@@ -1701,7 +1679,7 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
  async function handleSave(extra = {}) {
   if (extra.status === "published" && domains.length === 0) {
     toast.warning("No verified domain found. Go to Domains → verify a domain first.");
-    return;
+    return null;
   }
   setSaving(true);
   const body = buildBody();
@@ -1710,14 +1688,19 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
   try {
     if (tid) {
       await store.updateTemplate(tid, payload);
+      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+      onSaved?.(extra.status);
+      return tid;
     } else {
       const created = await store.createTemplate(payload);
       setTid(created.id);
+      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+      onSaved?.(extra.status);
+      return created.id;
     }
-    toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
-    onSaved?.();
   } catch {
     toast.error("Failed to save template.");
+    return null;
   } finally {
     setSaving(false);
   }
@@ -1801,10 +1784,10 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
       {/* Top bar */}
       <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0, zIndex: 10 }}>
         <button onClick={onBack}
-          style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 13, padding: "5px 8px", borderRadius: 7, fontFamily: "inherit" }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
-          <ChevronLeft size={14} /> Templates
+          style={{ background: "none", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 7, fontFamily: "inherit" }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.text; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = C.sub; }}>
+          <ChevronLeft size={13} /> Back
         </button>
         <div style={{ width: 1, height: 20, background: C.border }} />
 
@@ -1827,7 +1810,11 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 
         {/* Switch to HTML mode */}
         {onSwitchToHtml && (
-          <button onClick={() => onSwitchToHtml(tid)}
+          <button onClick={async () => {
+            let id = tid;
+            if (!id) id = await handleSave({ status: "draft" });
+            if (id) onSwitchToHtml(id);
+          }}
             style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
             onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
             onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
@@ -2224,11 +2211,13 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   const [previewDevice, setPreviewDevice] = useState("desktop");
   const [tagsOpen,      setTagsOpen]      = useState(false);
   const [fromOpen,      setFromOpen]      = useState(false);
-  const fromRef  = useRef(null);
-  const tagsRef  = useRef(null);
-  const taRef    = useRef(null);
-  const fileRef  = useRef(null);
-  const toast    = useAppToast();
+  const [importing,     setImporting]     = useState(false);
+  const [validation,    setValidation]    = useState(null);
+  const fromRef   = useRef(null);
+  const tagsRef   = useRef(null);
+  const editorRef = useRef(null);
+  const fileRef   = useRef(null);
+  const toast     = useAppToast();
 
   useEffect(() => {
     if (templateId) {
@@ -2269,7 +2258,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   async function handleSave(extra = {}) {
     if (extra.status === "published" && domains.length === 0) {
       toast.warning("No verified domain found. Go to Domains → verify a domain first.");
-      return;
+      return null;
     }
     setSaving(true);
     const payload = {
@@ -2281,14 +2270,19 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
     try {
       if (tid) {
         await store.updateTemplate(tid, payload);
+        toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+        onSaved?.(extra.status);
+        return tid;
       } else {
         const created = await store.createTemplate(payload);
         setTid(created.id);
+        toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
+        onSaved?.(extra.status);
+        return created.id;
       }
-      toast.success(extra.status === "draft" ? "Saved as draft." : "Template published.");
-      onSaved?.();
     } catch {
       toast.error("Failed to save template.");
+      return null;
     } finally {
       setSaving(false);
     }
@@ -2298,25 +2292,37 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setHtmlCode(ev.target.result || "");
+    reader.onload = async ev => {
+      const raw = ev.target.result || "";
+      setImporting(true);
+      try {
+        const result = await store.importHtml(raw, { safeMode: true });
+        setHtmlCode(result.html);
+        setValidation(result.validation);
+        const { validation: v } = result;
+        if (v.warnings.length > 0) {
+          toast.warning(v.warnings[0]);
+        } else {
+          toast.success(`Imported — ${v.linkCount} links, ${v.imageCount} images, ${v.sizeKb} KB`);
+        }
+      } catch {
+        toast.error("Import failed. The file may be too large or malformed.");
+      } finally {
+        setImporting(false);
+      }
+    };
     reader.readAsText(file);
     e.target.value = "";
   }
 
   function insertAtCursor(text) {
-    const ta = taRef.current;
-    if (!ta) { setHtmlCode(prev => prev + text); return; }
-    const s = ta.selectionStart, e2 = ta.selectionEnd;
-    const next = htmlCode.slice(0, s) + text + htmlCode.slice(e2);
-    setHtmlCode(next);
-    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + text.length; ta.focus(); }, 0);
+    if (editorRef.current) { editorRef.current.insertText(text); return; }
+    setHtmlCode(prev => prev + text);
   }
 
   function insertButtonHtml() {
     insertAtCursor(`<a href="#" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:6px;font-family:Arial,sans-serif;">Click Here</a>`);
   }
-
-  const lineCount = Math.max((htmlCode || "").split("\n").length, 30);
 
   if (loading) {
     return (
@@ -2342,10 +2348,10 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
       {/* ── Header (matches EmailBuilder header style exactly) ── */}
       <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0, zIndex: 10 }}>
         <button onClick={onBack}
-          style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 13, padding: "5px 8px", borderRadius: 7, fontFamily: "inherit" }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
-          <ChevronLeft size={14} /> Templates
+          style={{ background: "none", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 7, fontFamily: "inherit" }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.text; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = C.sub; }}>
+          <ChevronLeft size={13} /> Back
         </button>
         <div style={{ width: 1, height: 20, background: C.border }} />
 
@@ -2373,7 +2379,11 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
 
         {/* Switch to Visual */}
         {onSwitchToVisual && (
-          <button onClick={() => onSwitchToVisual(tid)}
+          <button onClick={async () => {
+            let id = tid;
+            if (!id) id = await handleSave({ status: "draft" });
+            if (id) onSwitchToVisual(id);
+          }}
             style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
             onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
             onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
@@ -2407,21 +2417,22 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
         {/* Left 50%: HTML code editor (always dark) */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", borderRight: "1px solid #21262d", overflow: "hidden" }}>
           {/* Editor sub-header */}
-          <div style={{ height: 44, background: "#161b22", borderBottom: "1px solid #30363d", display: "flex", alignItems: "center", padding: "0 14px", gap: 8, flexShrink: 0 }}>
+          <div style={{ background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }}>
+            <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 14px", gap: 8 }}>
             <Code2 size={13} color="#8b949e" />
             <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
             <div style={{ flex: 1 }} />
 
             <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
-            <button onClick={() => fileRef.current?.click()}
-              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
-              ⬆ Import .html
+            <button onClick={() => fileRef.current?.click()} disabled={importing}
+              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: importing ? "#484f58" : "#c9d1d9", cursor: importing ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: importing ? 0.7 : 1 }}>
+              {importing ? <><LoaderCircle size={11} style={{ animation: "_tspin 0.8s linear infinite" }} /> Importing…</> : "⬆ Import .html"}
             </button>
 
             <div ref={tagsRef} style={{ position: "relative" }}>
               <button onClick={() => setTagsOpen(p => !p)}
                 style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
-                🏷 Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+                🏷 Merge Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
               </button>
               {tagsOpen && (
                 <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
@@ -2437,35 +2448,33 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
                 </div>
               )}
             </div>
+            </div>
 
-            <button onClick={insertButtonHtml}
-              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit" }}>
-              ⊡ Button
-            </button>
+            {/* Validation bar — shown after a file is imported */}
+            {validation && (
+              <div style={{ borderTop: "1px solid #21262d", padding: "4px 14px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>🔗 <strong style={{ color: "#c9d1d9" }}>{validation.linkCount}</strong> links</span>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>🖼 <strong style={{ color: "#c9d1d9" }}>{validation.imageCount}</strong> images</span>
+                <span style={{ fontSize: 10, color: "#8b949e" }}>📄 <strong style={{ color: "#c9d1d9" }}>{validation.sizeKb}</strong> KB</span>
+                {validation.warnings.map((w, i) => (
+                  <span key={i} style={{ fontSize: 10, color: "#f97316" }}>⚠ {w}</span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Code area with line numbers */}
+          {/* Code area */}
           <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-            <div style={{ width: 44, background: "#0d1117", borderRight: "1px solid #21262d", color: "#484f58", fontSize: 11.5, fontFamily: "monospace", paddingTop: 16, textAlign: "right", paddingRight: 8, lineHeight: "20px", userSelect: "none", overflowY: "hidden", flexShrink: 0, boxSizing: "border-box" }}>
-              {Array.from({ length: lineCount }, (_, i) => <div key={i}>{i + 1}</div>)}
-            </div>
-            <textarea
-              ref={taRef}
-              value={htmlCode}
-              onChange={e => setHtmlCode(e.target.value)}
-              placeholder={"<!-- Paste or write your HTML email here -->"}
-              spellCheck={false}
-              style={{ flex: 1, background: "#0d1117", color: "#c9d1d9", border: "none", outline: "none", resize: "none", fontSize: 12.5, fontFamily: "'Fira Code','Cascadia Code','Consolas','Courier New',monospace", padding: "16px 16px", lineHeight: "20px", overflowY: "auto", overflowX: "auto", whiteSpace: "pre", caretColor: "#58a6ff" }}
-            />
+            <CodeEditor ref={editorRef} value={htmlCode} onChange={setHtmlCode} />
           </div>
         </div>
 
-        {/* Right 50%: Live preview */}
+        {/* Right 50%: Email preview */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.card, overflow: "hidden" }}>
           {/* Preview sub-header with FROM + SUBJECT */}
           <div style={{ height: 44, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 7, flexShrink: 0 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.accent }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Live Preview</span>
+            <Eye size={13} color={C.muted} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Email Preview</span>
           </div>
 
           {/* FROM */}
@@ -2653,13 +2662,13 @@ function TemplateList({ onOpenBuilder }) {
   }).length;
 
   return (
-    <div style={{ minHeight: "100%", background: C.bg, padding: "32px 36px", fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
+    <div style={{ minHeight: "100%", background: C.bg, padding: '8px 8px 20px', fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} input::placeholder{color:#94a3b8!important}`}</style>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em" }}>Templates</h1>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.03em" }}>Email Templates</h1>
           <p style={{ margin: "4px 0 0", fontSize: 13, color: C.sub }}>Design and manage your email templates.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2678,16 +2687,20 @@ function TemplateList({ onOpenBuilder }) {
       {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Total templates", value: totalCount, sub: thisWeekCount > 0 ? `+${thisWeekCount} this week` : null, subColor: C.green, valueColor: C.text },
-          { label: "Published",       value: publishedCount, valueColor: C.green },
-          { label: "Drafts",          value: draftCount,     valueColor: C.amber },
-        ].map(({ label, value, sub, subColor, valueColor }) => (
-          <div key={label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px 22px" }}>
-            <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginBottom: 8 }}>{label}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 28, fontWeight: 800, color: valueColor, lineHeight: 1 }}>{value}</span>
-              {sub && <span style={{ fontSize: 12, fontWeight: 600, color: subColor }}>{sub}</span>}
-            </div>
+          { label: "Total Templates", value: totalCount,     accent: C.accent, sub: thisWeekCount > 0 ? `+${thisWeekCount} this week` : "all time" },
+          { label: "Published",       value: publishedCount, accent: C.green,  sub: "live & ready to send" },
+          { label: "Drafts",          value: draftCount,     accent: C.amber,  sub: "in progress" },
+        ].map(({ label, value, accent, sub }) => (
+          <div key={label} style={{
+            background: `linear-gradient(135deg, ${accent}12 0%, ${C.surface} 65%)`,
+            border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${accent}`,
+            borderRadius: 12,
+            padding: "18px 22px",
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
+            <div style={{ fontSize: 32, fontWeight: 900, color: accent, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 5 }}>{value}</div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -2827,21 +2840,32 @@ function TemplateList({ onOpenBuilder }) {
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export default function TemplatesPage() {
+export default function TemplatesPage({ onEditingChange }) {
   const T = useTheme();
   const C = makeC(T);
   // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
 
+  const enterBuilder = (id, mode) => {
+    setEditingId(id || null);
+    setView(mode === "html" ? "builder-html" : "builder-visual");
+    onEditingChange?.(true);
+  };
+
+  const exitBuilder = () => {
+    setView("list");
+    onEditingChange?.(false);
+  };
+
   if (view === "builder-visual") {
     return (
       <CCtx.Provider value={C}>
         <EmailBuilder
           templateId={editingId}
-          onBack={() => setView("list")}
-          onSaved={() => {}}
-          onSwitchToHtml={id => { setEditingId(id || null); setView("builder-html"); }}
+          onBack={exitBuilder}
+          onSaved={(status) => { if (status === "published") exitBuilder(); }}
+          onSwitchToHtml={id => enterBuilder(id, "html")}
         />
       </CCtx.Provider>
     );
@@ -2852,9 +2876,9 @@ export default function TemplatesPage() {
       <CCtx.Provider value={C}>
         <HtmlEmailBuilder
           templateId={editingId}
-          onBack={() => setView("list")}
-          onSaved={() => {}}
-          onSwitchToVisual={id => { setEditingId(id || null); setView("builder-visual"); }}
+          onBack={exitBuilder}
+          onSaved={(status) => { if (status === "published") exitBuilder(); }}
+          onSwitchToVisual={id => enterBuilder(id, "visual")}
         />
       </CCtx.Provider>
     );
@@ -2865,8 +2889,7 @@ export default function TemplatesPage() {
       <TemplateList
         onOpenBuilder={(id, editorMode) => {
           if (id) {
-            setEditingId(id);
-            setView(editorMode === "html" ? "builder-html" : "builder-visual");
+            enterBuilder(id, editorMode);
           } else {
             setEditingId(null);
             setView("choose");
@@ -2875,7 +2898,7 @@ export default function TemplatesPage() {
       />
       {view === "choose" && (
         <ChooseModeModal
-          onChoose={m => setView(m === "html" ? "builder-html" : "builder-visual")}
+          onChoose={m => enterBuilder(null, m)}
           onCancel={() => setView("list")}
         />
       )}

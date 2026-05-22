@@ -1,26 +1,22 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { darkTheme, lightTheme, polarTheme } from "../theme";
+import { appThemes } from "../themes/theme";
 
-const THEMES = {
-  dark: darkTheme,
-  light: lightTheme,
-  polar: polarTheme,
-};
-
-const ThemeCtx      = createContext(darkTheme);
-const ThemeNameCtx  = createContext("dark");
+const ThemeCtx       = createContext(appThemes.dark);
+const ThemeNameCtx   = createContext("dark");
 const ThemeToggleCtx = createContext(() => {});
-const ThemeSetCtx   = createContext(() => {});
+const ThemeSetCtx    = createContext(() => {});
 
 export function ThemeProvider({ children }) {
   const [themeName, setThemeName] = useState(() =>
     localStorage.getItem("prophone-theme") || "dark"
   );
 
-  const theme = THEMES[themeName] || THEMES.dark;
+  const theme = appThemes[themeName] || appThemes.dark;
 
   useEffect(() => {
-    document.body.style.background = theme.bg;
+    const bg = theme.bg;
+    // gradients can't be set as background-color
+    document.body.style.background = bg;
     document.body.style.color = theme.text;
     document.body.style.transition = "background 0.2s ease, color 0.2s ease";
   }, [theme]);
@@ -34,7 +30,7 @@ export function ThemeProvider({ children }) {
   }
 
   function selectTheme(name) {
-    if (THEMES[name]) {
+    if (appThemes[name]) {
       localStorage.setItem("prophone-theme", name);
       setThemeName(name);
     }
@@ -57,3 +53,8 @@ export function useTheme()       { return useContext(ThemeCtx);       }
 export function useThemeName()   { return useContext(ThemeNameCtx);   }
 export function useThemeToggle() { return useContext(ThemeToggleCtx); }
 export function useSetTheme()    { return useContext(ThemeSetCtx);    }
+
+// Named re-exports for any legacy imports
+export const darkTheme    = appThemes.dark;
+export const lightTheme   = appThemes.light;
+export const polarTheme   = appThemes.nord;

@@ -43,8 +43,10 @@ export async function trackClick(req, res) {
     withRetry(() => repo.applyTrackingEvent(recipientId, 'clicked'))
       .catch(err => console.error('[trackClick] failed after retries:', err.message));
   }
-  const destination = url ? decodeURIComponent(url) : '/';
-  // Validate destination is a real URL before redirecting
+  // req.query values are already URL-decoded by Express — do NOT call
+  // decodeURIComponent again or percent-encoded chars in the destination
+  // URL (e.g. %20 in a path) will be decoded a second time and break the redirect.
+  const destination = url || '/';
   try {
     const parsed = new URL(destination);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error();

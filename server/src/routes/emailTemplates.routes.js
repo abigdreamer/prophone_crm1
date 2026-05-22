@@ -11,6 +11,7 @@ import {
   restoreTemplate,
   duplicateTemplate,
   sendTestEmail,
+  importHtml,
 } from '../controllers/emailTemplates.controller.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.get('/check-schema', checkSchema);
 
 router.use(requireAuth);
 
+router.post('/import',          importHtml);   // sanitize + validate HTML, no DB write
 router.get('/',                 listTemplates);
 router.get('/:id',              getTemplate);
 router.post('/',                createTemplate);

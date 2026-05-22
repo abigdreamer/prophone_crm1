@@ -1,4 +1,5 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+export const FOXTOW_API = import.meta.env.FOXTOW_API || 'https://render-foxtow-server.onrender.com';
 
 // ── Active pool singleton ─────────────────────────────────────────────────────
 // Synced from PoolContext whenever the user switches pool/client.
@@ -255,6 +256,13 @@ export async function sendTestEmail(id, email) {
   return r.data ?? r;
 }
 
+// Sanitize + validate HTML server-side. Returns { html, validation }.
+// Does NOT save to the database — use createTemplate / updateTemplate for that.
+export async function importHtml(html, { safeMode = false } = {}) {
+  const r = await request('POST', '/api/email-templates/import', { html, safeMode });
+  return r.data ?? r;
+}
+
 // ── Interactive Sessions ──────────────────────────────────────────────────────
 
 export async function createInteractiveSession(data) {
@@ -317,6 +325,13 @@ export async function addCampaignRecipients(id, data) {
   return r.data ?? r;
 }
 
+export async function getContactsForCampaign(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) { params.set('pool', 'client'); params.set('clientId', clientId); }
+  const r = await request('GET', `/api/contacts?${params}`);
+  return Array.isArray(r) ? r : (r.data ?? []);
+}
+
 export async function removeCampaignRecipients(id) {
   return request('DELETE', `/api/campaigns/${id}/recipients`);
 }
@@ -327,8 +342,9 @@ export async function previewCampaignRecipients(campaignId, filter) {
   return r.data ?? r;
 }
 
-export async function sendCampaign(id) {
-  const r = await request('POST', `/api/campaigns/${id}/send`);
+export async function sendCampaign(id, { limit } = {}) {
+  const body = limit ? { limit } : undefined;
+  const r = await request('POST', `/api/campaigns/${id}/send`, body);
   return r.data ?? r;
 }
 
@@ -337,8 +353,38 @@ export async function resendCampaign(id, recipientStatuses) {
   return r.data ?? r;
 }
 
+export async function duplicateCampaign(id) {
+  const r = await request('POST', `/api/campaigns/${id}/duplicate`);
+  return r.data ?? r;
+}
+
 export async function getCampaignAnalytics(id) {
   const r = await request('GET', `/api/campaigns/${id}/analytics`);
+  return r.data ?? r;
+}
+
+export async function exportCampaignBlob(id, format = 'excel', params = {}) {
+  const token = localStorage.getItem('prophone_token');
+  const qs = new URLSearchParams({ format, ...params }).toString();
+  const res = await fetch(`${API}/api/campaigns/${id}/export?${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+  const cd = res.headers.get('content-disposition') || '';
+  const match = cd.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : `campaign_export.${ext}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Real campaign send to specific contacts — full tracking, recipients stored, stats updated.
+// domainFilter: optional array like ['gmail.com', 'yahoo.com']
+export async function quickSendCampaign(campaignId, { contactIds, domainFilter = [] } = {}) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/send-to`, { contactIds, domainFilter });
   return r.data ?? r;
 }
 
@@ -360,4 +406,14 @@ export async function getSettings(clientId, module) {
 
 export async function saveSettings(clientId, module, config) {
   return request('PUT', '/api/settings', { clientId: clientId || null, module, config });
+}
+
+// ── Foxtow External API ───────────────────────────────────────────────────────
+
+export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {
+  const params = new URLSearchParams({ active, page, limit });
+  const res = await fetch(`${FOXTOW_API}/api/v1/newsletter/subscribers?${params}`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Failed to fetch subscribers');
+  return data;
 }

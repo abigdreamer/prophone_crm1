@@ -18,5 +18,5 @@ export function sendError(res, message, status = 400) {
 export function sendServerError(res, err, context = '') {
   const label = context ? `[${context}]` : '[server]';
   console.error(`${label} Unhandled error:`, err?.message ?? err);
-  return res.status(500).json({ success: false, error: 'Something went wrong' });
+  return res.status(500).json({ success: false, error: err?.message || 'Something went wrong' });
 }

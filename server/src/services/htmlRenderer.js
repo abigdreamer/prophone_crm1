@@ -247,10 +247,11 @@ export function applyTracking(html, campaignId, recipientId, trackingBaseUrl) {
 
   const SKIP_RE = /^(mailto:|tel:|#|$)/i;
 
-  // 1. Rewrite every href except mailto:, tel:, #, empty, and already-wrapped URLs
+  // 1. Rewrite every href regardless of quote style (double or single).
+  //    Skips non-navigable targets and already-wrapped tracking URLs.
   const rewritten = html.replace(
-    /href="([^"]*)"/gi,
-    (match, url) => {
+    /href=(["'])(.*?)\1/gi,
+    (match, quote, url) => {
       const trimmed = url.trim();
       if (SKIP_RE.test(trimmed))                    return match; // non-navigable
       if (!trimmed.startsWith('http'))               return match; // relative — skip

@@ -24,10 +24,11 @@ export function useContacts(currentUser) {
     });
   }, [contacts, pool, clientId, currentUser, loading]);
 
-  // Re-fetch whenever pool or client changes
+  // Re-fetch whenever pool or client changes — clear immediately to prevent stale selection
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
+    setContacts([]);   // flush old data synchronously before new fetch arrives
     setLoading(true);
     getContacts()
       .then(data => { if (!cancelled) setContacts(data); })

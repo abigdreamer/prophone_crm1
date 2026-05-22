@@ -1,4 +1,4 @@
-import prisma from '../prisma.js';
+import prisma from '../lib/prisma.js';
 
 export const findAll    = ()       => prisma.posthog_project.findMany({ orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }] });
 export const findActive = ()       => prisma.posthog_project.findMany({ where: { hidden: false }, orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }] });

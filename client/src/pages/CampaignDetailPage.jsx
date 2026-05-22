@@ -1,16 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { analytics } from "../services/analytics";
+import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw,
+  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye, Download,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
-  cancelCampaign, restoreCampaign,
+  cancelCampaign, restoreCampaign, duplicateCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
+  exportCampaignBlob,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
@@ -126,7 +129,7 @@ function LeadActivityPanel({ recipient, contact, loading, onClose }) {
   if (!recipient) return null;
 
   const c = contact ?? recipient.contact;
-  const initials = ((c?.firstName?.[0] || "") + (c?.lastName?.[0] || "")).toUpperCase() || "?";
+  const initials = ((c?.firstName?.[0] || "") + (c?.lastName?.[0] || "")).toUpperCase() || (c?.email?.[0] || "?").toUpperCase();
   const activities = contact?.activities ?? [];
 
   return (
@@ -170,7 +173,7 @@ function LeadActivityPanel({ recipient, contact, loading, onClose }) {
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 2 }}>
-              {c?.firstName} {c?.lastName}
+              {[c?.firstName, c?.lastName].filter(Boolean).join(" ") || c?.email || "—"}
             </div>
             <div style={{
               fontSize: 11, color: T.muted,
@@ -282,7 +285,7 @@ const STAGE_FILTERS = [
   { id: "churned",        label: "Churned",        desc: "Churned" },
 ];
 
-function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId }) {
+function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId, onTotalChange }) {
   const T = useTheme();
   const thStyle = {
     padding: "10px 16px", textAlign: "left",
@@ -290,17 +293,30 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     letterSpacing: "0.07em", textTransform: "uppercase",
     borderBottom: "1px solid " + T.border, userSelect: "none",
   };
-  const [data,    setData]    = useState({ rows: [], total: 0, page: 1, limit: 50 });
+  const [data,    setData]    = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
+  const [page,    setPage]    = useState(1);
+  const limit = 50;
 
-  const load = useCallback(async () => {
+  // Reset to page 1 when filter or search changes
+  useEffect(() => { setPage(1); }, [statusFilter, search, refreshKey]);
+
+  const load = useCallback(async (currentPage) => {
     setLoading(true);
     try {
-      const params = {};
-      if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+      const params = { page: currentPage, limit };
+      if (statusFilter && statusFilter !== "all") {
+        // bounced/unsubscribed are terminal statuses tracked on CampaignRecipient.status.
+        // opened/clicked use event-based filtering so recipients who later advanced (e.g. opened→clicked)
+        // are still counted.
+        const statusOnly = new Set(["bounced", "unsubscribed", "pending", "sent", "delivered"]);
+        if (statusOnly.has(statusFilter)) params.status = statusFilter;
+        else params.event = statusFilter;
+      }
       if (search) params.search = search;
       const res = await getCampaignRecipients(campaignId, params);
       setData(res);
+      onTotalChange?.(res.total);
     } catch (err) {
       console.error(err);
     } finally {
@@ -308,7 +324,9 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     }
   }, [campaignId, statusFilter, search, refreshKey]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(page); }, [load, page]);
+
+  const totalPages = Math.max(1, Math.ceil(data.total / limit));
 
   if (loading) return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -320,14 +338,47 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
 
   if (!data.rows.length) return (
     <div style={{ textAlign: "center", padding: "40px 20px", color: T.muted, fontSize: 13 }}>
-      {statusFilter !== "all" ? `No recipients with status "${statusFilter}"` : "No recipients match your search."}
+      {statusFilter && statusFilter !== "all" ? `No recipients with status "${statusFilter}"` : "No recipients match your search."}
     </div>
   );
 
+  const start = (page - 1) * limit + 1;
+  const end   = Math.min(page * limit, data.total);
+
   return (
     <>
-      <div style={{ padding: "10px 16px 4px", fontSize: 11, color: T.muted }}>
-        Showing {data.rows.length} of {data.total}
+      <div style={{
+        padding: "10px 16px 6px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <span style={{ fontSize: 11, color: T.muted }}>
+          Showing {start}–{end} of {data.total}
+        </span>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{
+                background: "none", border: "1px solid " + T.border, borderRadius: 6,
+                color: page === 1 ? T.muted : T.text, cursor: page === 1 ? "not-allowed" : "pointer",
+                padding: "3px 10px", fontSize: 12, fontFamily: "inherit",
+              }}
+            >← Prev</button>
+            <span style={{ fontSize: 11, color: T.muted }}>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              style={{
+                background: "none", border: "1px solid " + T.border, borderRadius: 6,
+                color: page === totalPages ? T.muted : T.text, cursor: page === totalPages ? "not-allowed" : "pointer",
+                padding: "3px 10px", fontSize: 12, fontFamily: "inherit",
+              }}
+            >Next →</button>
+          </div>
+        )}
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -366,11 +417,11 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                       fontSize: 11, fontWeight: 700, color: T.accent,
                       border: isSelected ? "1.5px solid " + T.accent + "60" : "none",
                     }}>
-                      {(r.contact?.firstName?.[0] || "?").toUpperCase()}
+                      {(r.contact?.firstName?.[0] || r.contact?.email?.[0] || "?").toUpperCase()}
                     </div>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? T.accent : T.text }}>
-                        {r.contact?.firstName} {r.contact?.lastName}
+                        {[r.contact?.firstName, r.contact?.lastName].filter(Boolean).join(" ") || r.contact?.email || "—"}
                       </div>
                       {r.contact?.company && (
                         <div style={{ fontSize: 10, color: T.muted }}>{r.contact.company}</div>
@@ -408,6 +459,35 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
           })}
         </tbody>
       </table>
+      {totalPages > 1 && (
+        <div style={{
+          padding: "10px 16px",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          borderTop: "1px solid " + T.border,
+        }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{
+              background: "none", border: "1px solid " + T.border, borderRadius: 6,
+              color: page === 1 ? T.muted : T.text, cursor: page === 1 ? "not-allowed" : "pointer",
+              padding: "4px 14px", fontSize: 12, fontFamily: "inherit",
+            }}
+          >← Prev</button>
+          <span style={{ fontSize: 12, color: T.muted }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{
+              background: "none", border: "1px solid " + T.border, borderRadius: 6,
+              color: page === totalPages ? T.muted : T.text, cursor: page === totalPages ? "not-allowed" : "pointer",
+              padding: "4px 14px", fontSize: 12, fontFamily: "inherit",
+            }}
+          >Next →</button>
+        </div>
+      )}
     </>
   );
 }
@@ -416,12 +496,56 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
 
 function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
   const T = useTheme();
-  const [step,    setStep]    = useState(1);
-  const [filter,  setFilter]  = useState("all");
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [adding,  setAdding]  = useState(false);
-  const [error,   setError]   = useState(null);
+  // mode: "stage" | "search"
+  const [mode,       setMode]       = useState("stage");
+  const [step,       setStep]       = useState(1);
+  const [filter,     setFilter]     = useState("all");
+  const [preview,    setPreview]    = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [adding,     setAdding]     = useState(false);
+  const [error,      setError]      = useState(null);
+
+  // Search/select state
+  const [contacts,    setContacts]    = useState([]);
+  const [contLoading, setContLoading] = useState(false);
+  const [searchQ,     setSearchQ]     = useState("");
+  const [selected,    setSelected]    = useState(new Set());
+  const searchRef = useRef(null);
+
+  // Load all contacts for the search tab
+  useEffect(() => {
+    if (mode !== "search") return;
+    setContLoading(true);
+    getContactsForCampaign(clientId)
+      .then(data => setContacts(Array.isArray(data) ? data : []))
+      .catch(() => setContacts([]))
+      .finally(() => setContLoading(false));
+  }, [mode, clientId]);
+
+  const filteredContacts = contacts.filter(c => {
+    if (!searchQ) return true;
+    const q = searchQ.toLowerCase();
+    return (
+      (c.firstName || "").toLowerCase().includes(q) ||
+      (c.lastName  || "").toLowerCase().includes(q) ||
+      (c.email     || "").toLowerCase().includes(q) ||
+      (c.company   || "").toLowerCase().includes(q)
+    );
+  });
+
+  const toggleContact = id => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => {
+    if (selected.size === filteredContacts.length && filteredContacts.length > 0) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredContacts.map(c => c.id)));
+    }
+  };
 
   const loadPreview = useCallback(async f => {
     setLoading(true);
@@ -436,13 +560,19 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }
   }, [campaignId]);
 
-  const handleNext = async () => { setStep(2); await loadPreview(filter); };
+  const handleNext = async () => {
+    if (mode === "stage") { setStep(2); await loadPreview(filter); }
+    else { setStep(2); }
+  };
 
   const handleAdd = async () => {
     setAdding(true);
     setError(null);
     try {
-      const updated = await addCampaignRecipients(campaignId, { filter });
+      const payload = mode === "search"
+        ? { contactIds: Array.from(selected) }
+        : { filter };
+      const updated = await addCampaignRecipients(campaignId, payload);
       onAdded(updated);
     } catch (err) {
       setError(err.message || "Failed to add recipients. Please try again.");
@@ -451,6 +581,9 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }
   };
 
+  const confirmCount = mode === "search" ? selected.size : (preview?.count ?? 0);
+  const canConfirm   = mode === "search" ? selected.size > 0 : (preview?.count > 0);
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)",
@@ -458,12 +591,14 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 14,
-        width: 480, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
+        width: step === 1 && mode === "search" ? 520 : 480,
+        maxWidth: "95vw", maxHeight: "90vh", display: "flex", flexDirection: "column",
         boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
       }}>
+        {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "18px 24px 14px", borderBottom: "1px solid " + T.border,
+          padding: "18px 24px 14px", borderBottom: "1px solid " + T.border, flexShrink: 0,
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
             {step === 1 ? "Add Recipients" : "Confirm Recipients"}
@@ -471,29 +606,44 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
 
-        <div style={{ padding: "20px 24px" }}>
-          {step === 1 && (
+        {/* Mode tabs (step 1 only) */}
+        {step === 1 && (
+          <div style={{ display: "flex", gap: 0, padding: "12px 24px 0", flexShrink: 0 }}>
+            {[["stage", "By Stage"], ["search", "By Search"]].map(([m, label]) => (
+              <button key={m} onClick={() => { setMode(m); setError(null); }}
+                style={{
+                  padding: "7px 18px", border: "none", borderRadius: "7px 7px 0 0",
+                  background: mode === m ? T.surface : "transparent",
+                  borderBottom: mode === m ? "2px solid " + T.accent : "2px solid transparent",
+                  color: mode === m ? T.accent : T.muted,
+                  fontWeight: mode === m ? 700 : 500, fontSize: 13,
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Body */}
+        <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto" }}>
+
+          {/* ── BY STAGE ── */}
+          {step === 1 && mode === "stage" && (
             <>
               <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
-                {clientId
-                  ? `Filter contacts for this client by lifecycle stage. Only contacts belonging to this client will be added.`
-                  : "Filter contacts by lifecycle stage."}
+                {clientId ? "Filter contacts by lifecycle stage. Only contacts in this client will be added." : "Filter contacts by lifecycle stage."}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 340, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {STAGE_FILTERS.map(f => {
                   const sel = filter === f.id;
                   return (
-                    <div
-                      key={f.id}
-                      onClick={() => setFilter(f.id)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                        border: "1px solid " + (sel ? T.accent : T.border),
-                        background: sel ? T.accent + "10" : T.surface,
-                        transition: "border-color 0.1s, background 0.1s",
-                      }}
-                    >
+                    <div key={f.id} onClick={() => setFilter(f.id)} style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                      border: "1px solid " + (sel ? T.accent : T.border),
+                      background: sel ? T.accent + "10" : T.surface,
+                      transition: "border-color 0.1s, background 0.1s",
+                    }}>
                       <div style={{
                         width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
                         border: "2px solid " + (sel ? T.accent : T.border),
@@ -513,11 +663,106 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
             </>
           )}
 
+          {/* ── BY SEARCH ── */}
+          {step === 1 && mode === "search" && (
+            <>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <Search size={13} color={T.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                <input
+                  ref={searchRef}
+                  autoFocus
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                  placeholder="Search by name, email, or company…"
+                  style={{
+                    width: "100%", boxSizing: "border-box", paddingLeft: 32, paddingRight: 12,
+                    paddingTop: 9, paddingBottom: 9,
+                    borderRadius: 8, border: "1px solid " + T.border,
+                    background: T.surface, color: T.text, fontSize: 13,
+                    fontFamily: "inherit", outline: "none",
+                  }}
+                  onFocus={e => e.target.style.borderColor = T.accent}
+                  onBlur={e => e.target.style.borderColor = T.border}
+                />
+              </div>
+
+              {/* Select all row */}
+              {!contLoading && filteredContacts.length > 0 && (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "6px 2px", marginBottom: 4,
+                }}>
+                  <span style={{ fontSize: 11, color: T.muted }}>
+                    {selected.size > 0 ? `${selected.size} selected` : `${filteredContacts.length} contacts`}
+                  </span>
+                  <button onClick={toggleAll} style={{
+                    fontSize: 11, color: T.accent, background: "none", border: "none",
+                    cursor: "pointer", fontFamily: "inherit", padding: 0,
+                  }}>
+                    {selected.size === filteredContacts.length && filteredContacts.length > 0 ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
+              )}
+
+              {contLoading ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20, justifyContent: "center" }}>
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading contacts…
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 24, color: T.muted, fontSize: 13 }}>
+                  {searchQ ? "No contacts match your search." : "No contacts found for this campaign."}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 320, overflowY: "auto" }}>
+                  {filteredContacts.map(c => {
+                    const sel = selected.has(c.id);
+                    return (
+                      <div key={c.id} onClick={() => toggleContact(c.id)} style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "9px 12px", borderRadius: 8, cursor: "pointer",
+                        border: "1px solid " + (sel ? T.accent + "60" : T.border),
+                        background: sel ? T.accent + "0e" : T.surface,
+                        transition: "all 0.12s",
+                      }}>
+                        {/* Checkbox */}
+                        <div style={{
+                          width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                          border: "2px solid " + (sel ? T.accent : T.border),
+                          background: sel ? T.accent : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {sel && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                        {/* Avatar */}
+                        <div style={{
+                          width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                          background: T.accent + "22",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, fontWeight: 700, color: T.accent,
+                        }}>
+                          {(c.firstName?.[0] || "?").toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}
+                          </div>
+                          <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {c.email}{c.company ? " · " + c.company : ""}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── CONFIRM STEP ── */}
           {step === 2 && (
-            loading ? (
-              <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-                <SkeletonBlock h={80} radius={8} />
-                <SkeletonBlock h={120} radius={8} />
+            loading && mode === "stage" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20 }}>
+                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading preview…
               </div>
             ) : (
               <>
@@ -528,37 +773,27 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                 }}>
                   <Users size={16} color={T.accent} />
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
-                      {preview?.count ?? 0} contacts
-                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{confirmCount} contact{confirmCount !== 1 ? "s" : ""}</div>
                     <div style={{ fontSize: 11, color: T.muted }}>
-                      Stage: {STAGE_FILTERS.find(f => f.id === filter)?.label}
+                      {mode === "search"
+                        ? "Selected manually"
+                        : `Stage: ${STAGE_FILTERS.find(f => f.id === filter)?.label}`}
                     </div>
                   </div>
                 </div>
 
-                {preview?.sample?.length > 0 && (
+                {mode === "stage" && preview?.sample?.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     <div style={{ fontSize: 10, fontWeight: 600, color: T.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       Sample (first {preview.sample.length})
                     </div>
                     {preview.sample.map(c => (
-                      <div key={c.id} style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "8px 10px", borderRadius: 7, background: T.surface,
-                      }}>
-                        <div style={{
-                          width: 26, height: 26, borderRadius: "50%",
-                          background: T.accent + "22", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, fontWeight: 700, color: T.accent,
-                        }}>
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
                           {(c.firstName?.[0] || "?").toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
-                            {c.firstName} {c.lastName}
-                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{c.firstName} {c.lastName}</div>
                           <div style={{ fontSize: 10, color: T.muted }}>{c.email || c.company}</div>
                         </div>
                       </div>
@@ -571,10 +806,24 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                   </div>
                 )}
 
-                {preview?.count === 0 && (
-                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>
-                    No contacts match this filter.
+                {mode === "search" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
+                    {contacts.filter(c => selected.has(c.id)).map(c => (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
+                          {(c.firstName?.[0] || "?").toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{[c.firstName, c.lastName].filter(Boolean).join(" ")}</div>
+                          <div style={{ fontSize: 10, color: T.muted }}>{c.email}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+
+                {!canConfirm && (
+                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>No contacts to add.</div>
                 )}
               </>
             )
@@ -582,57 +831,58 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
         </div>
 
         {error && (
-          <div style={{
-            margin: "0 24px 8px",
-            padding: "10px 14px", borderRadius: 7,
-            background: T.red + "15", border: "1px solid " + T.red + "40",
-            color: T.red, fontSize: 12,
-          }}>
+          <div style={{ margin: "0 24px 8px", padding: "10px 14px", borderRadius: 7, background: T.red + "15", border: "1px solid " + T.red + "40", color: T.red, fontSize: 12, flexShrink: 0 }}>
             {error}
           </div>
         )}
 
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 24px", borderTop: "1px solid " + T.border,
+          padding: "16px 24px", borderTop: "1px solid " + T.border, flexShrink: 0,
         }}>
           {step === 1 ? (
             <>
-              <button onClick={onClose} style={{
-                padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
-                background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-              }}>Cancel</button>
-              <button onClick={handleNext} disabled={loading} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", borderRadius: 7, border: "none",
-                background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                Next <ChevronRight size={13} />
+              <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleNext}
+                disabled={mode === "search" && selected.size === 0}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 18px", borderRadius: 7, border: "none",
+                  background: (mode === "search" && selected.size === 0) ? T.border : T.accent,
+                  color: (mode === "search" && selected.size === 0) ? T.muted : "#fff",
+                  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {mode === "search" && selected.size > 0
+                  ? `Add ${selected.size} Contact${selected.size !== 1 ? "s" : ""}`
+                  : "Next"
+                } <ChevronRight size={13} />
               </button>
             </>
           ) : (
             <>
-              <button onClick={() => { setStep(1); setError(null); }} style={{
-                padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
-                background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-              }}>← Back</button>
+              <button onClick={() => { setStep(1); setError(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                ← Back
+              </button>
               <button
                 onClick={handleAdd}
-                disabled={adding || !preview?.count || loading}
+                disabled={adding || !canConfirm || loading}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 18px", borderRadius: 7, border: "none",
-                  background: preview?.count && !adding ? T.accent : T.border,
-                  color: preview?.count && !adding ? "#fff" : T.muted,
+                  background: canConfirm && !adding ? T.accent : T.border,
+                  color: canConfirm && !adding ? "#fff" : T.muted,
                   fontSize: 13, fontWeight: 600,
-                  cursor: preview?.count && !adding ? "pointer" : "default",
+                  cursor: canConfirm && !adding ? "pointer" : "default",
                   fontFamily: "inherit",
                 }}
               >
                 {adding
                   ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Adding…</>
-                  : <><Plus size={13} /> Add {preview?.count || 0} Recipients</>
+                  : <><Plus size={13} /> Add {confirmCount} Recipient{confirmCount !== 1 ? "s" : ""}</>
                 }
               </button>
             </>
@@ -1131,6 +1381,11 @@ export default function CampaignDetailPage() {
   const [selectedRecipient, setSelectedRecipient] = useState(null);
   const [contactDetail,     setContactDetail]     = useState(null);
   const [contactLoading,    setContactLoading]    = useState(false);
+  const [pdfExporting,      setPdfExporting]      = useState(false);
+  const [showExcelModal,    setShowExcelModal]     = useState(false);
+  const [excelSheets,       setExcelSheets]       = useState({ clicked: true, opened: true, delivered: false, sent: false, bounced: true, unsubscribed: true });
+  const [excelExporting,    setExcelExporting]    = useState(false);
+  const [filteredTotal,     setFilteredTotal]     = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1176,6 +1431,10 @@ export default function CampaignDetailPage() {
     try {
       const updated = await sendCampaign(id);
       setCampaign(updated);
+      analytics.campaignLaunched({
+        clientId:       updated.clientId,
+        recipientCount: updated.recipientsCount,
+      });
       setShowSendModal(false);
       const a = await getCampaignAnalytics(id).catch(() => null);
       setAnalytics(a);
@@ -1268,10 +1527,11 @@ export default function CampaignDetailPage() {
 
   if (!campaign) return null;
 
-  const canSend   = ["draft", "paused"].includes(campaign.status) && campaign.recipientsCount > 0;
-  const isSent    = campaign.status === "sent";
-  const isSending = campaign.status === "sending";
-  const isAbTest  = campaign.type === "ab_test";
+  const canSend       = ["draft", "paused"].includes(campaign.status) && campaign.recipientsCount > 0;
+  const isSent        = campaign.status === "sent";
+  const isSending     = campaign.status === "sending";
+  const isAbTest      = campaign.type === "ab_test";
+  const pendingCount  = Math.max(0, (campaign.recipientsCount ?? 0) - (campaign.sentCount ?? 0) - (campaign.bouncedCount ?? 0));
 
   const totals = analytics?.totals ?? {};
   const rates  = analytics?.rates  ?? {};
@@ -1328,15 +1588,19 @@ export default function CampaignDetailPage() {
                 }}>
                   <button
                     onClick={() => { setMenuOpen(false); setShowEditModal(true); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "10px 14px", border: "none", background: "transparent",
-                      color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                    }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
                     onMouseEnter={e => e.currentTarget.style.background = T.surface}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <Pencil size={13} /> Edit Campaign
+                  </button>
+                  <button
+                    onClick={async () => { setMenuOpen(false); try { const copy = await duplicateCampaign(id); navigate("/campaigns/" + copy.id); } catch(e) { console.error(e); } }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.dim, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.surface}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <Copy size={13} /> Duplicate
                   </button>
                   {campaign.isCanceled ? (
                     <button
@@ -1390,7 +1654,8 @@ export default function CampaignDetailPage() {
               <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
             </div>
           )}
-          {!isSent && (
+          {/* Add Recipients — available for all non-canceled campaigns */}
+          {!campaign.isCanceled && (
             <button
               onClick={() => setShowAddModal(true)}
               style={{
@@ -1400,6 +1665,21 @@ export default function CampaignDetailPage() {
               }}
             >
               <Plus size={13} /> Add Recipients
+            </button>
+          )}
+          {/* Send to new pending recipients (for sent campaigns with new additions) */}
+          {isSent && pendingCount > 0 && (
+            <button
+              onClick={() => handleResend(["pending"])}
+              disabled={sending}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.accent + "60",
+                background: T.accent + "12", color: T.accent, fontSize: 12, fontWeight: 600,
+                cursor: sending ? "default" : "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Send size={12} /> Send to {pendingCount} New
             </button>
           )}
           {canSend && (
@@ -1428,6 +1708,35 @@ export default function CampaignDetailPage() {
               <Send size={12} /> Resend Campaign
             </button>
           )}
+          <button
+            onClick={() => setShowExcelModal(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            <Download size={13} /> Excel
+          </button>
+          <button
+            disabled={pdfExporting}
+            onClick={async () => {
+              setPdfExporting(true);
+              try { await exportCampaignBlob(campaign.id, 'pdf'); }
+              catch { /* ignore */ }
+              finally { setPdfExporting(false); }
+            }}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+              background: T.surface, color: pdfExporting ? T.muted : T.dim,
+              fontSize: 12, cursor: pdfExporting ? "not-allowed" : "pointer",
+              fontFamily: "inherit", opacity: pdfExporting ? 0.6 : 1,
+            }}
+          >
+            <Download size={13} /> {pdfExporting ? "Generating…" : "PDF"}
+          </button>
           <button
             onClick={load}
             style={{
@@ -1516,7 +1825,11 @@ export default function CampaignDetailPage() {
               <span style={{
                 fontSize: 11, fontWeight: 600, color: T.accent,
                 background: T.accent + "18", borderRadius: 10, padding: "1px 9px",
-              }}>{campaign.recipientsCount}</span>
+              }}>
+                {filteredTotal !== null && filteredTotal !== campaign.recipientsCount
+                  ? <>{filteredTotal} <span style={{ opacity: 0.55 }}>of {campaign.recipientsCount}</span></>
+                  : campaign.recipientsCount}
+              </span>
             </div>
 
             <div style={{ flex: 1 }} />
@@ -1609,6 +1922,7 @@ export default function CampaignDetailPage() {
               refreshKey={tableKey}
               onSelectContact={handleSelectRecipient}
               selectedContactId={selectedRecipient?.contact?.id}
+              onTotalChange={setFilteredTotal}
             />
           )}
         </div>
@@ -1672,6 +1986,131 @@ export default function CampaignDetailPage() {
           loading={cancelActing}
         />
       )}
+
+      {/* Excel Export Modal */}
+      {showExcelModal && (
+        <ExcelExportModal
+          campaign={campaign}
+          sheets={excelSheets}
+          setSheets={setExcelSheets}
+          exporting={excelExporting}
+          onClose={() => setShowExcelModal(false)}
+          onExport={async () => {
+            setExcelExporting(true);
+            try {
+              const selected = Object.entries(excelSheets)
+                .filter(([, v]) => v)
+                .map(([k]) => k);
+              await exportCampaignBlob(campaign.id, 'excel', {
+                sheets: selected.length ? selected.join(',') : 'all',
+              });
+              setShowExcelModal(false);
+            } catch { /* ignore */ }
+            finally { setExcelExporting(false); }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Excel Export Modal ────────────────────────────────────────────────────────
+function ExcelExportModal({ campaign, sheets, setSheets, exporting, onClose, onExport }) {
+  const T = useTheme();
+  const SHEET_OPTIONS = [
+    { key: 'clicked',      label: 'Clicked',      desc: 'Contacts who clicked a link in the email' },
+    { key: 'opened',       label: 'Opened',       desc: 'Contacts who opened the email' },
+    { key: 'delivered',    label: 'Delivered',    desc: 'Confirmed delivery (not yet opened)' },
+    { key: 'sent',         label: 'Sent',         desc: 'All sent recipients regardless of event' },
+    { key: 'bounced',      label: 'Bounced',      desc: 'Emails that could not be delivered' },
+    { key: 'unsubscribed', label: 'Unsubscribed', desc: 'Contacts who opted out' },
+  ];
+  const noneSelected = !Object.values(sheets).some(Boolean);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.surface, border: "1px solid " + T.border,
+        borderRadius: 14, width: 440, maxWidth: "95vw",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "18px 20px 14px", borderBottom: "1px solid " + T.border,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Export to Excel</div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+              {campaign.name} — choose which recipient groups to include as sheets
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: T.muted,
+            cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 4px",
+          }}>✕</button>
+        </div>
+
+        {/* Sheet options */}
+        <div style={{ padding: "14px 20px" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Sheets to include
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {SHEET_OPTIONS.map(({ key, label, desc }) => (
+              <label key={key} style={{
+                display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
+                padding: "10px 12px", borderRadius: 8,
+                background: sheets[key] ? T.accent + "12" : T.card,
+                border: "1px solid " + (sheets[key] ? T.accent + "50" : T.border),
+                transition: "all 0.15s",
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!sheets[key]}
+                  onChange={e => setSheets(prev => ({ ...prev, [key]: e.target.checked }))}
+                  style={{ accentColor: T.accent, width: 15, height: 15, flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{label}</div>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: T.muted, marginTop: 10 }}>
+            A <strong style={{ color: T.dim }}>Summary</strong> sheet with campaign metrics is always included.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "12px 20px 16px", borderTop: "1px solid " + T.border,
+          display: "flex", gap: 8, justifyContent: "flex-end",
+        }}>
+          <button onClick={onClose} style={{
+            padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
+            background: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+          }}>Cancel</button>
+          <button
+            disabled={noneSelected || exporting}
+            onClick={onExport}
+            style={{
+              padding: "8px 18px", borderRadius: 7, border: "none",
+              background: noneSelected || exporting ? T.muted : T.green,
+              color: "#fff", fontSize: 12, fontWeight: 600,
+              cursor: noneSelected || exporting ? "not-allowed" : "pointer",
+              fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <Download size={13} />
+            {exporting ? "Downloading…" : "Download Excel"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

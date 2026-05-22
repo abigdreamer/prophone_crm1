@@ -120,7 +120,7 @@ export default function DashboardPage({
       }}
     >
       {/* ─── Filter Navigation ─── */}
-      <div
+      {/* <div
         style={{
           display: "flex",
           alignItems: "center",
@@ -171,7 +171,7 @@ export default function DashboardPage({
             </button>
           );
         })}
-      </div>
+      </div> */}
 
       {/* Banner */}
       <div
