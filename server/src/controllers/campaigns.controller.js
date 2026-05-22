@@ -15,6 +15,19 @@ import {
 } from '../services/email.js';
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
+import { updateDomainTracking } from '../services/domainService.js';
+
+// Track which Resend domain IDs have already had tracking disabled this process lifetime.
+// ProPhone injects its own open/click pixels, so we must stop Resend from double-wrapping.
+const _resendTrackingDisabled = new Set();
+
+function disableResendDomainTracking(domain) {
+  if (!domain?.resendDomainId) return;
+  if (_resendTrackingDisabled.has(domain.resendDomainId)) return;
+  _resendTrackingDisabled.add(domain.resendDomainId);
+  updateDomainTracking(domain.resendDomainId, { clickTracking: false, openTracking: false })
+    .catch(err => console.warn('[disableResendTracking]', err.message));
+}
 
 // ── Campaign CRUD ─────────────────────────────────────────────────────────────
 
@@ -244,17 +257,22 @@ export const sendCampaign = async (req, res) => {
 
     // Resolve sender address: campaign field → verified client domain → env fallback
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
       if (clientDomain) {
         fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
       }
     }
+    // Disable Resend's own click/open tracking so ProPhone's tracking isn't double-wrapped
+    disableResendDomainTracking(clientDomain);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
@@ -410,17 +428,21 @@ export const sendToContacts = async (req, res) => {
 
     // Resolve from-email
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomainQS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
-      if (clientDomain) {
-        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      if (clientDomainQS) {
+        fromEmail = clientDomainQS.defaultFromEmail || `noreply@${clientDomainQS.domainName}`;
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
       }
     }
+    disableResendDomainTracking(clientDomainQS);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
@@ -613,17 +635,21 @@ export const resendCampaign = async (req, res) => {
       : null;
 
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const clientDomainRS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
-      const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
-      if (clientDomain) {
-        fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      if (clientDomainRS) {
+        fromEmail = clientDomainRS.defaultFromEmail || `noreply@${clientDomainRS.domainName}`;
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
-        fromEmail = anyDomain
-          ? (anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`)
-          : (process.env.RESEND_FROM_EMAIL || '');
+        if (anyDomain) {
+          fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
+          disableResendDomainTracking(anyDomain);
+        } else {
+          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        }
       }
     }
+    disableResendDomainTracking(clientDomainRS);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }

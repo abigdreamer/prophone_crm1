@@ -128,7 +128,7 @@ function LeadActivityPanel({ recipient, contact, loading, onClose }) {
   if (!recipient) return null;
 
   const c = contact ?? recipient.contact;
-  const initials = ((c?.firstName?.[0] || "") + (c?.lastName?.[0] || "")).toUpperCase() || "?";
+  const initials = ((c?.firstName?.[0] || "") + (c?.lastName?.[0] || "")).toUpperCase() || (c?.email?.[0] || "?").toUpperCase();
   const activities = contact?.activities ?? [];
 
   return (
@@ -172,7 +172,7 @@ function LeadActivityPanel({ recipient, contact, loading, onClose }) {
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 2 }}>
-              {c?.firstName} {c?.lastName}
+              {[c?.firstName, c?.lastName].filter(Boolean).join(" ") || c?.email || "—"}
             </div>
             <div style={{
               fontSize: 11, color: T.muted,
@@ -284,7 +284,7 @@ const STAGE_FILTERS = [
   { id: "churned",        label: "Churned",        desc: "Churned" },
 ];
 
-function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId }) {
+function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId, onTotalChange }) {
   const T = useTheme();
   const thStyle = {
     padding: "10px 16px", textAlign: "left",
@@ -303,6 +303,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
       if (search) params.search = search;
       const res = await getCampaignRecipients(campaignId, params);
       setData(res);
+      onTotalChange?.(res.total);
     } catch (err) {
       console.error(err);
     } finally {
@@ -366,11 +367,11 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                       fontSize: 11, fontWeight: 700, color: T.accent,
                       border: isSelected ? "1.5px solid " + T.accent + "60" : "none",
                     }}>
-                      {(r.contact?.firstName?.[0] || "?").toUpperCase()}
+                      {(r.contact?.firstName?.[0] || r.contact?.email?.[0] || "?").toUpperCase()}
                     </div>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: isSelected ? T.accent : T.text }}>
-                        {r.contact?.firstName} {r.contact?.lastName}
+                        {[r.contact?.firstName, r.contact?.lastName].filter(Boolean).join(" ") || r.contact?.email || "—"}
                       </div>
                       {r.contact?.company && (
                         <div style={{ fontSize: 10, color: T.muted }}>{r.contact.company}</div>
@@ -1303,6 +1304,7 @@ export default function CampaignDetailPage() {
   const [showExcelModal,    setShowExcelModal]     = useState(false);
   const [excelSheets,       setExcelSheets]       = useState({ clicked: true, opened: true, delivered: false, sent: false, bounced: true, unsubscribed: true });
   const [excelExporting,    setExcelExporting]    = useState(false);
+  const [filteredTotal,     setFilteredTotal]     = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1737,7 +1739,11 @@ export default function CampaignDetailPage() {
               <span style={{
                 fontSize: 11, fontWeight: 600, color: T.accent,
                 background: T.accent + "18", borderRadius: 10, padding: "1px 9px",
-              }}>{campaign.recipientsCount}</span>
+              }}>
+                {filteredTotal !== null && filteredTotal !== campaign.recipientsCount
+                  ? <>{filteredTotal} <span style={{ opacity: 0.55 }}>of {campaign.recipientsCount}</span></>
+                  : campaign.recipientsCount}
+              </span>
             </div>
 
             <div style={{ flex: 1 }} />
@@ -1830,6 +1836,7 @@ export default function CampaignDetailPage() {
               refreshKey={tableKey}
               onSelectContact={handleSelectRecipient}
               selectedContactId={selectedRecipient?.contact?.id}
+              onTotalChange={setFilteredTotal}
             />
           )}
         </div>
