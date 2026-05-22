@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Users ───────────────────────────────────────────────────────────────────
+
 model User {
   id        String   @id
   name      String
@@ -16,25 +18,30 @@ model User {
   color     String   @default("#6366f1")
   password  String
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt     @map("updated_at")
 
   @@map("users")
 }
 
+// ─── Clients ──────────────────────────────────────────────────────────────────
+
 model Client {
-  id        String    @id
-  name      String
-  domain    String    @default("")
-  color     String    @default("#6366f1")
-  industry  String    @default("")
-  plan      String    @default("Starter")
-  mrr       Int       @default(0)
+  id           String    @id
+  name         String
+  domain       String    @default("")
+  color        String    @default("#6366f1")
+  industry     String    @default("")
+  plan         String    @default("Starter")
+  mrr          Int       @default(0)
   isCanceled   Boolean   @default(false) @map("is_canceled")
   canceledAt   DateTime? @map("canceled_at")
   canceledBy   String    @default("") @map("canceled_by")
   cancelReason String    @default("") @map("cancel_reason")
   restoredAt   DateTime? @map("restored_at")
   restoredBy   String    @default("") @map("restored_by")
-  createdAt      DateTime       @default(now()) @map("created_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt     @map("updated_at")
+
   contacts       Contact[]
   contactGroups  ContactGroup[]
   emailTemplates EmailTemplate[]
@@ -44,16 +51,17 @@ model Client {
   @@map("clients")
 }
 
+// ─── Contacts ─────────────────────────────────────────────────────────────────
+
 model ContactGroup {
   id        String   @id @default(uuid())
   clientId  String?  @map("client_id")
-
   name      String
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt     @map("updated_at")
 
-  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  contacts  Contact[]
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contacts Contact[]
 
   @@unique([clientId, name])
   @@index([clientId])
@@ -61,54 +69,57 @@ model ContactGroup {
 }
 
 model Contact {
-  id             String     @id @default(uuid())
-  pool           String     @default("prospect")
-  clientId       String?    @map("client_id")
-  firstName      String     @map("first_name")
-  lastName       String     @default("") @map("last_name")
-  email          String     @default("")
-  phone          String     @default("")
-  company        String     @default("")
-  title          String     @default("")
-  website        String     @default("")
-  address        String     @default("")
-  city           String     @default("")
-  trucks         Int        @default(0)
-  lifecycleStage String     @default("new") @map("lifecycle_stage")
-  leadScore      Int        @default(0) @map("lead_score")
-  status         String     @default("active")
-  source         String     @default("")
-  campaign       String     @default("")
-  emailsSent     Int        @default(0) @map("emails_sent")
-  emailsOpened   Int        @default(0) @map("emails_opened")
-  emailsClicked  Int        @default(0) @map("emails_clicked")
-  callsMade      Int        @default(0) @map("calls_made")
-  callsAnswered  Int        @default(0) @map("calls_answered")
-  lastActivityAt DateTime   @default(now()) @map("last_activity_at")
-  contractValue  Int        @default(0) @map("contract_value")
-  accountSize    String     @default("1-5") @map("account_size")
-  tags           String[]   @default([])
-  description    String     @default("")
-  socialLinks    Json       @default("{}") @map("social_links")
-  notes          String     @default("")
-  ownedBy        String     @default("") @map("owned_by")
-  addedBy        String     @default("") @map("added_by")
-  isCanceled     Boolean    @default(false) @map("is_canceled")
-  canceledAt     DateTime?  @map("canceled_at")
-  canceledBy     String     @default("") @map("canceled_by")
-  cancelReason   String     @default("") @map("cancel_reason")
-  restoredAt     DateTime?  @map("restored_at")
-  restoredBy     String     @default("") @map("restored_by")
-  isUnsubscribed Boolean    @default(false) @map("is_unsubscribed")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  client         Client?    @relation(fields: [clientId], references: [id])
-  campaignRecipients CampaignRecipient[]
+  id             String    @id @default(uuid())
+  pool           String    @default("prospect")
+  clientId       String?   @map("client_id")
+  contactGroupId String?   @map("contact_group_id")
+  firstName      String    @map("first_name")
+  lastName       String    @default("") @map("last_name")
+  email          String    @default("")
+  phone          String    @default("")
+  company        String    @default("")
+  title          String    @default("")
+  website        String    @default("")
+  address        String    @default("")
+  city           String    @default("")
+  trucks         Int       @default(0)
+  lifecycleStage String    @default("new") @map("lifecycle_stage")
+  leadState      String    @default("prospect") @map("lead_state")
+  leadScore      Int       @default(0) @map("lead_score")
+  status         String    @default("active")
+  source         String    @default("")
+  campaign       String    @default("")
+  emailsSent     Int       @default(0) @map("emails_sent")
+  emailsOpened   Int       @default(0) @map("emails_opened")
+  emailsClicked  Int       @default(0) @map("emails_clicked")
+  callsMade      Int       @default(0) @map("calls_made")
+  callsAnswered  Int       @default(0) @map("calls_answered")
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
+  contractValue  Int       @default(0) @map("contract_value")
+  accountSize    String    @default("1-5") @map("account_size")
+  tags           String[]  @default([])
+  description    String    @default("")
+  socialLinks    Json      @default("{}") @map("social_links")
+  notes          String    @default("")
+  ownedBy        String    @default("") @map("owned_by")
+  addedBy        String    @default("") @map("added_by")
+  isCanceled     Boolean   @default(false) @map("is_canceled")
+  canceledAt     DateTime? @map("canceled_at")
+  canceledBy     String    @default("") @map("canceled_by")
+  cancelReason   String    @default("") @map("cancel_reason")
+  restoredAt     DateTime? @map("restored_at")
+  restoredBy     String    @default("") @map("restored_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt     @map("updated_at")
 
-  contactGroupId String? @map("contact_group_id")
-  contactGroup   ContactGroup? @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
+  client             Client?            @relation(fields: [clientId], references: [id])
+  contactGroup       ContactGroup?      @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
+  campaignRecipients CampaignRecipient[]
 
   @@map("contacts")
 }
+
+// ─── Activity Log ─────────────────────────────────────────────────────────────
 
 model Activity {
   id         String   @id @default(uuid())
@@ -118,109 +129,99 @@ model Activity {
   note       String   @default("")
   by         String   @default("")
   points     Int      @default(0)
-  ts         DateTime @default(now())
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt     @map("updated_at")
 
-  @@index([entityType, entityId, ts(sort: Desc)])
+  @@index([entityType, entityId, createdAt(sort: Desc)])
   @@map("activities")
 }
 
+// ─── Domains ──────────────────────────────────────────────────────────────────
+
 model Domain {
-  id                String    @id @default(uuid())
-  clientId          String?   @map("client_id")
-  domainName        String    @unique @map("domain_name")
-  resendDomainId    String    @map("resend_domain_id")
-  status            String    @default("pending")
-  defaultFromEmail  String    @default("") @map("default_from_email")
-  spfRecord         String    @default("") @map("spf_record")
-  dkimRecord        String    @default("") @map("dkim_record")
-  dmarcRecord       String    @default("") @map("dmarc_record")
-  isCanceled        Boolean   @default(false) @map("is_canceled")
-  canceledAt        DateTime? @map("canceled_at")
-  cancelReason      String    @default("") @map("cancel_reason")
-  restoredAt        DateTime? @map("restored_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  clientId         String?   @map("client_id")
+  domainName       String    @unique @map("domain_name")
+  resendDomainId   String    @map("resend_domain_id")
+  status           String    @default("pending")
+  defaultFromEmail String    @default("") @map("default_from_email")
+  spfRecord        String    @default("") @map("spf_record")
+  dkimRecord       String    @default("") @map("dkim_record")
+  dmarcRecord      String    @default("") @map("dmarc_record")
+  isCanceled       Boolean   @default(false) @map("is_canceled")
+  canceledAt       DateTime? @map("canceled_at")
+  cancelReason     String    @default("") @map("cancel_reason")
+  restoredAt       DateTime? @map("restored_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt     @map("updated_at")
 
   @@map("domains")
 }
 
-model ScoringRule {
-  id          String         @id @default(uuid())
-  name        String
-  description String         @default("")
-  points      Int
-  event       String         @default("link_click")
-  isActive    Boolean        @default(true) @map("is_active")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+// ─── Email Templates & Links ──────────────────────────────────────────────────
 
-  links       TemplateLink[]
+model EmailTemplate {
+  id           String    @id @default(uuid())
+  clientId     String?   @map("client_id")
+  name         String
+  subject      String    @default("")
+  fromEmail    String    @default("") @map("from_email")
+  body         Json      @default("{\"blocks\": [], \"version\": 1}")
+  htmlOutput   String    @default("") @map("html_output")
+  trackedLinks Json      @default("[]") @map("tracked_links")
+  status       String    @default("draft")
+  isCanceled   Boolean   @default(false) @map("is_canceled")
+  canceledAt   DateTime? @map("canceled_at")
+  cancelReason String    @default("") @map("cancel_reason")
+  restoredAt   DateTime? @map("restored_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt     @map("updated_at")
+
+  client    Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  campaigns Campaign[]
+  links     TemplateLink[]
+
+  @@index([clientId])
+  @@map("email_templates")
+}
+
+model ScoringRule {
+  id          String    @id @default(uuid())
+  name        String
+  description String    @default("")
+  points      Int
+  event       String    @default("link_click")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt     @map("updated_at")
+
+  links TemplateLink[]
 
   @@index([isActive])
   @@map("scoring_rules")
 }
 
 model TemplateLink {
-  id            String        @id @default(uuid())
-  templateId    String        @map("template_id")
-  clientId      String?       @map("client_id")
+  id            String    @id @default(uuid())
+  templateId    String    @map("template_id")
+  clientId      String?   @map("client_id")
   url           String
-  label         String        @default("")
-  scoringRuleId String?       @map("scoring_rule_id")
-  clickCount    Int           @default(0) @map("click_count")
-  createdAt     DateTime      @default(now()) @map("created_at")
+  label         String    @default("")
+  scoringRuleId String?   @map("scoring_rule_id")
+  clickCount    Int       @default(0) @map("click_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt     @map("updated_at")
 
-  template      EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  client        Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  scoringRule   ScoringRule?  @relation(fields: [scoringRuleId], references: [id], onDelete: SetNull)
+  template    EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  scoringRule ScoringRule?  @relation(fields: [scoringRuleId], references: [id], onDelete: SetNull)
 
   @@index([templateId])
   @@index([clientId])
   @@map("template_links")
 }
 
-model EmailTemplate {
-  id           String   @id @default(uuid())
-  clientId     String?  @map("client_id")
-
-  name         String
-  subject      String   @default("")
-  body         Json     @default("{\"blocks\": [], \"version\": 1}")
-  htmlOutput   String   @default("") @map("html_output")
-  trackedLinks Json     @default("[]") @map("tracked_links")
-  status       String   @default("draft")
-  isCanceled   Boolean   @default(false) @map("is_canceled")
-  canceledAt   DateTime? @map("canceled_at")
-  cancelReason String    @default("") @map("cancel_reason")
-  restoredAt   DateTime? @map("restored_at")
-
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  client       Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  campaigns    Campaign[]
-  links        TemplateLink[]
-
-  @@index([clientId])
-  @@map("email_templates")
-}
-
-model InteractiveSession {
-  id          String    @id @default(uuid())
-  contactId   String?   @map("contact_id")
-  templateId  String?   @map("template_id")
-  blockId     String    @map("block_id")
-  type        String
-  config      Json      @default("{}")
-  token       String    @unique @default(uuid())
-  response    Json?
-  respondedAt DateTime? @map("responded_at")
-  scoreGiven  Int       @default(0) @map("score_given")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  @@index([contactId])
-  @@index([templateId])
-  @@map("interactive_sessions")
-}
+// ─── Campaigns ────────────────────────────────────────────────────────────────
 
 model Campaign {
   id                String    @id @default(uuid())
@@ -248,7 +249,7 @@ model Campaign {
   cancelReason      String    @default("") @map("cancel_reason")
   restoredAt        DateTime? @map("restored_at")
   createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  updatedAt         DateTime  @updatedAt     @map("updated_at")
 
   client     Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
   template   EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
@@ -265,59 +266,90 @@ model CampaignRecipient {
   abVariant  String?   @map("ab_variant")
   status     String    @default("pending")
   messageId  String?   @map("message_id")
-  sentAt      DateTime? @map("sent_at")
-  deliveredAt DateTime? @map("delivered_at")
-  openedAt    DateTime? @map("opened_at")
-  clickedAt   DateTime? @map("clicked_at")
-  bouncedAt   DateTime? @map("bounced_at")
+  sendId     String?   @map("send_id")
+  sentAt     DateTime? @map("sent_at")
+  openedAt   DateTime? @map("opened_at")
+  clickedAt  DateTime? @map("clicked_at")
+  bouncedAt  DateTime? @map("bounced_at")
   createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt     @map("updated_at")
 
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   events   CampaignRecipientEvent[]
 
   @@unique([campaignId, contactId])
   @@index([campaignId])
+  @@index([sendId])
   @@map("campaign_recipients")
-}
-
-model ClientActivity {
-  id          String   @id @default(uuid())
-  entityType  String   @default("contact") @map("entity_type")
-  entityId    String   @map("entity_id")
-  action      String
-  performedBy String   @default("") @map("performed_by")
-  metadata    Json     @default("{}")
-  ts          DateTime @default(now())
-
-  @@index([entityId, ts(sort: Desc)])
-  @@index([action])
-  @@map("client_activities")
 }
 
 model CampaignRecipientEvent {
   id          String   @id @default(uuid())
   recipientId String   @map("recipient_id")
   campaignId  String   @map("campaign_id")
+  sendId      String?  @map("send_id")
   event       String
-  createdAt  DateTime @default(now()) @map("occurred_at")
   metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt     @map("updated_at")
 
   recipient CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId])
   @@index([campaignId])
+  @@index([sendId])
   @@map("campaign_recipient_events")
 }
 
-model TenantSettings {
+// ─── Interactive Sessions ─────────────────────────────────────────────────────
+
+model InteractiveSession {
+  id          String    @id @default(uuid())
+  contactId   String?   @map("contact_id")
+  templateId  String?   @map("template_id")
+  blockId     String    @map("block_id")
+  type        String
+  config      Json      @default("{}")
+  token       String    @unique @default(uuid())
+  response    Json?
+  respondedAt DateTime? @map("responded_at")
+  scoreGiven  Int       @default(0) @map("score_given")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt     @map("updated_at")
+
+  @@index([contactId])
+  @@index([templateId])
+  @@map("interactive_sessions")
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+model ContactFieldSettings {
   id        String   @id @default(uuid())
   clientId  String?  @map("client_id")
   module    String
   config    Json     @default("{}")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt     @map("updated_at")
 
   @@unique([clientId, module])
   @@index([clientId])
-  @@map("tenant_settings")
+  @@map("contact_field_settings")
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+model PosthogProject {
+  id         String   @id @default(uuid())
+  key        String   @unique
+  label      String
+  domain     String
+  project_id String
+  sort_order Int      @default(0)
+  hidden     Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt     @map("updated_at")
+
+  @@map("posthog_projects")
 }

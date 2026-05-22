@@ -1,6 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { initAnalytics } from "./services/analytics";
+
+initAnalytics();
 import { ThemeProvider } from "./context/ThemeContext";
 import { PoolProvider } from "./context/PoolContext";
 import { ToastProvider } from "./context/ToastContext";

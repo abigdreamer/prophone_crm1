@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Input from "../components/ui/Input";
 import Avatar from "../components/ui/Avatar";
 import { useTheme, useThemeName } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { loginUser } from "../services/api";
+import { identifyUser, analytics } from "../services/analytics";
 import { Check, Eye, ArrowRight } from "lucide-react";
 
 export default function LoginPage({ onLogin }) {
   const T = useTheme();
   const themeName = useThemeName();
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
@@ -22,7 +25,7 @@ export default function LoginPage({ onLogin }) {
 
     try {
       const user = await loginUser(email, password);
-      if (user) onLogin(user);
+      if (user) { identifyUser(user); analytics.signedIn(user); onLogin(user); navigate('/contacts', { replace: true }); }
       else setError("Invalid credentials. Check your email and password.");
     } catch {
       setError("Connection error. Make sure the API server is running.");

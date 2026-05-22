@@ -2,7 +2,7 @@ import prisma from '../lib/prisma.js';
 import { skipDups } from '../lib/db-compat.js';
 import {
   VALID_POOLS, VALID_STAGES, VALID_STATUSES, VALID_ACCOUNT_SIZES,
-  DASHBOARD_GROUPS, ACTIVITY_TYPE, ACTION, ENTITY_TYPE,
+  DASHBOARD_GROUPS, ACTIVITY_TYPE, ENTITY_TYPE,
   STAGE, STATUS, POOL,
   TRACKED_CONTACT_FIELDS,
 } from '../constants/index.js';
@@ -19,7 +19,7 @@ function normaliseDomain(raw) {
 async function fetchActivities(entityId) {
   return prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId },
-    orderBy: { ts: 'asc' },
+    orderBy: { createdAt: 'asc' },
   });
 }
 
@@ -27,7 +27,7 @@ async function fetchActivitiesBulk(entityIds) {
   if (!entityIds.length) return {};
   const rows = await prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId: { in: entityIds } },
-    orderBy: { ts: 'asc' },
+    orderBy: { createdAt: 'asc' },
   });
   const map = {};
   for (const r of rows) {
@@ -53,6 +53,7 @@ function formatContact(c) {
     city: c.city,
     trucks: c.trucks,
     lifecycleStage: c.lifecycleStage,
+    leadState: c.leadState ?? 'prospect',
     leadScore: c.leadScore,
     status: c.status,
     source: c.source,
@@ -79,8 +80,8 @@ function formatContact(c) {
     restoredBy: c.restoredBy,
     createdAt: c.createdAt,
     activities: (c.activities || [])
-      .sort((a, b) => new Date(a.ts) - new Date(b.ts))
-      .map(a => ({ id: a.id, type: a.type, note: a.note, ts: a.ts, by: a.by })),
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .map(a => ({ id: a.id, type: a.type, note: a.note, createdAt: a.createdAt, by: a.by })),
   };
 }
 
@@ -129,11 +130,10 @@ async function getContact(req, res) {
 
 async function createContact(req, res) {
   const b = req.body;
-  if (!b.firstName) return res.status(400).json({ error: 'firstName is required' });
+  if (!b.firstName && !b.company) return res.status(400).json({ error: 'firstName or company is required' });
   if (b.pool && !VALID_POOLS.includes(b.pool)) return res.status(400).json({ error: 'Invalid pool' });
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
   if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
-  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) return res.status(400).json({ error: 'Invalid accountSize' });
 
   const contact = await prisma.contact.create({
     data: {
@@ -149,6 +149,7 @@ async function createContact(req, res) {
       address: (b.address || '').trim(),
       trucks: parseInt(b.trucks) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
+      leadState: b.leadState || 'prospect',
       leadScore: b.leadScore || 10,
       status: b.status || STATUS.ACTIVE,
       source: b.source || '',
@@ -167,20 +168,15 @@ async function createContact(req, res) {
 
   const by = req.user?.name || req.user?.email || 'system';
 
-  if (b.activities && b.activities.length > 0) {
-    await prisma.activity.createMany({
-      data: b.activities.map(a => ({
-        entityType: ENTITY_TYPE.CONTACT,
-        entityId:   contact.id,
-        type: a.type,
-        note: a.note || '',
-        by: a.by || '',
-        ts: a.ts ? new Date(a.ts) : new Date(),
-      })),
-    });
-  }
-
-  logActivity(ENTITY_TYPE.CONTACT, contact.id, ACTION.CREATE, `Contact created: ${contact.firstName} ${contact.lastName}`.trim(), by);
+  await prisma.activity.create({
+    data: {
+      entityType: ENTITY_TYPE.CONTACT,
+      entityId:   contact.id,
+      type: ACTIVITY_TYPE.CONTACT_CREATED,
+      note: `Contact created manually by ${by}`,
+      by,
+    },
+  });
 
   const activities = await fetchActivities(contact.id);
   res.status(201).json(formatContact({ ...contact, activities }));
@@ -200,10 +196,6 @@ async function updateContact(req, res) {
 
   if (b.status && !VALID_STATUSES.includes(b.status)) {
     return res.status(400).json({ error: "Invalid status" });
-  }
-
-  if (b.accountSize && !VALID_ACCOUNT_SIZES.includes(b.accountSize)) {
-    return res.status(400).json({ error: "Invalid accountSize" });
   }
 
   const existing = await prisma.contact.findUnique({ where: { id } });
@@ -235,6 +227,7 @@ async function updateContact(req, res) {
       address: b.address !== undefined ? b.address.trim() : existing.address,
       trucks: b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
       lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
+      leadState: b.leadState ?? existing.leadState,
       leadScore: b.leadScore ?? existing.leadScore,
       status: b.status ?? existing.status,
       source: b.source ?? existing.source,
@@ -267,13 +260,7 @@ async function updateContact(req, res) {
 
   const by = req.user?.name || req.user?.email || "system";
 
-  if (changes.lifecycleStage !== undefined) {
-    logActivity(
-      ENTITY_TYPE.CONTACT, id, ACTIVITY_TYPE.STAGE_CHANGED,
-      `Stage: ${existing.lifecycleStage} → ${b.lifecycleStage}`,
-      by,
-    );
-  } else if (Object.keys(changes).length > 0) {
+  if (Object.keys(changes).length > 0) {
     logActivity(ENTITY_TYPE.CONTACT, id, ACTIVITY_TYPE.LEAD_UPDATED, 'Contact updated', by);
   }
 
@@ -313,7 +300,8 @@ const CHUNK = 500;
 
 async function importContacts(req, res) {
   const { rows, clientId, pool = 'client', duplicateAction = 'ignore' } = req.body;
-  const currentUserName = req.user?.name || 'import';
+  const fullName = req.user?.name || '';
+  const currentUserName = fullName.split(' ')[0] || req.user?.email || 'Unknown';
 
   if (!Array.isArray(rows) || rows.length === 0) {
     return res.status(400).json({ error: 'rows array is required' });
@@ -336,20 +324,27 @@ async function importContacts(req, res) {
   const invalid = [];
   const errors = [];
 
+  // Return the first non-empty token from a delimiter-separated string.
+  // Handles "a@x.com, b@y.com" → "a@x.com" and "555-1234 | 555-5678" → "555-1234".
+  const firstToken = (raw, sep) =>
+    String(raw ?? '').split(sep).map(v => v.trim()).find(Boolean) ?? '';
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     // Coerce every cell to string first — Excel can produce numbers for
     // cells that look numeric (zip codes, company IDs, phone numbers, etc.)
     const s = f => String(r[f] ?? '').trim();
 
-    const email = s('email');
-    const phone = s('phone');
+    // Normalize: if the field contains multiple values, keep only the first one
+    const email = firstToken(s('email'), /[,|]/);
+    const phone = firstToken(s('phone'), /[,|;]/);
 
-    // if (!email && !phone) {
-    //   invalid.push(i);
-    //   errors.push({ row: i + 1, reason: 'Missing both email and phone' });
-    //   continue;
-    // }
+    // Skip records that have no email address — cannot be contacted or de-duplicated
+    if (!email) {
+      invalid.push(i);
+      errors.push({ row: i + 1, reason: 'Missing email address' });
+      continue;
+    }
 
     let firstName = s('firstName') || s('first_name');
     let lastName = s('lastName') || s('last_name');
@@ -440,6 +435,27 @@ async function importContacts(req, res) {
     updated += chunk.length;
   }
 
+  // Log a contact_imported activity for each newly inserted contact
+  if (imported > 0) {
+    const insertedEmails = toInsert.map(d => d.email).filter(Boolean);
+    const newContacts = await prisma.contact.findMany({
+      where: { pool, clientId, email: { in: insertedEmails } },
+      select: { id: true },
+    });
+    if (newContacts.length) {
+      await prisma.activity.createMany({
+        data: newContacts.map(c => ({
+          entityType: ENTITY_TYPE.CONTACT,
+          entityId:   c.id,
+          type:       ACTIVITY_TYPE.CONTACT_IMPORTED,
+          note:       `Contact imported by ${currentUserName}`,
+          by:         currentUserName,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
   const skipped = rows.length - imported - updated - invalid.length;
 
   res.json({
@@ -455,7 +471,7 @@ async function importContacts(req, res) {
 async function getContactClientActivities(req, res) {
   const activities = await prisma.activity.findMany({
     where: { entityType: ENTITY_TYPE.CONTACT, entityId: req.params.id },
-    orderBy: { ts: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
   res.json(activities);
 }

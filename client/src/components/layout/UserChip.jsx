@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronDown, LogOut, User } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function UserChip({ user, onSignOut }) {
   const T = useTheme();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -64,6 +66,23 @@ export default function UserChip({ user, onSignOut }) {
             <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{user.name}</div>
             <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{user.email}</div>
           </div>
+
+          {/* My Profile */}
+          <button
+            onClick={() => { setOpen(false); navigate("/profile"); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              width: "100%", padding: "11px 16px",
+              background: "transparent", border: "none",
+              borderBottom: "1px solid " + T.border,
+              cursor: "pointer", fontFamily: "inherit",
+              color: T.text, fontSize: 13,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = T.surface)}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          >
+            <User size={14} /> My Profile
+          </button>
 
           {/* Sign out */}
           <button

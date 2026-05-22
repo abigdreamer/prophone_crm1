@@ -1,7 +1,9 @@
 import 'dotenv/config';
-// Force IPv4 DNS — prevents timeouts on systems where IPv6 is unavailable
-import { setDefaultResultOrder } from 'dns';
-setDefaultResultOrder('ipv4first');
+import dns from 'dns';
+// Router DNS (192.168.x.x) often fails to resolve external APIs like api.resend.com.
+// Force Node.js to use Google/Cloudflare DNS directly so all outbound SDK calls work.
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1', '1.0.0.1']);
+dns.setDefaultResultOrder('ipv4first');
 import express from 'express';
 import cors from 'cors';
 
@@ -16,12 +18,15 @@ import campaignRoutes      from './routes/campaigns.routes.js';
 import emailRoutes         from './routes/email.routes.js';
 import scoringRulesRoutes  from './routes/scoringRules.routes.js';
 import templateLinksRoutes from './routes/templateLinks.routes.js';
-import settingsRoutes       from './routes/settings.routes.js';
+import settingsRoutes          from './routes/settings.routes.js';
+import reportsRoutes           from './routes/reports.routes.js';
+import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
 import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
+import { updateDomainTracking }                 from './services/domainService.js';
 
 const app = express();
 
@@ -59,6 +64,8 @@ app.use('/api/email',               emailRoutes);
 app.use('/api/scoring-rules',       scoringRulesRoutes);
 app.use('/api/tl',                  templateLinksRoutes);
 app.use('/api/settings',            settingsRoutes);
+app.use('/api/reports',             reportsRoutes);
+app.use('/api/posthog-projects',    posthogProjectsRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
@@ -67,8 +74,37 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
-const PORT   = process.env.PORT || 8080;
-const server = app.listen(PORT, () => console.log(`ProPhone API listening on port ${PORT}`));
+async function disableResendTrackingForAllDomains() {
+  try {
+    const domains = await prisma.domain.findMany({
+      where: { status: 'verified', isCanceled: false },
+    });
+    for (const d of domains) {
+      if (!d.resendDomainId) continue;
+      try {
+        await updateDomainTracking(d.resendDomainId, {
+          clickTracking:     false,
+          openTracking:      false,
+          trackingSubdomain: null,
+        });
+        console.log(`[startup] Disabled Resend tracking for ${d.domainName}`);
+      } catch (err) {
+        console.warn(`[startup] Could not disable Resend tracking for ${d.domainName}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[startup] disableResendTrackingForAllDomains failed:', err.message);
+  }
+}
+
+const PORT   = process.env.PORT || 8040;
+const server = app.listen(PORT, () => {
+  console.log(`ProPhone API listening on port ${PORT}`);
+  // Immediately remove Resend's own click/open tracking from all verified domains.
+  // ProPhone rewrites links with its own tracking pixel — Resend's layer double-wraps them,
+  // and if the Resend tracking subdomain (e.g. track.foxtow.com) has no DNS record the link breaks.
+  disableResendTrackingForAllDomains();
+});
 
 let _bindRetry = false;
 server.on('error', (err) => {

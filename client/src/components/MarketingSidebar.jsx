@@ -11,10 +11,10 @@ import {
 import { useTheme } from "../context/ThemeContext";
 
 const NAV_ITEMS = [
-  { id: "domains", label: "Domain Verification", Icon: Globe },
+  { id: "domains", label: "Domain", Icon: Globe },
   { id: "templates", label: "Templates", Icon: LayoutTemplate },
   { id: "campaigns", label: "Campaigns", Icon: Megaphone },
-  { id: "sequences", label: "Sequences", Icon: GitBranch },
+  // { id: "sequences", label: "Sequences", Icon: GitBranch },
 ];
 
 const W_OPEN = 216;

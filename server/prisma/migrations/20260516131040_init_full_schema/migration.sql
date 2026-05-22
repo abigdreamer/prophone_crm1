@@ -8,6 +8,7 @@ CREATE TABLE "users" (
     "color" TEXT NOT NULL DEFAULT '#6366f1',
     "password" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
@@ -21,7 +22,14 @@ CREATE TABLE "clients" (
     "industry" TEXT NOT NULL DEFAULT '',
     "plan" TEXT NOT NULL DEFAULT 'Starter',
     "mrr" INTEGER NOT NULL DEFAULT 0,
+    "is_canceled" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "canceled_by" TEXT NOT NULL DEFAULT '',
+    "cancel_reason" TEXT NOT NULL DEFAULT '',
+    "restored_at" TIMESTAMP(3),
+    "restored_by" TEXT NOT NULL DEFAULT '',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "clients_pkey" PRIMARY KEY ("id")
 );
@@ -42,6 +50,7 @@ CREATE TABLE "contacts" (
     "id" TEXT NOT NULL,
     "pool" TEXT NOT NULL DEFAULT 'prospect',
     "client_id" TEXT,
+    "contact_group_id" TEXT,
     "first_name" TEXT NOT NULL,
     "last_name" TEXT NOT NULL DEFAULT '',
     "email" TEXT NOT NULL DEFAULT '',
@@ -49,9 +58,11 @@ CREATE TABLE "contacts" (
     "company" TEXT NOT NULL DEFAULT '',
     "title" TEXT NOT NULL DEFAULT '',
     "website" TEXT NOT NULL DEFAULT '',
+    "address" TEXT NOT NULL DEFAULT '',
     "city" TEXT NOT NULL DEFAULT '',
     "trucks" INTEGER NOT NULL DEFAULT 0,
     "lifecycle_stage" TEXT NOT NULL DEFAULT 'new',
+    "lead_state" TEXT NOT NULL DEFAULT 'prospect',
     "lead_score" INTEGER NOT NULL DEFAULT 0,
     "status" TEXT NOT NULL DEFAULT 'active',
     "source" TEXT NOT NULL DEFAULT '',
@@ -65,11 +76,19 @@ CREATE TABLE "contacts" (
     "contract_value" INTEGER NOT NULL DEFAULT 0,
     "account_size" TEXT NOT NULL DEFAULT '1-5',
     "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "description" TEXT NOT NULL DEFAULT '',
+    "social_links" JSONB NOT NULL DEFAULT '{}',
     "notes" TEXT NOT NULL DEFAULT '',
     "owned_by" TEXT NOT NULL DEFAULT '',
     "added_by" TEXT NOT NULL DEFAULT '',
+    "is_canceled" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "canceled_by" TEXT NOT NULL DEFAULT '',
+    "cancel_reason" TEXT NOT NULL DEFAULT '',
+    "restored_at" TIMESTAMP(3),
+    "restored_by" TEXT NOT NULL DEFAULT '',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "contact_group_id" TEXT,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "contacts_pkey" PRIMARY KEY ("id")
 );
@@ -77,11 +96,14 @@ CREATE TABLE "contacts" (
 -- CreateTable
 CREATE TABLE "activities" (
     "id" TEXT NOT NULL,
-    "contact_id" TEXT NOT NULL,
+    "entity_type" TEXT NOT NULL DEFAULT 'contact',
+    "entity_id" TEXT NOT NULL DEFAULT '',
     "type" TEXT NOT NULL,
     "note" TEXT NOT NULL DEFAULT '',
     "by" TEXT NOT NULL DEFAULT '',
-    "ts" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "points" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "activities_pkey" PRIMARY KEY ("id")
 );
@@ -97,7 +119,12 @@ CREATE TABLE "domains" (
     "spf_record" TEXT NOT NULL DEFAULT '',
     "dkim_record" TEXT NOT NULL DEFAULT '',
     "dmarc_record" TEXT NOT NULL DEFAULT '',
+    "is_canceled" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "cancel_reason" TEXT NOT NULL DEFAULT '',
+    "restored_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "domains_pkey" PRIMARY KEY ("id")
 );
@@ -112,6 +139,10 @@ CREATE TABLE "email_templates" (
     "html_output" TEXT NOT NULL DEFAULT '',
     "tracked_links" JSONB NOT NULL DEFAULT '[]',
     "status" TEXT NOT NULL DEFAULT 'draft',
+    "is_canceled" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "cancel_reason" TEXT NOT NULL DEFAULT '',
+    "restored_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -119,20 +150,32 @@ CREATE TABLE "email_templates" (
 );
 
 -- CreateTable
-CREATE TABLE "interactive_sessions" (
+CREATE TABLE "scoring_rules" (
     "id" TEXT NOT NULL,
-    "contact_id" TEXT,
-    "template_id" TEXT,
-    "block_id" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
-    "config" JSONB NOT NULL DEFAULT '{}',
-    "token" TEXT NOT NULL,
-    "response" JSONB,
-    "responded_at" TIMESTAMP(3),
-    "score_given" INTEGER NOT NULL DEFAULT 0,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
+    "points" INTEGER NOT NULL,
+    "event" TEXT NOT NULL DEFAULT 'link_click',
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "interactive_sessions_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "scoring_rules_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "template_links" (
+    "id" TEXT NOT NULL,
+    "template_id" TEXT NOT NULL,
+    "client_id" TEXT,
+    "url" TEXT NOT NULL,
+    "label" TEXT NOT NULL DEFAULT '',
+    "scoring_rule_id" TEXT,
+    "click_count" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "template_links_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -157,6 +200,10 @@ CREATE TABLE "campaigns" (
     "clicked_count" INTEGER NOT NULL DEFAULT 0,
     "bounced_count" INTEGER NOT NULL DEFAULT 0,
     "unsubscribed_count" INTEGER NOT NULL DEFAULT 0,
+    "is_canceled" BOOLEAN NOT NULL DEFAULT false,
+    "canceled_at" TIMESTAMP(3),
+    "cancel_reason" TEXT NOT NULL DEFAULT '',
+    "restored_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -176,6 +223,7 @@ CREATE TABLE "campaign_recipients" (
     "clicked_at" TIMESTAMP(3),
     "bounced_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "campaign_recipients_pkey" PRIMARY KEY ("id")
 );
@@ -186,10 +234,56 @@ CREATE TABLE "campaign_recipient_events" (
     "recipient_id" TEXT NOT NULL,
     "campaign_id" TEXT NOT NULL,
     "event" TEXT NOT NULL,
-    "occurred_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "metadata" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "campaign_recipient_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "interactive_sessions" (
+    "id" TEXT NOT NULL,
+    "contact_id" TEXT,
+    "template_id" TEXT,
+    "block_id" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "config" JSONB NOT NULL DEFAULT '{}',
+    "token" TEXT NOT NULL,
+    "response" JSONB,
+    "responded_at" TIMESTAMP(3),
+    "score_given" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "interactive_sessions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "contact_field_settings" (
+    "id" TEXT NOT NULL,
+    "client_id" TEXT,
+    "module" TEXT NOT NULL,
+    "config" JSONB NOT NULL DEFAULT '{}',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "contact_field_settings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "posthog_projects" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "domain" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "sort_order" INTEGER NOT NULL DEFAULT 0,
+    "hidden" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "posthog_projects_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -202,19 +296,22 @@ CREATE INDEX "contact_groups_client_id_idx" ON "contact_groups"("client_id");
 CREATE UNIQUE INDEX "contact_groups_client_id_name_key" ON "contact_groups"("client_id", "name");
 
 -- CreateIndex
+CREATE INDEX "activities_entity_type_entity_id_created_at_idx" ON "activities"("entity_type", "entity_id", "created_at" DESC);
+
+-- CreateIndex
 CREATE UNIQUE INDEX "domains_domain_name_key" ON "domains"("domain_name");
 
 -- CreateIndex
 CREATE INDEX "email_templates_client_id_idx" ON "email_templates"("client_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "interactive_sessions_token_key" ON "interactive_sessions"("token");
+CREATE INDEX "scoring_rules_is_active_idx" ON "scoring_rules"("is_active");
 
 -- CreateIndex
-CREATE INDEX "interactive_sessions_contact_id_idx" ON "interactive_sessions"("contact_id");
+CREATE INDEX "template_links_template_id_idx" ON "template_links"("template_id");
 
 -- CreateIndex
-CREATE INDEX "interactive_sessions_template_id_idx" ON "interactive_sessions"("template_id");
+CREATE INDEX "template_links_client_id_idx" ON "template_links"("client_id");
 
 -- CreateIndex
 CREATE INDEX "campaigns_client_id_idx" ON "campaigns"("client_id");
@@ -231,6 +328,24 @@ CREATE INDEX "campaign_recipient_events_recipient_id_idx" ON "campaign_recipient
 -- CreateIndex
 CREATE INDEX "campaign_recipient_events_campaign_id_idx" ON "campaign_recipient_events"("campaign_id");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "interactive_sessions_token_key" ON "interactive_sessions"("token");
+
+-- CreateIndex
+CREATE INDEX "interactive_sessions_contact_id_idx" ON "interactive_sessions"("contact_id");
+
+-- CreateIndex
+CREATE INDEX "interactive_sessions_template_id_idx" ON "interactive_sessions"("template_id");
+
+-- CreateIndex
+CREATE INDEX "contact_field_settings_client_id_idx" ON "contact_field_settings"("client_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "contact_field_settings_client_id_module_key" ON "contact_field_settings"("client_id", "module");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "posthog_projects_key_key" ON "posthog_projects"("key");
+
 -- AddForeignKey
 ALTER TABLE "contact_groups" ADD CONSTRAINT "contact_groups_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -241,10 +356,16 @@ ALTER TABLE "contacts" ADD CONSTRAINT "contacts_client_id_fkey" FOREIGN KEY ("cl
 ALTER TABLE "contacts" ADD CONSTRAINT "contacts_contact_group_id_fkey" FOREIGN KEY ("contact_group_id") REFERENCES "contact_groups"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "activities" ADD CONSTRAINT "activities_contact_id_fkey" FOREIGN KEY ("contact_id") REFERENCES "contacts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "email_templates" ADD CONSTRAINT "email_templates_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "email_templates" ADD CONSTRAINT "email_templates_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "template_links" ADD CONSTRAINT "template_links_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES "email_templates"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "template_links" ADD CONSTRAINT "template_links_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "template_links" ADD CONSTRAINT "template_links_scoring_rule_id_fkey" FOREIGN KEY ("scoring_rule_id") REFERENCES "scoring_rules"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "campaigns" ADD CONSTRAINT "campaigns_client_id_fkey" FOREIGN KEY ("client_id") REFERENCES "clients"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -1,117 +1,162 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { useTheme, useThemeName, useSetTheme } from "../../context/ThemeContext";
-import { usePool } from "../../context/PoolContext";
-import { useClientById } from "../../context/ClientsContext";
 
 const THEMES = [
-  { id: "dark",  label: "Default" },
-  { id: "light", label: "Light"   },
-  { id: "polar", label: "Polar"   },
+  { id: "dark", label: "Default", color: "#6366f1" },
+  { id: "light", label: "Light", color: "#4f46e5" },
+  { id: "midnight", label: "Midnight", color: "#3b82f6" },
+  { id: "dracula", label: "Dracula", color: "#bd93f9" },
+  { id: "nord", label: "Nord", color: "#88c0d0" },
+  { id: "adapta", label: "Adapta", color: "#26c6da" },
+  { id: "monokai", label: "Monokai", color: "#a6e22e" },
+  { id: "rosepine", label: "Rosé Pine", color: "#eb6f92" },
+  { id: "slack", label: "Slack", color: "#ecb22e" },
+  { id: "foxtow", label: "Foxtow", color: "#d1130d" },
+  { id: "macintosh", label: "Macintosh", color: "#0000aa" },
+  { id: "classic", label: "Classic", color: "#0054e3" },
 ];
 
 export default function ThemeSwitcher() {
-  const T         = useTheme();
+  const T = useTheme();
   const themeName = useThemeName();
-  const setTheme  = useSetTheme();
-  const { pool, clientId } = usePool(); 
-  
+  const setTheme = useSetTheme();
+
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const current = THEMES.find(t => t.id === themeName) || THEMES[0];
-
-  const client = useClientById(clientId);
-  const activeCol = pool === "prospect" ? T.accent : (client?.color || T.accent);
+  const currentTheme = THEMES.find((t) => t.id === themeName) || THEMES[0];
 
   return (
-    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+    <div ref={ref} style={{ position: "relative" }}>
       {/* Trigger */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen(!open)}
         style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "4px 10px 4px 8px",
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid " + T.navBorder,
-          borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          height: 32,
+          padding: "0 10px",
+          borderRadius: 8,
+          border: `1px solid ${T.navBorder}`,
+          background: T.navBg,
           color: T.navText,
-          transition: "background 0.15s",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 600,
         }}
-        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
       >
-        {/* Status dot uses client/pool active color */}
-        <span style={{
-          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-          background: activeCol,
-          boxShadow: `0 0 8px ${activeCol}60`
-        }} />
-        
-        <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{current.label}</span>
+        <div
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: currentTheme.color,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Check size={10} color="white" strokeWidth={3} />
+        </div>
+
+        <span>{currentTheme.label}</span>
+
         <ChevronDown
-          size={11}
+          size={14}
           style={{
             opacity: 0.6,
-            transform: open ? "rotate(180deg)" : "none",
-            transition: "transform 0.15s",
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "0.15s",
           }}
         />
       </button>
 
-      {/* Dropdown - Uses Nav Colors to avoid white blocks */}
+      {/* Dropdown */}
       {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 6px)", right: 0,
-          background: T.navBg, 
-          border: "1px solid " + T.navBorder,
-          borderRadius: 10, minWidth: 150, zIndex: 600,
-          boxShadow: "0 10px 25px rgba(0,0,0,0.4)", 
-          padding: "5px 0",
-          overflow: "hidden",
-        }}>
-          <div style={{
-            fontSize: 9, fontWeight: 700, color: T.navMuted,
-            textTransform: "uppercase", letterSpacing: "0.08em",
-            padding: "8px 14px 4px",
-          }}>
-            Theme
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            width: 180,
+            padding: "8px 0", // Added vertical padding for the "THEME" header space
+            borderRadius: 12,
+            background: T.navBg,
+            border: `1px solid ${T.navBorder}`,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+            zIndex: 500,
+          }}
+        >
+          <div
+            style={{
+              padding: "4px 14px 8px",
+              fontSize: 10,
+              fontWeight: 800,
+              color: T.navText,
+              opacity: 0.4,
+              letterSpacing: "0.05em",
+            }}
+          >
+            THEME
           </div>
-          {THEMES.map(theme => {
-            const isActive = theme.id === themeName;
+
+          {THEMES.map((theme) => {
+            const active = theme.id === themeName;
+
             return (
               <button
                 key={theme.id}
-                onClick={() => { setTheme(theme.id); setOpen(false); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  width: "100%", padding: "9px 14px",
-                  background: isActive ? "rgba(255,255,255,0.05)" : "transparent", 
-                  border: "none",
-                  cursor: "pointer", fontFamily: "inherit",
-                  color: isActive ? activeCol : T.navText,
-                  fontSize: 12, fontWeight: isActive ? 600 : 400,
-                  textAlign: "left",
+                onClick={() => {
+                  setTheme(theme.id);
+                  setOpen(false);
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                style={{
+                  width: "100%",
+                  height: 40,
+                  padding: "0 14px",
+                  border: "none",
+                  background: active ? "rgba(255,255,255,0.05)" : "transparent",
+                  color: active ? theme.color : T.navText,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 500,
+                  transition: "background 0.2s",
+                }}
               >
-                {/* Circle indicator uses client/pool active color when selected */}
-                <span style={{
-                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: isActive ? activeCol : "transparent",
-                  border: isActive ? "none" : "1.5px solid " + T.navBorder,
-                }}>
-                  {isActive && <Check size={10} color="#fff" strokeWidth={4} />}
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    border: active ? "none" : `2px solid ${T.navText}33`,
+                    background: active ? theme.color : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  {active && <Check size={12} color="white" strokeWidth={3} />}
+                </div>
+
+                <span style={{ flex: 1, textAlign: "left" }}>
+                  {theme.label}
                 </span>
-                {theme.label}
               </button>
             );
           })}
