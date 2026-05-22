@@ -26,6 +26,7 @@ import { handleWebhook }                         from './controllers/domains.con
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
 import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
+import { updateDomainTracking }                 from './services/domainService.js';
 
 const app = express();
 
@@ -67,8 +68,37 @@ app.use((err, req, res, _next) => {
   res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
+async function disableResendTrackingForAllDomains() {
+  try {
+    const domains = await prisma.domain.findMany({
+      where: { status: 'verified', isCanceled: false },
+    });
+    for (const d of domains) {
+      if (!d.resendDomainId) continue;
+      try {
+        await updateDomainTracking(d.resendDomainId, {
+          clickTracking:     false,
+          openTracking:      false,
+          trackingSubdomain: null,
+        });
+        console.log(`[startup] Disabled Resend tracking for ${d.domainName}`);
+      } catch (err) {
+        console.warn(`[startup] Could not disable Resend tracking for ${d.domainName}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[startup] disableResendTrackingForAllDomains failed:', err.message);
+  }
+}
+
 const PORT   = process.env.PORT || 8040;
-const server = app.listen(PORT, () => console.log(`ProPhone API listening on port ${PORT}`));
+const server = app.listen(PORT, () => {
+  console.log(`ProPhone API listening on port ${PORT}`);
+  // Immediately remove Resend's own click/open tracking from all verified domains.
+  // ProPhone rewrites links with its own tracking pixel — Resend's layer double-wraps them,
+  // and if the Resend tracking subdomain (e.g. track.foxtow.com) has no DNS record the link breaks.
+  disableResendTrackingForAllDomains();
+});
 
 let _bindRetry = false;
 server.on('error', (err) => {

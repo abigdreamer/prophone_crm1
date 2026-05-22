@@ -25,11 +25,14 @@ async function disableResendDomainTracking(domain) {
   if (!domain?.resendDomainId) return;
   if (_resendTrackingDisabled.has(domain.resendDomainId)) return;
   try {
-    await updateDomainTracking(domain.resendDomainId, { clickTracking: false, openTracking: false });
-    _resendTrackingDisabled.add(domain.resendDomainId); // only cache after confirmed success
+    await updateDomainTracking(domain.resendDomainId, {
+      clickTracking:    false,
+      openTracking:     false,
+      trackingSubdomain: null, // removes track.xxx.com from Resend so it stops wrapping hrefs
+    });
+    _resendTrackingDisabled.add(domain.resendDomainId);
   } catch (err) {
     console.warn('[disableResendTracking]', err.message);
-    // don't cache on failure — will retry on next send
   }
 }
 
@@ -822,10 +825,11 @@ export const exportCampaign = async (req, res) => {
     const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    const [eventStats, { rows: allRecipients }] = await Promise.all([
+    const [eventStats, recipientsResult] = await Promise.all([
       repo.getStatisticsFromEvents(campaignId),
-      repo.findRecipients(campaignId, { limit: 10000 }),
+      format === 'pdf' ? Promise.resolve({ rows: [] }) : repo.findRecipients(campaignId, { limit: 10000 }),
     ]);
+    const allRecipients = recipientsResult.rows;
 
     const sent      = eventStats.sent         || campaign.sentCount         || 0;
     const delivered = eventStats.delivered    || campaign.deliveredCount    || 0;
@@ -846,117 +850,101 @@ export const exportCampaign = async (req, res) => {
 
     // ── PDF ──────────────────────────────────────────────────────────────────
     if (format === 'pdf') {
-      const doc = new PDFDocument({ margin: 50, size: 'LETTER', bufferPages: true });
+      const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
       doc.pipe(res);
 
-      // Header bar
-      doc.rect(0, 0, 612, 72).fillColor('#0f0f13').fill();
-      doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('ProPhone', 50, 20);
-      doc.fillColor('#a855f7').fontSize(9).font('Helvetica').text('CRM — Campaign Report', 50, 46);
-      doc.fillColor('#cccccc').fontSize(13).font('Helvetica-Bold')
-        .text(campaign.name, 200, 28, { width: 362, align: 'right' });
+      // ── Dark header bar ──
+      doc.rect(0, 0, 612, 80).fillColor('#0f0f13').fill();
+      doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ProPhone', 50, 22);
+      doc.fillColor('#a855f7').fontSize(8).font('Helvetica')
+        .text('CRM  ·  Campaign Report', 50, 50);
+      doc.fillColor('#cccccc').fontSize(11).font('Helvetica-Bold')
+        .text(campaign.name, 200, 30, { width: 362, align: 'right' });
 
-      let y = 90;
+      let y = 104;
 
-      // Campaign metadata
-      const metaRows = [
+      // ── Campaign details ──
+      const details = [
         ['Subject',   campaign.subject || '—'],
-        ['From',      (campaign.fromName ? campaign.fromName + ' ' : '') + `<${campaign.fromEmail || '—'}>`],
+        ['From',      [(campaign.fromName || ''), campaign.fromEmail ? `<${campaign.fromEmail}>` : ''].filter(Boolean).join(' ') || '—'],
         ['Template',  campaign.template?.name || '—'],
         ['Status',    (campaign.status || '—').toUpperCase()],
-        ['Sent At',   campaign.sentAt     ? new Date(campaign.sentAt).toLocaleString()     : '—'],
+        ['Sent',      campaign.sentAt ? new Date(campaign.sentAt).toLocaleString() : '—'],
         ['Completed', campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : '—'],
       ];
-      for (const [label, value] of metaRows) {
-        doc.fillColor('#888888').fontSize(9).font('Helvetica').text(label + ':', 50, y, { width: 90 });
-        doc.fillColor('#222222').fontSize(9).font('Helvetica').text(value, 145, y, { width: 417 });
-        y += 17;
+      for (const [label, val] of details) {
+        doc.fillColor('#999999').fontSize(9).font('Helvetica').text(label, 50, y, { width: 85 });
+        doc.fillColor('#1a1a1a').fontSize(9).font('Helvetica').text(val,   140, y, { width: 422 });
+        y += 18;
       }
 
-      y += 8;
-      doc.moveTo(50, y).lineTo(562, y).strokeColor('#dddddd').lineWidth(0.5).stroke();
+      y += 12;
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      y += 22;
+
+      // ── Section title ──
+      doc.fillColor('#1a1a1a').fontSize(13).font('Helvetica-Bold').text('Campaign Performance', 50, y);
+      y += 20;
+
+      // ── 6 stat boxes in 2 rows × 3 cols ──
+      const BOX_W = 162, BOX_H = 72, GAP = 5;
+      const statBoxes = [
+        { label: 'Recipients', value: campaign.recipientsCount || 0, rate: null,                    accent: '#6b7280' },
+        { label: 'Sent',       value: stats.sent,                    rate: null,                    accent: '#3b82f6' },
+        { label: 'Delivered',  value: stats.delivered,               rate: null,                    accent: '#14b8a6' },
+        { label: 'Opened',     value: stats.opened,                  rate: `${stats.openRate}%`,    accent: '#22c55e' },
+        { label: 'Clicked',    value: stats.clicked,                 rate: `${stats.clickRate}%`,   accent: '#a855f7' },
+        { label: 'Bounced',    value: stats.bounced,                 rate: `${stats.bounceRate}%`,  accent: '#ef4444' },
+      ];
+      statBoxes.forEach((s, i) => {
+        const col = i % 3, row = Math.floor(i / 3);
+        const bx = 50 + col * (BOX_W + GAP);
+        const by = y + row * (BOX_H + GAP);
+        // box background + left accent bar
+        doc.rect(bx, by, BOX_W, BOX_H).fillColor('#f8f8f8').fill();
+        doc.rect(bx, by, 3, BOX_H).fillColor(s.accent).fill();
+        doc.rect(bx, by, BOX_W, BOX_H).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+        // label
+        doc.fillColor('#888888').fontSize(8).font('Helvetica')
+          .text(s.label.toUpperCase(), bx + 14, by + 12, { width: BOX_W - 20, characterSpacing: 0.5 });
+        // big number
+        doc.fillColor('#111111').fontSize(26).font('Helvetica-Bold')
+          .text(String(s.value), bx + 14, by + 26);
+        // rate badge
+        if (s.rate) {
+          doc.fillColor(s.accent).fontSize(9).font('Helvetica-Bold')
+            .text(s.rate, bx + BOX_W - 42, by + 12, { width: 36, align: 'right' });
+        }
+      });
+      y += 2 * (BOX_H + GAP) + 20;
+
+      // ── Rate summary row ──
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
       y += 18;
 
-      // Stats grid (3 columns)
-      doc.fillColor('#222222').fontSize(12).font('Helvetica-Bold').text('Campaign Summary', 50, y);
-      y += 16;
-
-      const statBoxes = [
-        { label: 'Sent',         value: stats.sent,          rate: null },
-        { label: 'Delivered',    value: stats.delivered,     rate: null },
-        { label: 'Opened',       value: stats.opened,        rate: `${stats.openRate}%`   },
-        { label: 'Clicked',      value: stats.clicked,       rate: `${stats.clickRate}%`  },
-        { label: 'Bounced',      value: stats.bounced,       rate: `${stats.bounceRate}%` },
-        { label: 'Unsubscribed', value: stats.unsubscribed,  rate: null },
+      const rates = [
+        { label: 'Open Rate',      value: `${stats.openRate}%`   },
+        { label: 'Click Rate',     value: `${stats.clickRate}%`  },
+        { label: 'Bounce Rate',    value: `${stats.bounceRate}%` },
+        { label: 'Unsubscribed',   value: String(stats.unsubscribed) },
+        { label: 'Delivery Rate',  value: `${+(stats.delivered / (stats.sent || 1) * 100).toFixed(1)}%` },
       ];
-      const COLS = 3, BOX_W = 162, BOX_H = 54, GAP_X = 5, GAP_Y = 8;
-      statBoxes.forEach((s, i) => {
-        const col = i % COLS, row = Math.floor(i / COLS);
-        const bx = 50 + col * (BOX_W + GAP_X);
-        const by = y + row * (BOX_H + GAP_Y);
-        doc.rect(bx, by, BOX_W, BOX_H).fillColor('#f5f5f5').fill();
-        doc.rect(bx, by, BOX_W, BOX_H).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
-        doc.fillColor('#888888').fontSize(7).font('Helvetica').text(s.label.toUpperCase(), bx + 10, by + 9);
-        doc.fillColor('#111111').fontSize(18).font('Helvetica-Bold').text(String(s.value), bx + 10, by + 20);
-        if (s.rate) doc.fillColor('#666666').fontSize(8).font('Helvetica').text(s.rate, bx + BOX_W - 38, by + 9);
+      const rateW = 512 / rates.length;
+      rates.forEach((r, i) => {
+        const rx = 50 + i * rateW;
+        doc.fillColor('#999999').fontSize(7.5).font('Helvetica')
+          .text(r.label.toUpperCase(), rx, y, { width: rateW, align: 'center' });
+        doc.fillColor('#1a1a1a').fontSize(14).font('Helvetica-Bold')
+          .text(r.value, rx, y + 12, { width: rateW, align: 'center' });
       });
-      y += Math.ceil(statBoxes.length / COLS) * (BOX_H + GAP_Y) + 12;
+      y += 44;
 
-      doc.moveTo(50, y).lineTo(562, y).strokeColor('#dddddd').lineWidth(0.5).stroke();
-      y += 16;
-
-      // Recipients table
-      doc.fillColor('#222222').fontSize(12).font('Helvetica-Bold')
-        .text(`Recipients (${allRecipients.length})`, 50, y);
-      y += 16;
-
-      const TABLE_COLS = [
-        { label: 'NAME',   x: 50,  w: 112 },
-        { label: 'EMAIL',  x: 167, w: 178 },
-        { label: 'STATUS', x: 350, w: 68  },
-        { label: 'STAGE',  x: 423, w: 68  },
-        { label: 'OPENED', x: 496, w: 66  },
-      ];
-
-      const drawTableHeader = (startY) => {
-        doc.rect(50, startY, 512, 16).fillColor('#2d2d2d').fill();
-        doc.fillColor('#ffffff').fontSize(7).font('Helvetica-Bold');
-        for (const c of TABLE_COLS) doc.text(c.label, c.x + 4, startY + 5, { width: c.w - 4 });
-        return startY + 18;
-      };
-
-      y = drawTableHeader(y);
-      doc.fontSize(7.5).font('Helvetica');
-      let rowIdx = 0;
-      for (const r of allRecipients) {
-        if (y > 720) { doc.addPage(); y = drawTableHeader(50); doc.fontSize(7.5).font('Helvetica'); }
-        if (rowIdx % 2 === 0) doc.rect(50, y - 1, 512, 13).fillColor('#f9f9f9').fill();
-        doc.fillColor('#222222');
-        const name    = (`${r.contact?.firstName || ''} ${r.contact?.lastName || ''}`.trim() || '—').slice(0, 19);
-        const email   = (r.contact?.email || '—').slice(0, 28);
-        const status  = (r.status || '—');
-        const stage   = (r.contact?.lifecycleStage || '—').slice(0, 11);
-        const opened  = r.openedAt ? new Date(r.openedAt).toLocaleDateString() : '—';
-        doc.text(name,   54,  y + 2, { width: 108 });
-        doc.text(email,  171, y + 2, { width: 174 });
-        doc.text(status, 354, y + 2, { width: 64 });
-        doc.text(stage,  427, y + 2, { width: 64 });
-        doc.text(opened, 500, y + 2, { width: 62 });
-        y += 13;
-        rowIdx++;
-      }
-
-      // Footer on every page
-      const range = doc.bufferedPageRange();
-      const generatedAt = new Date().toLocaleString();
-      for (let p = 0; p < range.count; p++) {
-        doc.switchToPage(range.start + p);
-        doc.fillColor('#aaaaaa').fontSize(7).font('Helvetica')
-          .text(`ProPhone CRM  ·  Generated ${generatedAt}  ·  Page ${p + 1} of ${range.count}`,
-            50, 770, { width: 512, align: 'center' });
-      }
+      // ── Footer ──
+      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+      doc.fillColor('#bbbbbb').fontSize(7.5).font('Helvetica')
+        .text(`ProPhone CRM  ·  Generated ${new Date().toLocaleString()}`, 50, y + 10, { width: 512, align: 'center' });
 
       doc.end();
       return;
