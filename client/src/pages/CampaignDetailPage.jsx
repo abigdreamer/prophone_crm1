@@ -292,14 +292,19 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     letterSpacing: "0.07em", textTransform: "uppercase",
     borderBottom: "1px solid " + T.border, userSelect: "none",
   };
-  const [data,    setData]    = useState({ rows: [], total: 0, page: 1, limit: 50 });
+  const [data,    setData]    = useState({ rows: [], total: 0 });
   const [loading, setLoading] = useState(true);
+  const [page,    setPage]    = useState(1);
+  const limit = 50;
 
-  const load = useCallback(async () => {
+  // Reset to page 1 when filter or search changes
+  useEffect(() => { setPage(1); }, [statusFilter, search, refreshKey]);
+
+  const load = useCallback(async (currentPage) => {
     setLoading(true);
     try {
-      const params = {};
-      if (statusFilter && statusFilter !== "all") params.status = statusFilter;
+      const params = { page: currentPage, limit };
+      if (statusFilter && statusFilter !== "all") params.event = statusFilter;
       if (search) params.search = search;
       const res = await getCampaignRecipients(campaignId, params);
       setData(res);
@@ -311,7 +316,9 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     }
   }, [campaignId, statusFilter, search, refreshKey]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(page); }, [load, page]);
+
+  const totalPages = Math.max(1, Math.ceil(data.total / limit));
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "24px 20px" }}>
@@ -321,14 +328,47 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
 
   if (!data.rows.length) return (
     <div style={{ textAlign: "center", padding: "40px 20px", color: T.muted, fontSize: 13 }}>
-      {statusFilter !== "all" ? `No recipients with status "${statusFilter}"` : "No recipients match your search."}
+      {statusFilter && statusFilter !== "all" ? `No recipients with status "${statusFilter}"` : "No recipients match your search."}
     </div>
   );
 
+  const start = (page - 1) * limit + 1;
+  const end   = Math.min(page * limit, data.total);
+
   return (
     <>
-      <div style={{ padding: "10px 16px 4px", fontSize: 11, color: T.muted }}>
-        Showing {data.rows.length} of {data.total}
+      <div style={{
+        padding: "10px 16px 6px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <span style={{ fontSize: 11, color: T.muted }}>
+          Showing {start}–{end} of {data.total}
+        </span>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{
+                background: "none", border: "1px solid " + T.border, borderRadius: 6,
+                color: page === 1 ? T.muted : T.text, cursor: page === 1 ? "not-allowed" : "pointer",
+                padding: "3px 10px", fontSize: 12, fontFamily: "inherit",
+              }}
+            >← Prev</button>
+            <span style={{ fontSize: 11, color: T.muted }}>
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              style={{
+                background: "none", border: "1px solid " + T.border, borderRadius: 6,
+                color: page === totalPages ? T.muted : T.text, cursor: page === totalPages ? "not-allowed" : "pointer",
+                padding: "3px 10px", fontSize: 12, fontFamily: "inherit",
+              }}
+            >Next →</button>
+          </div>
+        )}
       </div>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -409,6 +449,35 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
           })}
         </tbody>
       </table>
+      {totalPages > 1 && (
+        <div style={{
+          padding: "10px 16px",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          borderTop: "1px solid " + T.border,
+        }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{
+              background: "none", border: "1px solid " + T.border, borderRadius: 6,
+              color: page === 1 ? T.muted : T.text, cursor: page === 1 ? "not-allowed" : "pointer",
+              padding: "4px 14px", fontSize: 12, fontFamily: "inherit",
+            }}
+          >← Prev</button>
+          <span style={{ fontSize: 12, color: T.muted }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{
+              background: "none", border: "1px solid " + T.border, borderRadius: 6,
+              color: page === totalPages ? T.muted : T.text, cursor: page === totalPages ? "not-allowed" : "pointer",
+              padding: "4px 14px", fontSize: 12, fontFamily: "inherit",
+            }}
+          >Next →</button>
+        </div>
+      )}
     </>
   );
 }

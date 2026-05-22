@@ -49,9 +49,17 @@ export async function restoreCampaign(id) {
   });
 }
 
-export async function findRecipients(campaignId, { status, abVariant, search, skip = 0, limit = 50 } = {}) {
+export async function findRecipients(campaignId, { status, event, abVariant, search, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
-  if (status)    where.status    = status;
+
+  if (event) {
+    // Event-based filter: return all recipients who ever had this event (e.g. 'opened'),
+    // regardless of their current status. This matches the stat-card counts from getStatisticsFromEvents.
+    where.events = { some: { event } };
+  } else if (status) {
+    where.status = status;
+  }
+
   if (abVariant) where.abVariant = abVariant;
   if (search) {
     where.contact = {
