@@ -13,7 +13,7 @@ import {
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
   cancelCampaign, restoreCampaign, duplicateCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
-  exportCampaignUrl,
+  exportCampaignBlob,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
@@ -1299,6 +1299,10 @@ export default function CampaignDetailPage() {
   const [selectedRecipient, setSelectedRecipient] = useState(null);
   const [contactDetail,     setContactDetail]     = useState(null);
   const [contactLoading,    setContactLoading]    = useState(false);
+  const [pdfExporting,      setPdfExporting]      = useState(false);
+  const [showExcelModal,    setShowExcelModal]     = useState(false);
+  const [excelSheets,       setExcelSheets]       = useState({ clicked: true, opened: true, delivered: false, sent: false, bounced: true, unsubscribed: true });
+  const [excelExporting,    setExcelExporting]    = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1616,30 +1620,35 @@ export default function CampaignDetailPage() {
               <Send size={12} /> Resend Campaign
             </button>
           )}
-          <a
-            href={exportCampaignUrl(campaign.id, 'excel')}
-            download
+          <button
+            onClick={() => setShowExcelModal(true)}
             style={{
               display: "flex", alignItems: "center", gap: 5,
               padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
               background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
-              fontFamily: "inherit", textDecoration: "none",
+              fontFamily: "inherit",
             }}
           >
             <Download size={13} /> Excel
-          </a>
-          <a
-            href={exportCampaignUrl(campaign.id, 'pdf')}
-            download
+          </button>
+          <button
+            disabled={pdfExporting}
+            onClick={async () => {
+              setPdfExporting(true);
+              try { await exportCampaignBlob(campaign.id, 'pdf'); }
+              catch { /* ignore */ }
+              finally { setPdfExporting(false); }
+            }}
             style={{
               display: "flex", alignItems: "center", gap: 5,
               padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
-              fontFamily: "inherit", textDecoration: "none",
+              background: T.surface, color: pdfExporting ? T.muted : T.dim,
+              fontSize: 12, cursor: pdfExporting ? "not-allowed" : "pointer",
+              fontFamily: "inherit", opacity: pdfExporting ? 0.6 : 1,
             }}
           >
-            <Download size={13} /> PDF
-          </a>
+            <Download size={13} /> {pdfExporting ? "Generating…" : "PDF"}
+          </button>
           <button
             onClick={load}
             style={{
@@ -1884,6 +1893,131 @@ export default function CampaignDetailPage() {
           loading={cancelActing}
         />
       )}
+
+      {/* Excel Export Modal */}
+      {showExcelModal && (
+        <ExcelExportModal
+          campaign={campaign}
+          sheets={excelSheets}
+          setSheets={setExcelSheets}
+          exporting={excelExporting}
+          onClose={() => setShowExcelModal(false)}
+          onExport={async () => {
+            setExcelExporting(true);
+            try {
+              const selected = Object.entries(excelSheets)
+                .filter(([, v]) => v)
+                .map(([k]) => k);
+              await exportCampaignBlob(campaign.id, 'excel', {
+                sheets: selected.length ? selected.join(',') : 'all',
+              });
+              setShowExcelModal(false);
+            } catch { /* ignore */ }
+            finally { setExcelExporting(false); }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Excel Export Modal ────────────────────────────────────────────────────────
+function ExcelExportModal({ campaign, sheets, setSheets, exporting, onClose, onExport }) {
+  const T = useTheme();
+  const SHEET_OPTIONS = [
+    { key: 'clicked',      label: 'Clicked',      desc: 'Contacts who clicked a link in the email' },
+    { key: 'opened',       label: 'Opened',       desc: 'Contacts who opened the email' },
+    { key: 'delivered',    label: 'Delivered',    desc: 'Confirmed delivery (not yet opened)' },
+    { key: 'sent',         label: 'Sent',         desc: 'All sent recipients regardless of event' },
+    { key: 'bounced',      label: 'Bounced',      desc: 'Emails that could not be delivered' },
+    { key: 'unsubscribed', label: 'Unsubscribed', desc: 'Contacts who opted out' },
+  ];
+  const noneSelected = !Object.values(sheets).some(Boolean);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.surface, border: "1px solid " + T.border,
+        borderRadius: 14, width: 440, maxWidth: "95vw",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "18px 20px 14px", borderBottom: "1px solid " + T.border,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Export to Excel</div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+              {campaign.name} — choose which recipient groups to include as sheets
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none", border: "none", color: T.muted,
+            cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 4px",
+          }}>✕</button>
+        </div>
+
+        {/* Sheet options */}
+        <div style={{ padding: "14px 20px" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Sheets to include
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {SHEET_OPTIONS.map(({ key, label, desc }) => (
+              <label key={key} style={{
+                display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
+                padding: "10px 12px", borderRadius: 8,
+                background: sheets[key] ? T.accent + "12" : T.card,
+                border: "1px solid " + (sheets[key] ? T.accent + "50" : T.border),
+                transition: "all 0.15s",
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!!sheets[key]}
+                  onChange={e => setSheets(prev => ({ ...prev, [key]: e.target.checked }))}
+                  style={{ accentColor: T.accent, width: 15, height: 15, flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{label}</div>
+                  <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>{desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: T.muted, marginTop: 10 }}>
+            A <strong style={{ color: T.dim }}>Summary</strong> sheet with campaign metrics is always included.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "12px 20px 16px", borderTop: "1px solid " + T.border,
+          display: "flex", gap: 8, justifyContent: "flex-end",
+        }}>
+          <button onClick={onClose} style={{
+            padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border,
+            background: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+          }}>Cancel</button>
+          <button
+            disabled={noneSelected || exporting}
+            onClick={onExport}
+            style={{
+              padding: "8px 18px", borderRadius: 7, border: "none",
+              background: noneSelected || exporting ? T.muted : T.green,
+              color: "#fff", fontSize: 12, fontWeight: 600,
+              cursor: noneSelected || exporting ? "not-allowed" : "pointer",
+              fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <Download size={13} />
+            {exporting ? "Downloading…" : "Download Excel"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

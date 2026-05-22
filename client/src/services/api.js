@@ -363,11 +363,22 @@ export async function getCampaignAnalytics(id) {
   return r.data ?? r;
 }
 
-export function exportCampaignUrl(id, format = 'excel') {
-  const base = typeof window !== 'undefined'
-    ? window.location.origin
-    : (import.meta.env?.VITE_API_URL || '');
-  return `${base}/api/campaigns/${id}/export?format=${format}`;
+export async function exportCampaignBlob(id, format = 'excel', params = {}) {
+  const token = localStorage.getItem('prophone_token');
+  const qs = new URLSearchParams({ format, ...params }).toString();
+  const res = await fetch(`${API}/api/campaigns/${id}/export?${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+  const cd = res.headers.get('content-disposition') || '';
+  const match = cd.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : `campaign_export.${ext}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // Real campaign send to specific contacts — full tracking, recipients stored, stats updated.
