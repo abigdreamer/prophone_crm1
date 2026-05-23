@@ -305,10 +305,10 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     try {
       const params = { page: currentPage, limit };
       if (statusFilter && statusFilter !== "all") {
-        // bounced/unsubscribed are terminal statuses tracked on CampaignRecipient.status.
-        // opened/clicked use event-based filtering so recipients who later advanced (e.g. opened→clicked)
-        // are still counted.
-        const statusOnly = new Set(["bounced", "unsubscribed", "pending", "sent", "delivered"]);
+        // pending/bounced/unsubscribed are terminal or initial statuses with no event progression.
+        // sent/delivered/opened/clicked all advance — use event-based so recipients who moved
+        // further (e.g. sent→opened) still appear in the earlier filter.
+        const statusOnly = new Set(["pending", "bounced", "unsubscribed"]);
         if (statusOnly.has(statusFilter)) params.status = statusFilter;
         else params.event = statusFilter;
       }
