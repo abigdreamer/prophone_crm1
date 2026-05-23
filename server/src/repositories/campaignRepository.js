@@ -53,9 +53,9 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
   const where = { campaignId };
 
   if (event) {
-    // Event-based filter: return all recipients who ever had this event (e.g. 'opened'),
-    // regardless of their current status. This matches the stat-card counts from getStatisticsFromEvents.
-    where.events = { some: { event } };
+    // Scope event filter to this campaign so the count matches getStatisticsFromEvents,
+    // which also filters CampaignRecipientEvent by campaignId.
+    where.events = { some: { event, campaignId } };
   } else if (status) {
     where.status = status;
   }
