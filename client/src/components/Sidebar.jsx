@@ -173,9 +173,9 @@ export default function Sidebar({
     if (visible.length === 0) return;
     const currentIdx = selected ? visible.findIndex(c => c.id === selected.id) : -1;
     let nextIdx;
-    if (dir === "down") {
+    if (e.key === "ArrowDown") {
       nextIdx = currentIdx === -1 ? 0 : Math.min(currentIdx + 1, visible.length - 1);
-    } else {
+    } else if (e.key === "ArrowUp") {
       if (currentIdx <= 0) return;
       nextIdx = currentIdx - 1;
     } else {

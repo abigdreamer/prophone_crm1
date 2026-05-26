@@ -33,6 +33,7 @@ import CampaignDetailPage from './pages/CampaignDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
 import ProfilePage from './pages/ProfilePage';
+import RedditMonitorPage from './pages/RedditMonitorPage';
 import ContactDetailPanel from './components/ContactDetailPanel';
 import CancelInline from './components/inline/CancelInline';
 import RestoreInline from './components/inline/RestoreInline';
@@ -619,6 +620,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/templates" element={<TemplatesPage onEditingChange={setTemplateEditing} />} />
         <Route path="/campaigns" element={<CampaignsPage />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+        <Route path="/reddit" element={<RedditMonitorPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage currentUser={currentUser} />} />

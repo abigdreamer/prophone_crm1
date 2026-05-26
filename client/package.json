@@ -16,6 +16,7 @@
     "posthog-js": "^1.373.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-is": "^19.2.6",
     "react-router-dom": "^7.14.2",
     "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
