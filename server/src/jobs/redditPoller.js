@@ -85,8 +85,10 @@ async function pollAllMonitors() {
           }
         }
       } catch (err) {
+        console.error(`[reddit-poller] Failed to fetch r/${subreddit}:`, err.response?.status || err.message);
       }
     }
   } catch (err) {
+    console.error('[reddit-poller] Poll cycle failed:', err.message);
   }
 }

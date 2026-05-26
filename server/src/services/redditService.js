@@ -1,18 +1,26 @@
 import axios from 'axios';
 
-const REDDIT_USER_AGENT = 'ProPhoneCRM/1.0 (Reddit Monitor)';
-const REQUEST_TIMEOUT = 10000;
+const REDDIT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+const REQUEST_TIMEOUT = 15000;
 
 /**
  * Fetch new posts from a subreddit using Reddit's public JSON endpoint.
  * Returns an array of simplified post objects.
  */
 export async function fetchSubredditPosts(subreddit, limit = 100) {
-  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/new.json?limit=${limit}`;
+  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/new.json?limit=${limit}&raw_json=1`;
 
   const { data } = await axios.get(url, {
-    headers: { 'User-Agent': REDDIT_USER_AGENT },
+    headers: {
+      'User-Agent': REDDIT_USER_AGENT,
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    },
     timeout: REQUEST_TIMEOUT,
+    // Prevent axios from using cached 304 responses
+    validateStatus: (status) => status >= 200 && status < 300,
   });
 
   if (!data?.data?.children) return [];
