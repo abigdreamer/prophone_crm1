@@ -193,6 +193,7 @@ export default function Sidebar({
     requestAnimationFrame(() => {
       const el = listRef.current?.querySelector(`[data-contact-id="${next.id}"]`);
       el?.scrollIntoView({ block: "nearest" });
+      listRef.current?.focus();
     });
   }
 
@@ -284,8 +285,10 @@ export default function Sidebar({
         <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
           <select value={sortF} onChange={e => setSortF(e.target.value)} style={selStyle}>
             <option value="recent">Recent</option>
-            <option value="name">Name</option>
-            <option value="score">Score</option>
+            <option value="score">Score (High → Low)</option>
+            <option value="firstName">First Name (A–Z)</option>
+            <option value="lastName">Last Name (A–Z)</option>
+            <option value="name">Name (A–Z)</option>
           </select>
 
           <select value={stageF} onChange={e => setStageF(e.target.value)} style={selStyle}>

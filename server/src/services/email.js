@@ -69,17 +69,14 @@ export function injectUnsubscribeFooter(html, unsubUrl, companyAddress) {
 }
 
 // ── headers ──────────────────────────────────────────────────────────────────
-export function buildEmailHeaders(unsubUrl, mailingListId) {
-  const messageId = `<${randomUUID()}@mail>`;
+export function buildEmailHeaders(unsubUrl, fromDomain) {
+  const domain = fromDomain || 'mail';
+  const messageId = `<${randomUUID()}@${domain}>`;
 
   return {
     'Message-ID': messageId,
     'List-Unsubscribe': `<${unsubUrl}>`,
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    'List-ID': mailingListId,
-    'Precedence': 'bulk',
-    'Auto-Submitted': 'auto-generated',
-    'X-Auto-Response-Suppress': 'All'
   };
 }
 
@@ -91,11 +88,10 @@ export function buildEmailPayload({
   html,
   text,
   unsubUrl,
-  secret,
-  mailingListId,
   companyAddress
 }) {
   const finalHtml = injectUnsubscribeFooter(html, unsubUrl, companyAddress);
+  const fromDomain = (from || '').split('@')[1] || 'mail';
 
   return {
     to,
@@ -103,6 +99,6 @@ export function buildEmailPayload({
     subject,
     html: finalHtml,
     text: text || htmlToPlainText(finalHtml),
-    headers: buildEmailHeaders(unsubUrl, mailingListId)
+    headers: buildEmailHeaders(unsubUrl, fromDomain)
   };
 }

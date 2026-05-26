@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   LayoutDashboard, Users, Megaphone,
-  BarChart2, Settings, ChevronDown,
+  BarChart2, Settings, ChevronDown, MessageCircle,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
@@ -13,6 +13,7 @@ const NAV = [
   { label: "Dashboard", id: "dashboard", Icon: LayoutDashboard },
   { label: "Contacts",  id: "contacts",  Icon: Users },
   { label: "Marketing", id: "marketing", Icon: Megaphone, isSidebar: true },
+  { label: "Reddit",    id: "reddit",    Icon: MessageCircle },
   { label: "Reports",   id: "reports",   Icon: BarChart2 },
   { label: "Settings",  id: "settings",  Icon: Settings },
 ];

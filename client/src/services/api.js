@@ -408,6 +408,45 @@ export async function saveSettings(clientId, module, config) {
   return request('PUT', '/api/settings', { clientId: clientId || null, module, config });
 }
 
+// ── Reddit Monitoring ────────────────────────────────────────────────────
+
+export async function getRedditMonitors(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  return request('GET', `/api/reddit/monitors?${params}`);
+}
+
+export async function createRedditMonitor(data) {
+  return request('POST', '/api/reddit/monitors', data);
+}
+
+export async function updateRedditMonitor(id, data) {
+  return request('PATCH', `/api/reddit/monitors/${id}`, data);
+}
+
+export async function deleteRedditMonitor(id) {
+  return request('DELETE', `/api/reddit/monitors/${id}`);
+}
+
+export async function getRedditPosts(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  return request('GET', `/api/reddit/posts${q ? '?' + q : ''}`);
+}
+
+export async function generateRedditDraft(postId) {
+  return request('POST', `/api/reddit/posts/${postId}/draft`);
+}
+
+export async function updateRedditPost(postId, data) {
+  return request('PATCH', `/api/reddit/posts/${postId}`, data);
+}
+
+export async function getRedditStats(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  return request('GET', `/api/reddit/stats?${params}`);
+}
+
 // ── Foxtow External API ───────────────────────────────────────────────────────
 
 export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {

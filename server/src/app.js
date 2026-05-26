@@ -21,12 +21,14 @@ import templateLinksRoutes from './routes/templateLinks.routes.js';
 import settingsRoutes          from './routes/settings.routes.js';
 import reportsRoutes           from './routes/reports.routes.js';
 import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
+import redditRoutes            from './routes/reddit.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
 import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
 import { updateDomainTracking }                 from './services/domainService.js';
+import { startRedditPoller }                    from './jobs/redditPoller.js';
 
 const app = express();
 
@@ -40,6 +42,12 @@ app.use(cors({
 app.post('/webhooks/resend', express.raw({ type: 'application/json' }), asyncHandler(handleWebhook));
 
 app.use(express.json({ limit: '10mb' }));
+
+// Bypass ngrok browser warning for all requests
+app.use((req, res, next) => {
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  next();
+});
 
 // Public interactive pages — no auth, served as HTML
 app.get('/i/:token',          asyncHandler(servePage));
@@ -60,6 +68,7 @@ app.use('/api/tl',                  templateLinksRoutes);
 app.use('/api/settings',            settingsRoutes);
 app.use('/api/reports',             reportsRoutes);
 app.use('/api/posthog-projects',    posthogProjectsRoutes);
+app.use('/api/reddit',              redditRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
@@ -98,6 +107,7 @@ const server = app.listen(PORT, () => {
   // ProPhone rewrites links with its own tracking pixel — Resend's layer double-wraps them,
   // and if the Resend tracking subdomain (e.g. track.foxtow.com) has no DNS record the link breaks.
   disableResendTrackingForAllDomains();
+  startRedditPoller();
 });
 
 let _bindRetry = false;

@@ -47,6 +47,8 @@ model Client {
   emailTemplates EmailTemplate[]
   campaigns      Campaign[]
   templateLinks  TemplateLink[]
+  redditMonitors RedditMonitor[]
+  redditPosts    RedditPost[]
 
   @@map("clients")
 }
@@ -336,6 +338,70 @@ model ContactFieldSettings {
   @@unique([clientId, module])
   @@index([clientId])
   @@map("contact_field_settings")
+}
+
+// ─── Reddit Monitoring ───────────────────────────────────────────────────────
+
+model RedditMonitor {
+  id              String   @id @default(uuid())
+  clientId        String   @map("client_id")
+  subreddit       String
+  keywords        String[]
+  isActive        Boolean  @default(true) @map("is_active")
+  pollIntervalSec Int      @default(60)   @map("poll_interval_sec")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt     @map("updated_at")
+
+  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  posts  RedditPost[]
+
+  @@index([clientId])
+  @@map("reddit_monitors")
+}
+
+model RedditPost {
+  id              String    @id @default(uuid())
+  clientId        String    @map("client_id")
+  monitorId       String    @map("monitor_id")
+  redditId        String    @unique @map("reddit_id")
+  subreddit       String
+  title           String
+  body            String    @default("")
+  author          String
+  permalink       String
+  redditCreatedAt DateTime  @map("reddit_created_at")
+  matchedKeywords String[]  @map("matched_keywords")
+  status          String    @default("new")
+  aiDraft         String?   @map("ai_draft")
+  postedComment   String?   @map("posted_comment")
+  discoveredAt    DateTime  @default(now()) @map("discovered_at")
+  draftedAt       DateTime? @map("drafted_at")
+  postedAt        DateTime? @map("posted_at")
+  dismissedAt     DateTime? @map("dismissed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt     @map("updated_at")
+
+  client  Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  monitor RedditMonitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  events  RedditPostEvent[]
+
+  @@index([clientId])
+  @@index([monitorId])
+  @@index([status])
+  @@map("reddit_posts")
+}
+
+model RedditPostEvent {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  event     String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post RedditPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("reddit_post_events")
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

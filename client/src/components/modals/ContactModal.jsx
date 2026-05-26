@@ -150,6 +150,7 @@ export default function ContactModal({ contact, onSave, onClose, pool, clientId,
         <textarea
           value={form.notes}
           onChange={e => set("notes", e.target.value)}
+          className="crm-input"
           style={{
             width: "100%", marginTop: 4,
             background: T.surface, border: "1px solid " + T.border,

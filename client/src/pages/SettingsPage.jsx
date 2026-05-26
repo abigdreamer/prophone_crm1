@@ -7,6 +7,7 @@ import ComingSoon from "../components/layout/ComingSoon";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import { useAppToast } from "../context/ToastContext";
+import { SkeletonRow } from "../components/ui/Loader";
 import * as db from "../services/api";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +200,15 @@ function ContactFieldSettings({ clientId }) {
   };
 
   if (loading) {
-    return <div style={{ padding: 32, color: T.muted }}>Loading...</div>;
+    return (
+      <div style={{ padding: 24 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>
+            {Array.from({ length: 12 }).map((_, i) => <SkeletonRow key={i} cols={2} />)}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   return (

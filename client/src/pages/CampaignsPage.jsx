@@ -5,6 +5,7 @@ import {
   Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
   Send, Eye, MousePointerClick,
 } from "lucide-react";
+import { SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import { analytics } from "../services/analytics";
@@ -528,8 +529,10 @@ function WizardStep2({ form, setForm, templates, saving, onBack, onCreate, clien
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       <StepIndicator step={2} />
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 40, color: T.muted, fontSize: 13 }}>
-        <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading templates…
+      <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonBlock key={i} h={52} radius={8} />
+        ))}
       </div>
       {footer}
     </div>
@@ -884,9 +887,11 @@ export default function CampaignsPage() {
 
       {/* ── Table ── */}
       {loading ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: T.muted, fontSize: 13, padding: 48, justifyContent: "center" }}>
-          <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Loading campaigns…
-        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}
+          </tbody>
+        </table>
       ) : campaigns.length === 0 ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
           <Megaphone size={44} color={T.border} style={{ marginBottom: 16 }} />

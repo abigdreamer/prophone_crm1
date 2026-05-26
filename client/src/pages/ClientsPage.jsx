@@ -5,7 +5,7 @@ import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
 import Sel from "../components/ui/Sel";
 import Btn from "../components/ui/Btn";
-import { Spinner } from "../components/ui/Loader";
+import { SkeletonRow, SkeletonActivityRow } from "../components/ui/Loader";
 import CancelModal from "../components/modals/CancelModal";
 import { RestoreModal } from "../components/modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
@@ -249,7 +249,9 @@ export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRest
           </div>
 
           {loadingAct ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: 20 }}><Spinner size={18} /></div>
+            <div style={{ paddingTop: 4 }}>
+              {Array.from({ length: 4 }).map((_, i) => <SkeletonActivityRow key={i} />)}
+            </div>
           ) : activities.length === 0 ? (
             <div style={{ padding: "16px 0", textAlign: "center", color: T.muted, fontSize: 12, fontStyle: "italic" }}>No activity yet.</div>
           ) : (
@@ -414,7 +416,11 @@ export default function ClientsPage() {
 
           <div>
             {loading && clients.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center" }}><Spinner size={24} /></div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                  {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={5} />)}
+                </tbody>
+              </table>
             ) : filtered.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: T.muted, fontSize: 12 }}>No clients match.</div>
             ) : filtered.map((c, idx) => (

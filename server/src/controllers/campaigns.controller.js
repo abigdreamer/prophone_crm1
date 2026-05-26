@@ -294,6 +294,14 @@ export const sendCampaign = async (req, res) => {
     const suppressedIds = await repo.findSuppressedContactIds(contactIds);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
 
+    // Mark suppressed recipients so they don't stay as "pending"
+    const suppressedRecipients = allRecipients.filter(r => suppressedIds.has(r.contactId));
+    if (suppressedRecipients.length) {
+      await Promise.all(suppressedRecipients.map(r =>
+        repo.updateRecipientStatus(r.id, 'skipped'),
+      ));
+    }
+
     if (!recipients.length) return sendError(res, 'All recipients are suppressed (previously bounced or unsubscribed)', 400);
 
     // Idempotency: mark as sending before we start
@@ -312,6 +320,14 @@ export const sendCampaign = async (req, res) => {
     for (let i = 0; i < recipients.length; i += SEND_BATCH_SIZE) {
       const batch = recipients.slice(i, i + SEND_BATCH_SIZE);
 
+      // Mark contacts with no valid email as skipped
+      const noEmail = batch.filter(r => !r.contact?.email?.includes('@'));
+      if (noEmail.length) {
+        await Promise.all(noEmail.map(r =>
+          repo.updateRecipientStatus(r.id, 'skipped'),
+        ));
+      }
+
       // Build email payload — filter out contacts with no email address
       const emails = batch
         .filter(r => r.contact?.email?.includes('@'))
@@ -329,6 +345,9 @@ export const sendCampaign = async (req, res) => {
             company:   r.contact.company   || '',
           };
 
+          // Substitute variables in subject line
+          const finalSubject = substituteIntoHtml(subj, vars);
+
           // Prefer stored HTML snapshot; fall back to server-side render
           let html = tmpl.htmlOutput
             ? substituteIntoHtml(tmpl.htmlOutput, vars)
@@ -345,14 +364,15 @@ export const sendCampaign = async (req, res) => {
           if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
 
           const text    = htmlToPlainText(html);
-          const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
+          const fromDomain = fromEmail.split('@')[1] || 'mail';
+          const headers = unsubUrl ? buildEmailHeaders(unsubUrl, fromDomain) : undefined;
 
           return {
             _recipientId: r.id,
             to:           r.contact.email,
             from:         fromEmail,
             fromName:     campaign.fromName || '',
-            subject:      subj,
+            subject:      finalSubject,
             html,
             text,
             headers,
@@ -360,6 +380,15 @@ export const sendCampaign = async (req, res) => {
         });
 
       if (!emails.length) continue;
+
+      // Debug: log first email payload to verify headers
+      console.log('[sendCampaign] Sample email payload:', JSON.stringify({
+        to: emails[0].to,
+        hasText: !!emails[0].text,
+        headers: emails[0].headers,
+        reply_to: emails[0].reply_to,
+        hasUnsubFooter: emails[0].html?.includes('Unsubscribe'),
+      }, null, 2));
 
       try {
         const results = await sendBatchEmails(emails);

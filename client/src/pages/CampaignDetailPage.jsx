@@ -17,6 +17,7 @@ import {
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
+import { SkeletonActivityRow, SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,8 +208,8 @@ function LeadActivityPanel({ recipient, contact, loading, onClose }) {
       {/* Activity timeline */}
       <div style={{ overflowY: "auto", maxHeight: 480 }}>
         {loading ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "20px 16px" }}>
-            <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Loading activity…
+          <div style={{ padding: "12px 0" }}>
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonActivityRow key={i} />)}
           </div>
         ) : activities.length === 0 ? (
           <div style={{ textAlign: "center", padding: "32px 16px", color: T.muted }}>
@@ -328,9 +329,11 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
   const totalPages = Math.max(1, Math.ceil(data.total / limit));
 
   if (loading) return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 12, padding: "24px 20px" }}>
-      <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Loading recipients…
-    </div>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <tbody>
+        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}
+      </tbody>
+    </table>
   );
 
   if (!data.rows.length) return (
@@ -443,7 +446,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                   </td>
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
-                  <RecipientStatusBadge status={r.status} />
+                  <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.contact?.lifecycleStage
@@ -1002,7 +1005,9 @@ function EditCampaignModal({ campaign, onClose, onSaved }) {
               </div>
               <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid " + T.border, borderRadius: 8, padding: 8 }}>
                 {templates.length === 0
-                  ? <div style={{ fontSize: 12, color: T.muted, padding: "12px 8px" }}>Loading templates…</div>
+                  ? <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 4 }}>
+                      {Array.from({ length: 3 }).map((_, i) => <SkeletonBlock key={i} h={44} radius={6} />)}
+                    </div>
                   : templates.map(t => {
                     const sel = form.templateId === t.id;
                     return (
@@ -1509,8 +1514,13 @@ export default function CampaignDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10, color: T.muted, fontSize: 13, padding: 40 }}>
-        <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Loading campaign…
+      <div style={{ width: "100%", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+        <SkeletonBlock h={40} radius={8} />
+        <div style={{ display: "flex", gap: 12 }}>
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonBlock key={i} h={80} radius={8} style={{ flex: 1 }} />)}
+        </div>
+        <SkeletonBlock h={200} radius={8} />
+        <SkeletonBlock h={300} radius={8} />
       </div>
     );
   }
