@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
+import RefreshBtn from '../components/ui/RefreshBtn';
 import { useTheme } from '../context/ThemeContext';
 import * as db from '../services/api';
 import { usePool } from '../context/PoolContext';
@@ -1336,24 +1337,7 @@ export default function DomainsPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={fetchDomains}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 14px',
-                background: T.card,
-                border: `1px solid ${T.border}`,
-                borderRadius: 7,
-                color: T.dim,
-                fontSize: 12,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}
-            >
-              <RefreshCw size={13} /> Refresh
-            </button>
+            <RefreshBtn onClick={fetchDomains} />
             <button
               onClick={() => setShowModal(true)}
               style={{

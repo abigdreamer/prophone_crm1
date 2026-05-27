@@ -6,6 +6,7 @@ import { STAGE_DEF, ALL_STAGES } from "../data/stages";
 import fmt from "../utils/format";
 import * as db from "../services/api";
 import { Spinner } from "./ui/Loader";
+import { Mail, Phone, Globe, MapPin, Building2, Users, Layers, Megaphone, Truck, DollarSign } from "lucide-react";
 
 const ACTION_CFG = {
   CREATE: { label: "Created", color: "#22c55e", icon: "✦" },
@@ -30,19 +31,19 @@ let _secDragIdx = null;   // index into visibleContainers being dragged
 let _fieldDrag  = null;   // { field, fromContainerId }
 
 const FIELD_DEFS = {
-  firstName:     { key: "firstName",     label: "First Name" },
-  lastName:      { key: "lastName",      label: "Last Name" },
-  title:         { key: "title",         label: "Job Title" },
-  email:         { key: "email",         label: "Email",         type: "email",  colorKey: "accent" },
-  phone:         { key: "phone",         label: "Phone",         type: "tel",    phoneKey: true },
-  website:       { key: "website",       label: "Website",                       colorKey: "blue", autoHttps: true },
-  address:       { key: "address",       label: "Address" },
-  company:       { key: "company",       label: "Company" },
-  accountSize:   { key: "accountSize",   label: "Account Size" },
-  source:        { key: "source",        label: "Source" },
-  campaign:      { key: "campaign",      label: "Campaign" },
-  trucks:        { key: "trucks",        label: "# of Trucks",  type: "number", numKey: true },
-  contractValue: { key: "contractValue", label: "Contract ($)", type: "number", numKey: true },
+  firstName:     { key: "firstName",     label: "First Name",     placeholder: "Add first name" },
+  lastName:      { key: "lastName",      label: "Last Name",      placeholder: "Add last name" },
+  title:         { key: "title",         label: "Job Title",      placeholder: "Add job title" },
+  email:         { key: "email",         label: "Email",          placeholder: "Add email address",      type: "email",  colorKey: "accent", icon: Mail },
+  phone:         { key: "phone",         label: "Phone",          placeholder: "Add phone number",       type: "tel",    phoneKey: true,     icon: Phone },
+  website:       { key: "website",       label: "Website",        placeholder: "Add website URL",                        colorKey: "blue",   icon: Globe, autoHttps: true },
+  address:       { key: "address",       label: "Address",        placeholder: "Add address",                                                icon: MapPin },
+  company:       { key: "company",       label: "Company",        placeholder: "Add company name",                                           icon: Building2 },
+  accountSize:   { key: "accountSize",   label: "Account Size",   placeholder: "e.g. 50 employees",                                          icon: Users },
+  source:        { key: "source",        label: "Source",         placeholder: "e.g. LinkedIn, referral",                                    icon: Layers },
+  campaign:      { key: "campaign",      label: "Campaign",       placeholder: "Add campaign name",                                          icon: Megaphone },
+  trucks:        { key: "trucks",        label: "# of Trucks",   placeholder: "0",                      type: "number", numKey: true,         icon: Truck },
+  contractValue: { key: "contractValue", label: "Contract ($)",  placeholder: "0",                      type: "number", numKey: true,         icon: DollarSign },
 };
 
 const DEFAULT_CONTAINERS = [
@@ -75,6 +76,22 @@ const LEAD_STATE_OPTS = [
   { value: "backburner", label: "Backburner" },
   { value: "lost",       label: "Lost" },
 ];
+
+function fieldNav(e) {
+  if (e.key !== "Enter" && e.key !== "ArrowUp") return;
+  e.preventDefault();
+  const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+  const idx = all.indexOf(e.currentTarget);
+  if (e.key === "Enter" && idx < all.length - 1) all[idx + 1].focus();
+  if (e.key === "ArrowUp" && idx > 0) all[idx - 1].focus();
+}
+
+function fieldNavSelect(e) {
+  if (e.key !== "Enter") return;
+  const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+  const idx = all.indexOf(e.currentTarget);
+  if (idx < all.length - 1) all[idx + 1].focus();
+}
 
 function groupContainers(visible) {
   const rows = [];
@@ -213,7 +230,18 @@ export default function ContactDetailPanel({
 
   useEffect(() => {
     if (contact) return; // existing contacts: search bar keeps focus; user presses Enter to focus form
-    const t = setTimeout(() => firstNameRef.current?.focus(), 60);
+    const t = setTimeout(() => {
+      // Scroll the nearest scrollable ancestor to the top so the name field is visible
+      let el = panelRef.current?.parentElement;
+      while (el) {
+        if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible") {
+          el.scrollTo({ top: 0, behavior: "smooth" });
+          break;
+        }
+        el = el.parentElement;
+      }
+      firstNameRef.current?.focus();
+    }, 60);
     return () => clearTimeout(t);
   }, [contact?.id]); // eslint-disable-line
 
@@ -288,7 +316,17 @@ export default function ContactDetailPanel({
         if (isInsidePanel) return;
         e.preventDefault();
         if (!editModeRef.current) setEditMode(true);
-        setTimeout(() => firstNameRef.current?.focus(), 60);
+        setTimeout(() => {
+          let el = panelRef.current?.parentElement;
+          while (el) {
+            if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible") {
+              el.scrollTo({ top: 0, behavior: "smooth" });
+              break;
+            }
+            el = el.parentElement;
+          }
+          firstNameRef.current?.focus();
+        }, 60);
         return;
       }
       if (e.key !== "Escape") return;
@@ -365,7 +403,8 @@ export default function ContactDetailPanel({
 
   // ── Derived display values ────────────────────────────────────────────────
   const personName    = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
-  const heroName      = personName || form.company || form.email || (isNew ? "New Contact" : "Unknown Contact");
+  const heroName      = personName || form.company || "";
+  const heroEmpty     = !heroName;
   const avatarLetter  = personName
     ? ((form.firstName?.[0] || "") + (form.lastName?.[0] || "")).toUpperCase()
     : (form.company?.[0] || form.email?.[0] || (isNew ? "+" : "?")).toUpperCase();
@@ -384,8 +423,9 @@ export default function ContactDetailPanel({
     if (!/^[\d()\-+ ]$/.test(e.key)) e.preventDefault();
   };
 
-  const visibleContainers = containers.filter(c => c.visible);
-  const hiddenContainers  = containers.filter(c => !c.visible);
+  // name_role fields (firstName, lastName, title) live directly in the header card now
+  const visibleContainers = containers.filter(c => c.visible && c.id !== "name_role");
+  const hiddenContainers  = containers.filter(c => !c.visible && c.id !== "name_role");
   const rows              = groupContainers(visibleContainers);
 
   return (
@@ -431,76 +471,88 @@ export default function ContactDetailPanel({
         </div>
 
         {/* Profile body */}
-        <div style={{ padding: "0 24px 20px" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: -40, marginBottom: 16 }}>
+        <div style={{ padding: "0 24px 22px" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginTop: -36 }}>
+
+            {/* Avatar */}
             <div style={{
-              width: 76, height: 76, borderRadius: "50%", flexShrink: 0,
+              width: 72, height: 72, borderRadius: "50%", flexShrink: 0,
               background: `linear-gradient(135deg, ${avatarColor}30, ${avatarColor}18)`,
               border: "3px solid " + T.card,
-              boxShadow: `0 0 0 2px ${avatarColor}60, 0 6px 20px ${avatarColor}25`,
+              boxShadow: `0 0 0 2px ${avatarColor}55, 0 4px 16px ${avatarColor}20`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 22, fontWeight: 800, color: avatarColor, letterSpacing: "-0.02em",
+              fontSize: 22, fontWeight: 800, color: avatarColor,
             }}>
               {avatarLetter}
             </div>
-          </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.text, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 5 }}>
-              {heroName}
+            {/* Name area */}
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: 6 }}>
+              {(editMode || isNew) ? (
+                <>
+                  {/* First + Last side by side — transparent, underline only, same size as view hero */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
+                    {[
+                      { key: "firstName", ref: firstNameRef, placeholder: "First name" },
+                      { key: "lastName",  ref: null,         placeholder: "Last name"  },
+                    ].map(({ key, ref, placeholder }) => (
+                      <input
+                        key={key}
+                        ref={ref || undefined}
+                        data-field-nav
+                        value={form[key] || ""}
+                        onChange={e => set(key, e.target.value)}
+                        onKeyDown={fieldNav}
+                        placeholder={placeholder}
+                        style={{
+                          flex: 1, minWidth: 0,
+                          background: "transparent", border: "none", borderRadius: 0,
+                          borderBottom: "2px solid " + T.border + "55",
+                          padding: "0 0 5px",
+                          color: T.text, fontSize: 22, fontWeight: 800,
+                          fontFamily: "inherit", outline: "none",
+                          letterSpacing: "-0.02em", lineHeight: 1.2,
+                          transition: "border-color 0.15s",
+                        }}
+                        onFocus={e => e.target.style.borderBottomColor = T.accent}
+                        onBlur={e => e.target.style.borderBottomColor = T.border + "55"}
+                      />
+                    ))}
+                  </div>
+                  {/* Job title — lighter, subtitle style */}
+                  <input
+                    data-field-nav
+                    value={form.title || ""}
+                    onChange={e => set("title", e.target.value)}
+                    onKeyDown={fieldNav}
+                    placeholder="Job title"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      background: "transparent", border: "none", borderRadius: 0,
+                      borderBottom: "1px solid " + T.border + "35",
+                      padding: "0 0 4px",
+                      color: form.title ? T.dim : T.muted,
+                      fontSize: 13, fontWeight: 400,
+                      fontFamily: "inherit", outline: "none",
+                      transition: "border-color 0.15s, color 0.15s",
+                    }}
+                    onFocus={e => { e.target.style.borderBottomColor = T.accent; e.target.style.color = T.text; }}
+                    onBlur={e => { e.target.style.borderBottomColor = T.border + "35"; e.target.style.color = form.title ? T.dim : T.muted; }}
+                  />
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: heroEmpty ? T.muted : T.text, fontStyle: heroEmpty ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 4, letterSpacing: "-0.02em" }}>
+                    {heroEmpty ? "No name" : heroName}
+                  </div>
+                  {(form.title || form.company) && (
+                    <div style={{ fontSize: 13, color: T.muted, fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {[form.title, form.company].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-            {(form.title || (form.company && heroName !== form.company)) && (
-              <div style={{ fontSize: 13, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {[form.title, form.company && heroName !== form.company ? form.company : null].filter(Boolean).join(" · ")}
-              </div>
-            )}
-          </div>
-
-          {!isNew && (
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                color: contact?.isCanceled ? T.red : T.green,
-                background: (contact?.isCanceled ? T.red : T.green) + "15",
-                border: "1.5px solid " + (contact?.isCanceled ? T.red : T.green) + "45",
-                borderRadius: 6, padding: "3px 10px",
-              }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "currentColor", flexShrink: 0 }} />
-                {contact?.isCanceled ? "Canceled" : "Active"}
-              </span>
-              <span style={{
-                display: "inline-flex", alignItems: "center",
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                color: avatarColor, background: avatarColor + "18",
-                border: "1.5px solid " + avatarColor + "40",
-                borderRadius: 6, padding: "3px 10px",
-              }}>
-                {d.label}
-              </span>
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {form.email && heroName !== form.email && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.accent, background: T.accent + "0d", border: "1px solid " + T.accent + "25", borderRadius: 20, padding: "5px 13px", maxWidth: 240, overflow: "hidden" }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.email}</span>
-              </span>
-            )}
-            {form.phone && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.dim, background: T.surface, border: "1px solid " + T.border, borderRadius: 20, padding: "5px 13px", flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13.5a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.72h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 10.4a16 16 0 0 0 6.16 6.16l1.63-1.63a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" /></svg>
-                <span>{form.phone.split(/[|,]/)[0].trim()}</span>
-                {form.phone.split(/[|,]/).length > 1 && <span style={{ color: T.muted, fontSize: 10, marginLeft: 2 }}>+{form.phone.split(/[|,]/).length - 1}</span>}
-              </span>
-            )}
-            {form.website && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.blue, background: T.blue + "0d", border: "1px solid " + T.blue + "25", borderRadius: 20, padding: "5px 13px", maxWidth: 200, overflow: "hidden", flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.website.replace(/^https?:\/\//, "")}</span>
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -530,58 +582,69 @@ export default function ContactDetailPanel({
         </div>
       )}
 
-      {/* ── Container rows ────────────────────────────────────────────── */}
+      {/* ── Container rows — one card per row ───────────────────────── */}
       {rows.map((row, rowIdx) => (
         <div
           key={rowIdx}
-          style={{ display: "grid", gridTemplateColumns: row.map(() => "1fr").join(" "), gap: 12, marginBottom: 12 }}
+          style={{
+            background: T.card,
+            border: "1px solid " + (layoutMode ? T.accent + "45" : T.border),
+            borderRadius: 14, overflow: "hidden", marginBottom: 12,
+            boxShadow: layoutMode ? "0 0 0 2px " + T.accent + "12" : "none",
+          }}
         >
-          {row.map(container => {
-            const visIdx = visibleContainers.indexOf(container);
-            return (
-              <DraggableBlock
-                key={container.id}
-                index={visIdx}
-                secDragging={secDragging}
-                secOver={secOver}
-                setSecOver={setSecOver}
-                onDrop={handleSecDrop}
-              >
-                <ContainerBlock
-                  container={container}
-                  layoutMode={layoutMode}
-                  editMode={editMode}
-                  form={form}
-                  set={set}
-                  setSocial={setSocial}
-                  show={show}
-                  numKey={numKey}
-                  phoneKey={phoneKey}
-                  enabledSocials={enabledSocials}
-                  noteClicked={noteClicked}
-                  setNoteClicked={setNoteClicked}
-                  parsedTags={parsedTags}
-                  firstNameRef={firstNameRef}
-                  onUpdate={(patch) => updateContainer(container.id, patch)}
-                  onHide={() => updateContainer(container.id, { visible: false })}
-                  onFieldReorder={(next, crossMeta) => {
-                    setContainers(prev => {
-                      const updated = prev.map(c => {
-                        if (c.id === container.id) return { ...c, fields: next.map(f => f.key) };
-                        if (crossMeta && c.id === crossMeta.fromContainerId)
-                          return { ...c, fields: c.fields.filter(k => k !== crossMeta.removedKey) };
-                        return c;
-                      });
-                      saveLayout(updated);
-                      return updated;
-                    });
-                  }}
-                />
-              </DraggableBlock>
-            );
-          })}
-        </div>
-      ))}
+          <div style={{ display: "grid", gridTemplateColumns: row.map(() => "1fr").join(" ") }}>
+            {row.map((container, colIdx) => {
+              const visIdx = visibleContainers.indexOf(container);
+              return (
+                <div
+                  key={container.id}
+                  style={{ borderLeft: colIdx > 0 ? "1px solid " + T.border + "60" : "none", minWidth: 0 }}
+                >
+                    <DraggableBlock
+                      index={visIdx}
+                      secDragging={secDragging}
+                      secOver={secOver}
+                      setSecOver={setSecOver}
+                      onDrop={handleSecDrop}
+                    >
+                      <ContainerBlock
+                        container={container}
+                        layoutMode={layoutMode}
+                        editMode={editMode}
+                        form={form}
+                        set={set}
+                        setSocial={setSocial}
+                        show={show}
+                        numKey={numKey}
+                        phoneKey={phoneKey}
+                        enabledSocials={enabledSocials}
+                        noteClicked={noteClicked}
+                        setNoteClicked={setNoteClicked}
+                        parsedTags={parsedTags}
+                        firstNameRef={firstNameRef}
+                        onUpdate={(patch) => updateContainer(container.id, patch)}
+                        onHide={() => updateContainer(container.id, { visible: false })}
+                        onFieldReorder={(next, crossMeta) => {
+                          setContainers(prev => {
+                            const updated = prev.map(c => {
+                              if (c.id === container.id) return { ...c, fields: next.map(f => f.key) };
+                              if (crossMeta && c.id === crossMeta.fromContainerId)
+                                return { ...c, fields: c.fields.filter(k => k !== crossMeta.removedKey) };
+                              return c;
+                            });
+                            saveLayout(updated);
+                            return updated;
+                          });
+                        }}
+                      />
+                    </DraggableBlock>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
 
       {/* ── Layout mode: add container ────────────────────────────────── */}
       {layoutMode && (
@@ -629,22 +692,6 @@ export default function ContactDetailPanel({
         </div>
       )}
 
-      {/* ── CRM metadata ─────────────────────────────────────────────── */}
-      {!isNew && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, background: T.card, border: "1px solid " + T.border, borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
-          {[
-            ["Owner", contact.ownedBy || "—"],
-            ["Added By", contact.addedBy || "—"],
-            ["Created", fmt.date(contact.createdAt)],
-            ["Last Activity", fmt.ago(contact.lastActivityAt)],
-          ].map(([label, value], i, arr) => (
-            <div key={label} style={{ padding: "12px 16px", borderRight: i < arr.length - 1 ? "1px solid " + T.border : "none" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-              <div style={{ fontSize: 13, color: T.dim, fontWeight: 500 }}>{value}</div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── Cancellation info ─────────────────────────────────────────── */}
       {contact?.isCanceled && (
@@ -695,12 +742,11 @@ function ContainerBlock({
   const header = (
     <div style={{
       display: "flex", alignItems: "center", gap: 7,
-      padding: "8px 16px",
-      borderBottom: isCollapsed ? "none" : "1px solid " + T.border,
-      minHeight: 37,
+      padding: "12px 20px 4px",
+      minHeight: 32,
     }}>
-      {/* Drag grip */}
-      {dragCtx && (
+      {/* Drag grip — only visible in layout mode */}
+      {layoutMode && dragCtx && (
         <span
           draggable
           onDragStart={dragCtx.onDragStart}
@@ -708,7 +754,7 @@ function ContainerBlock({
           style={{
             fontSize: 15, color: T.muted, cursor: "grab",
             userSelect: "none", flexShrink: 0, lineHeight: 1, touchAction: "none",
-            opacity: layoutMode ? 0.8 : 0.35,
+            opacity: 0.8,
           }}
         >⠿</span>
       )}
@@ -831,7 +877,7 @@ function ContainerBlock({
 
       case "pipeline":
         body = (
-          <div style={{ padding: "12px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ padding: "14px 20px 6px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {editMode ? (
               <>
                 <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
@@ -850,12 +896,13 @@ function ContainerBlock({
       case "fields": {
         const fieldObjs = (container.fields || []).map(k => FIELD_DEFS[k]).filter(Boolean);
         body = (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "14px 20px 0" }}>
             <DraggableFieldList
               containerId={container.id}
               fields={fieldObjs}
               columns={container.fieldColumns || 1}
               editMode={editMode}
+              layoutMode={layoutMode}
               form={form}
               set={set}
               show={show}
@@ -871,7 +918,7 @@ function ContainerBlock({
 
       case "notes":
         body = show("notes") ? (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "4px 20px 16px" }}>
             {editMode ? (
               <div onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }} style={{ position: "relative" }}>
                 {noteClicked && (
@@ -909,7 +956,7 @@ function ContainerBlock({
 
       case "social":
         body = enabledSocials.length > 0 ? (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "4px 20px 16px" }}>
             {editMode ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 {enabledSocials.map(({ key, label, color, placeholder }) => (
@@ -929,7 +976,7 @@ function ContainerBlock({
 
       case "tags":
         body = show("tags") ? (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "4px 20px 16px" }}>
             {editMode ? (
               <>
                 <input
@@ -968,7 +1015,7 @@ function ContainerBlock({
 
       case "custom":
         body = (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "4px 20px 16px" }}>
             {editMode ? (
               <textarea
                 value={form[container.id] || ""}
@@ -994,10 +1041,8 @@ function ContainerBlock({
 
   return (
     <div style={{
-      background: T.card,
-      border: "1px solid " + (layoutMode ? T.accent + "45" : T.border),
-      borderRadius: 8, overflow: "hidden",
-      boxShadow: layoutMode ? "0 0 0 1px " + T.accent + "12" : "none",
+      outline: layoutMode ? "1px dashed " + T.accent + "35" : "none",
+      outlineOffset: -2,
     }}>
       {header}
       {body}
@@ -1009,7 +1054,7 @@ function ContainerBlock({
 // DraggableFieldList
 // ══════════════════════════════════════════════════════════════════════════════
 
-function DraggableFieldList({ containerId, fields, columns = 1, editMode, form, set, show, numKey, phoneKey, onReorder, firstFieldRef }) {
+function DraggableFieldList({ containerId, fields, columns = 1, editMode, layoutMode, form, set, show, numKey, phoneKey, onReorder, firstFieldRef }) {
   const T = useTheme();
   const dragIdx = useRef(null);
   const [dragOver, setDragOver] = useState(null);
@@ -1026,7 +1071,7 @@ function DraggableFieldList({ containerId, fields, columns = 1, editMode, form, 
         return (
           <div
             key={field.key}
-            draggable={editMode}
+            draggable={layoutMode}
             onDragStart={e => {
               if (_secDragIdx !== null) return;
               dragIdx.current = i;
@@ -1073,13 +1118,13 @@ function DraggableFieldList({ containerId, fields, columns = 1, editMode, form, 
             }}
             onDragEnd={() => { setDragOver(null); dragIdx.current = null; _fieldDrag = null; }}
             style={{
-              display: "flex", alignItems: "flex-start", gap: editMode ? 6 : 0,
+              display: "flex", alignItems: "flex-start", gap: layoutMode ? 6 : 0,
               borderTop:    isAbove ? `2px solid ${T.accent}` : "2px solid transparent",
               borderBottom: isBelow ? `2px solid ${T.accent}` : "2px solid transparent",
               transition: "border-color 0.08s",
             }}
           >
-            {editMode && (
+            {layoutMode && (
               <div style={{ flexShrink: 0, paddingTop: 14, cursor: "grab", color: T.muted, fontSize: 13, userSelect: "none", lineHeight: 1, opacity: 0.5 }}>
                 ⠿
               </div>
@@ -1092,6 +1137,7 @@ function DraggableFieldList({ containerId, fields, columns = 1, editMode, form, 
                   type={field.type}
                   value={form[field.key]}
                   onChange={v => set(field.key, v)}
+                  placeholder={field.placeholder}
                   color={color}
                   onKeyDown={field.numKey ? numKey : field.phoneKey ? phoneKey : undefined}
                   onBlur={field.autoHttps ? () => {
@@ -1176,10 +1222,12 @@ function LeadStateSelect({ value, onChange }) {
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>Lead State</label>
       <select
+        data-field-nav
         value={value || "prospect"}
         onChange={e => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
+        onKeyDown={fieldNavSelect}
         style={{
           width: "100%", background: focused ? T.surface : "transparent",
           border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
@@ -1206,10 +1254,12 @@ function InlineStageSelect({ label = "Stage", value, onChange }) {
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
       <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
       <select
+        data-field-nav
         value={value}
         onChange={e => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
+        onKeyDown={fieldNavSelect}
         style={{
           width: "100%", background: focused ? T.surface : "transparent",
           border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
@@ -1243,15 +1293,8 @@ function InlineInput({ label, value, onChange, placeholder, type = "text", color
   const T = useTheme();
   const [focused, setFocused] = useState(false);
   const handleKeyDown = (e) => {
-    if (e.key === "Enter" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
-      const idx = all.indexOf(e.currentTarget);
-      if (e.key === "Enter" && idx < all.length - 1) all[idx + 1].focus();
-      if (e.key === "ArrowUp" && idx > 0) all[idx - 1].focus();
-      return;
-    }
-    onKeyDown?.(e);
+    fieldNav(e);
+    if (e.key !== "Enter" && e.key !== "ArrowUp") onKeyDown?.(e);
   };
   return (
     <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>

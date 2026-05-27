@@ -4,7 +4,7 @@ import { analytics } from "../services/analytics";
 import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
-  UserMinus, RefreshCw, Plus, Loader2, ChevronRight, CheckCircle2,
+  UserMinus, Plus, Loader2, ChevronRight, CheckCircle2,
   Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye, Download,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
@@ -18,6 +18,7 @@ import {
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
 import { SkeletonActivityRow, SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
+import RefreshBtn from "../components/ui/RefreshBtn";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1737,16 +1738,7 @@ export default function CampaignDetailPage() {
           >
             <Download size={13} /> {pdfExporting ? "Generating…" : "PDF"}
           </button>
-          <button
-            onClick={load}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            <RefreshCw size={13} /> Refresh
-          </button>
+          <RefreshBtn onClick={load} loading={loading} />
         </div>
       </div>
 
