@@ -918,7 +918,7 @@ function ContainerBlock({
 
       case "notes":
         body = show("notes") ? (
-          <div style={{ padding: "4px 20px 16px" }}>
+          <div style={{ padding: "14px 20px 14px" }}>
             {editMode ? (
               <div onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }} style={{ position: "relative" }}>
                 {noteClicked && (
@@ -936,11 +936,22 @@ function ContainerBlock({
                   </div>
                 )}
                 <textarea
+                  data-field-nav
                   value={form.notes}
                   onChange={e => set("notes", e.target.value)}
                   onFocus={e => (e.target.style.borderColor = T.accent)}
                   onBlur={e => (e.target.style.borderColor = T.border)}
-                  onKeyDown={e => e.stopPropagation()}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+                      const idx = all.indexOf(e.currentTarget);
+                      if (idx < all.length - 1) { e.preventDefault(); all[idx + 1].focus(); }
+                    } else if (e.key === "ArrowUp") {
+                      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+                      const idx = all.indexOf(e.currentTarget);
+                      if (idx > 0) { e.preventDefault(); all[idx - 1].focus(); }
+                    }
+                  }}
                   placeholder="Add notes about this contact…"
                   style={{ ...taStyle, minHeight: 80 }}
                 />
@@ -956,7 +967,7 @@ function ContainerBlock({
 
       case "social":
         body = enabledSocials.length > 0 ? (
-          <div style={{ padding: "4px 20px 16px" }}>
+          <div style={{ padding: "14px 20px 0" }}>
             {editMode ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 {enabledSocials.map(({ key, label, color, placeholder }) => (
@@ -965,9 +976,20 @@ function ContainerBlock({
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-                {enabledSocials.map(({ key, label, color }) =>
-                  form.socialLinks?.[key] ? <ViewRow key={key} label={label} value={form.socialLinks[key]} color={color} /> : null
-                )}
+                {enabledSocials.map(({ key, label, color }) => {
+                  const val = form.socialLinks?.[key];
+                  return (
+                    <div key={key} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: T.dim, marginBottom: 5 }}>{label}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, opacity: val ? 1 : 0.35 }} />
+                        <span style={{ fontSize: 13, color: val ? color : T.muted, fontStyle: val ? "normal" : "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {val || "Not set"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -976,15 +998,17 @@ function ContainerBlock({
 
       case "tags":
         body = show("tags") ? (
-          <div style={{ padding: "4px 20px 16px" }}>
+          <div style={{ padding: "14px 20px 14px" }}>
             {editMode ? (
               <>
                 <input
+                  data-field-nav
                   type="text"
                   value={form.tags}
                   onChange={e => set("tags", e.target.value)}
                   onFocus={e => (e.target.style.borderColor = T.accent)}
                   onBlur={e => (e.target.style.borderColor = T.border)}
+                  onKeyDown={fieldNav}
                   placeholder="tag1, tag2, tag3  (comma-separated)"
                   style={{
                     width: "100%", background: T.surface, border: "1px solid " + T.border,
@@ -1139,6 +1163,7 @@ function DraggableFieldList({ containerId, fields, columns = 1, editMode, layout
                   onChange={v => set(field.key, v)}
                   placeholder={field.placeholder}
                   color={color}
+                  icon={field.icon}
                   onKeyDown={field.numKey ? numKey : field.phoneKey ? phoneKey : undefined}
                   onBlur={field.autoHttps ? () => {
                     const v = (form[field.key] || "").trim();
@@ -1146,7 +1171,7 @@ function DraggableFieldList({ containerId, fields, columns = 1, editMode, layout
                   } : undefined}
                 />
               ) : (
-                <ViewRow label={field.label} value={form[field.key]} color={color} />
+                <ViewRow label={field.label} value={form[field.key]} color={color} icon={field.icon} />
               )}
             </div>
           </div>
@@ -1215,66 +1240,154 @@ function DraggableBlock({ index, secDragging, secOver, setSecOver, onDrop, child
 // Primitive sub-components
 // ══════════════════════════════════════════════════════════════════════════════
 
-function LeadStateSelect({ value, onChange }) {
+function CustomSelect({ label, value, options, onChange, getColor, style: outerStyle }) {
   const T = useTheme();
+  const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [rect, setRect] = useState(null);
+  const triggerRef = useRef(null);
+  const dropRef = useRef(null);
+
+  function openMenu() {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) setRect(r);
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e) {
+      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", () => setOpen(false), { capture: true, once: true });
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value) || options[0];
+  const selColor = getColor ? getColor(value) : T.text;
+
+  function pick(val) {
+    onChange(val);
+    setOpen(false);
+    const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+    const idx = all.indexOf(triggerRef.current);
+    if (idx < all.length - 1) setTimeout(() => all[idx + 1].focus(), 30);
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter") {
+      // advance to next field like all other inputs
+      fieldNav(e);
+    } else if (e.key === " ") {
+      e.preventDefault();
+      open ? setOpen(false) : openMenu();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const idx = options.findIndex(o => o.value === value);
+      if (idx < options.length - 1) onChange(options[idx + 1].value);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const idx = options.findIndex(o => o.value === value);
+      if (idx > 0) {
+        onChange(options[idx - 1].value);
+      } else {
+        const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+        const i = all.indexOf(triggerRef.current);
+        if (i > 0) all[i - 1].focus();
+      }
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      setOpen(false);
+    }
+  }
+
+  const dropStyle = rect ? {
+    position: "fixed",
+    top: rect.bottom + 4,
+    left: rect.left,
+    width: rect.width,
+    zIndex: 99999,
+    background: T.card,
+    border: "1px solid " + T.border,
+    borderRadius: 8,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+    overflow: "hidden",
+  } : null;
+
   return (
-    <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
-      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>Lead State</label>
-      <select
+    <div style={{ marginBottom: 14, ...outerStyle }}>
+      <label style={{ fontSize: 11, fontWeight: 500, color: focused ? T.accent : T.dim, display: "block", marginBottom: 5, transition: "color 0.15s" }}>{label}</label>
+      <button
+        ref={triggerRef}
         data-field-nav
-        value={value || "prospect"}
-        onChange={e => onChange(e.target.value)}
+        type="button"
+        onClick={openMenu}
+        onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={fieldNavSelect}
+        onBlur={e => {
+          setFocused(false);
+          if (!dropRef.current?.contains(e.relatedTarget)) setOpen(false);
+        }}
         style={{
-          width: "100%", background: focused ? T.surface : "transparent",
-          border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
-          borderRadius: 5, padding: focused ? "5px 9px" : "3px 0",
-          color: T.text, fontSize: 12, fontFamily: "inherit",
-          outline: "none", cursor: "pointer", fontWeight: 500,
-          transition: "all 0.15s ease",
-          boxShadow: focused ? "0 0 0 2px " + T.accent + "18" : "none",
+          width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: T.surface, border: "1.5px solid " + (focused ? T.accent : T.border),
+          borderRadius: 8, padding: "8px 11px", color: selColor,
+          fontSize: 13, fontFamily: "inherit", cursor: "pointer", fontWeight: 600,
+          outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
+          boxShadow: focused ? "0 0 0 3px " + T.accent + "14" : "none",
         }}
       >
-        {LEAD_STATE_OPTS.map(opt => (
-          <option key={opt.value} value={opt.value} style={{ background: "#1a1a2e", color: "#e2e8f0" }}>{opt.label}</option>
-        ))}
-      </select>
+        <span>{selected?.label}</span>
+        <span style={{ opacity: 0.45, fontSize: 10, marginLeft: 4, display: "inline-block", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+      </button>
+      {open && dropStyle && (
+        <div ref={dropRef} style={dropStyle}>
+          {options.map(opt => {
+            const c = getColor ? getColor(opt.value) : T.text;
+            const active = opt.value === value;
+            return (
+              <div
+                key={opt.value}
+                onMouseDown={e => { e.preventDefault(); pick(opt.value); }}
+                style={{
+                  padding: "9px 13px", cursor: "pointer", fontSize: 13,
+                  color: c, fontFamily: "inherit",
+                  background: active ? T.accent + "18" : "transparent",
+                  fontWeight: active ? 700 : 400,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = T.accent + "10"}
+                onMouseLeave={e => e.currentTarget.style.background = active ? T.accent + "18" : "transparent"}
+              >
+                {opt.label}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-function InlineStageSelect({ label = "Stage", value, onChange }) {
-  const T = useTheme();
-  const [focused, setFocused] = useState(false);
-  const d = STAGE_DEF[value] || STAGE_DEF.new;
+function LeadStateSelect({ value, onChange }) {
   return (
-    <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
-      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
-      <select
-        data-field-nav
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={fieldNavSelect}
-        style={{
-          width: "100%", background: focused ? T.surface : "transparent",
-          border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
-          borderRadius: 5, padding: focused ? "5px 9px" : "3px 0",
-          color: d.color, fontSize: 12, fontFamily: "inherit",
-          outline: "none", cursor: "pointer", fontWeight: 700,
-          transition: "all 0.15s ease",
-          boxShadow: focused ? "0 0 0 2px " + T.accent + "18" : "none",
-        }}
-      >
-        {ALL_STAGES.map(s => (
-          <option key={s} value={s} style={{ background: "#1a1a2e", color: "#e2e8f0" }}>{STAGE_DEF[s].label}</option>
-        ))}
-      </select>
-    </div>
+    <CustomSelect
+      label="Lead State"
+      value={value || "prospect"}
+      options={LEAD_STATE_OPTS}
+      onChange={onChange}
+    />
+  );
+}
+
+function InlineStageSelect({ label = "Stage", value, onChange }) {
+  return (
+    <CustomSelect
+      label={label}
+      value={value}
+      options={ALL_STAGES.map(s => ({ value: s, label: STAGE_DEF[s].label }))}
+      onChange={onChange}
+      getColor={v => (STAGE_DEF[v] || STAGE_DEF.new).color}
+    />
   );
 }
 
