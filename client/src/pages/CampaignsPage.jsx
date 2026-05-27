@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, RefreshCw, Mail, FlaskConical, CheckCircle2,
+  Plus, Mail, FlaskConical, CheckCircle2,
   Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
   Send, Eye, MousePointerClick,
 } from "lucide-react";
 import { SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
+import RefreshBtn from "../components/ui/RefreshBtn";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
 import { analytics } from "../services/analytics";
@@ -827,9 +828,7 @@ export default function CampaignsPage() {
           <div style={{ fontSize: 13, color: T.muted }}>Create and manage your email campaigns.</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={load} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "1px solid " + T.border, background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-            <RefreshCw size={13} style={{ animation: loading ? "spin 1s linear infinite" : "none" }} /> Refresh
-          </button>
+          <RefreshBtn onClick={load} loading={loading} style={{ borderRadius: 8 }} />
           <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, border: "none", background: T.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
             <Plus size={14} /> New Campaign
           </button>

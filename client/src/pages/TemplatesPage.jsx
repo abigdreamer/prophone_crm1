@@ -5,7 +5,7 @@ import { usePool } from "../context/PoolContext";
 import {
   Plus, Search, ChevronDown, LoaderCircle,
   MoreHorizontal, Pencil, Send, Copy, Trash2, X, Ban, RotateCcw,
-  Type as TypeIcon, RefreshCw, ChevronLeft, ChevronUp,
+  Type as TypeIcon, ChevronLeft, ChevronUp,
   GripVertical, Info, AlignLeft, AlignCenter, AlignRight,
   Tag as TagIcon, Eye, Layers, LayoutGrid, List as ListIcon,
   Code2,
@@ -13,6 +13,7 @@ import {
 import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 import { SkeletonBlock, SkeletonRow } from "../components/ui/Loader";
+import RefreshBtn from "../components/ui/RefreshBtn";
 
 const CCtx = createContext(null);
 function makeC(T) {
@@ -2672,11 +2673,7 @@ function TemplateList({ onOpenBuilder }) {
           <p style={{ margin: "4px 0 0", fontSize: 13, color: C.sub }}>Design and manage your email templates.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={load} disabled={loading}
-            style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, opacity: loading ? 0.65 : 1 }}>
-            <RefreshCw size={14} style={loading ? { animation: "_tspin 0.8s linear infinite" } : {}} />
-            Refresh
-          </button>
+          <RefreshBtn onClick={load} loading={loading} style={{ padding: "9px 16px", borderRadius: 9, fontSize: 13 }} />
           <button onClick={() => onOpenBuilder(null)}
             style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(99,102,241,0.28)" }}>
             <Plus size={15} /> New template

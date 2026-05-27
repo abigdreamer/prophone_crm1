@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Building2, Plus, RefreshCw, Users, X, Pencil, History, Search } from "lucide-react";
+import { Building2, Plus, Users, X, Pencil, History, Search } from "lucide-react";
+import RefreshBtn from "../components/ui/RefreshBtn";
 import { useSearchParams } from "react-router-dom";
 import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
 import Sel from "../components/ui/Sel";
 import Btn from "../components/ui/Btn";
-import { SkeletonRow, SkeletonActivityRow } from "../components/ui/Loader";
+import { Spinner, SkeletonRow, SkeletonActivityRow } from "../components/ui/Loader";
 import CancelModal from "../components/modals/CancelModal";
 import { RestoreModal } from "../components/modals/RestoreModal";
 import { useTheme } from "../context/ThemeContext";
@@ -381,9 +382,7 @@ export default function ClientsPage() {
             <option value="all">All Plans</option>
             {PLANS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <button onClick={load} style={{ ...selStyle, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", fontFamily: "inherit", fontWeight: 500 }}>
-            <RefreshCw size={13} /> Refresh
-          </button>
+          <RefreshBtn onClick={load} loading={loading} style={{ height: "100%", borderRadius: 7 }} />
           <button onClick={openAddModal} style={{ height: "100%", padding: "0 16px", background: T.accent, border: "none", borderRadius: 7, color: "#fff", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontFamily: "inherit" }}>
             <Plus size={14} /> Add Client
           </button>
