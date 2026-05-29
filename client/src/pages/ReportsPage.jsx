@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  BarChart2, Eye, Users, Zap, RefreshCw, AlertCircle, X,
+  BarChart2, Eye, Users, Zap, AlertCircle, X,
   Mail, Download, ChevronLeft, ChevronRight, Search, MapPin,
 } from "lucide-react";
 import {
@@ -13,6 +13,7 @@ import {
   getClientAnalytics, getClientCharts, getClientEventDetailById,
 } from "../services/posthogReports";
 import { getFoxtowNewsletterSubscribers } from "../services/api";
+import RefreshBtn from "../components/ui/RefreshBtn";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function relTime(ts) {
@@ -415,15 +416,11 @@ function PosthogSection({ T }) {
           }}>
             {DATE_RANGES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
-          <button onClick={() => setRefreshTick(t => t + 1)} disabled={anyLoading} style={{
-            display: "flex", alignItems: "center", gap: 7, padding: "8px 15px", borderRadius: 9,
-            background: T.surface, border: "1px solid " + T.border, color: T.dim,
-            fontSize: 13, fontFamily: "inherit",
-            cursor: anyLoading ? "not-allowed" : "pointer", opacity: anyLoading ? 0.6 : 1,
-          }}>
-            <RefreshCw size={13} style={{ transition: "transform 0.3s", ...(anyLoading ? { animation: "spin 1s linear infinite" } : {}) }} />
-            Refresh
-          </button>
+          <RefreshBtn
+            onClick={() => setRefreshTick(t => t + 1)}
+            loading={anyLoading}
+            style={{ padding: "8px 15px", borderRadius: 9, fontSize: 13 }}
+          />
         </div>
       </div>
 
@@ -805,14 +802,11 @@ function NewsletterSection({ T }) {
           <option value="inactive">Inactive</option>
         </select>
 
-        <button onClick={() => load({ refresh: true })} disabled={refreshing || loading} style={{
-          display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,
-          background: T.surface, border: "1px solid " + T.border, color: T.dim, fontSize: 13,
-          cursor: (refreshing || loading) ? "not-allowed" : "pointer", opacity: (refreshing || loading) ? 0.6 : 1,
-        }}>
-          <RefreshCw size={13} style={{ transform: (refreshing || loading) ? "rotate(180deg)" : "none", transition: "0.3s" }} />
-          Refresh
-        </button>
+        <RefreshBtn
+          onClick={() => load({ refresh: true })}
+          loading={refreshing || loading}
+          style={{ padding: "10px 15px", borderRadius: 9, fontSize: 13 }}
+        />
 
         <button onClick={exportCSV} disabled={!filtered.length} style={{
           display: "flex", alignItems: "center", gap: 7, padding: "10px 15px", borderRadius: 9,

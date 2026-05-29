@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { usePool } from '../context/PoolContext';
 import { useAppToast } from '../context/ToastContext';
-import { Eye, Radio, FileText, CheckCircle, Plus, Trash2, Power, PowerOff, RefreshCw } from 'lucide-react';
+import { Eye, Radio, FileText, CheckCircle, Plus, Trash2, Power, PowerOff } from 'lucide-react';
+import RefreshBtn from '../components/ui/RefreshBtn';
 import RedditPostCard from '../components/RedditPostCard';
 import RedditMonitorModal from '../components/modals/RedditMonitorModal';
 import * as db from '../services/api';
@@ -35,7 +36,6 @@ export default function RedditMonitorPage() {
   const [monitors, setMonitors] = useState([]);
   const [stats, setStats] = useState({ activeMonitors: 0, totalPosts: 0, draftsReady: 0, posted: 0 });
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editMonitor, setEditMonitor] = useState(null);
 
@@ -130,19 +130,7 @@ export default function RedditMonitorPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }}
-            disabled={refreshing}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '8px 14px', fontSize: 11, fontWeight: 600, borderRadius: 8,
-              background: 'transparent', border: '1px solid ' + T.border,
-              color: T.dim, cursor: refreshing ? 'default' : 'pointer', fontFamily: 'inherit',
-              opacity: refreshing ? 0.5 : 1,
-            }}
-          >
-            <RefreshCw size={12} style={refreshing ? { animation: 'spin 1s linear infinite' } : {}} /> {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <RefreshBtn onClick={loadData} style={{ borderRadius: 8, fontSize: 11 }} />
           <button
             onClick={() => { setEditMonitor(null); setShowModal(true); }}
             style={{
