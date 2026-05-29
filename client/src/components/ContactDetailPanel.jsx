@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, forwardRef, useCallback, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import Btn from "./ui/Btn";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
@@ -67,15 +68,31 @@ const DEFAULT_FIELD_SETTINGS = {
   social_pinterest: true, social_tiktok: true,
 };
 
-const LEAD_STATE_OPTS = [
-  { value: "prospect",   label: "Prospect" },
-  { value: "lead",       label: "Lead" },
-  { value: "warm",       label: "Warm Lead" },
-  { value: "hot",        label: "Hot Lead" },
-  { value: "customer",   label: "Customer" },
-  { value: "backburner", label: "Backburner" },
-  { value: "lost",       label: "Lost" },
-];
+const STAGE_TYPE_MAP = {
+  new:            "Prospect",
+  contacted:      "Lead",
+  engaged:        "Lead",
+  demo_scheduled: "Warm Lead",
+  demo_done:      "Warm Lead",
+  proposal_sent:  "Hot Lead",
+  negotiating:    "Hot Lead",
+  customer:       "Customer",
+  not_qualified:  "Lost",
+  lost:           "Lost",
+  churned:        "Lost",
+};
+
+function stageTypeColor(label, T) {
+  switch (label) {
+    case "Prospect":  return T.muted;
+    case "Lead":      return T.blue;
+    case "Warm Lead": return T.purple;
+    case "Hot Lead":  return T.amber;
+    case "Customer":  return T.green;
+    case "Lost":      return T.red;
+    default:          return T.muted;
+  }
+}
 
 function fieldNav(e) {
   if (e.key !== "Enter" && e.key !== "ArrowUp") return;
@@ -137,7 +154,6 @@ function contactToForm(c) {
     socialLinks: c.socialLinks || {},
     trucks: c.trucks != null ? String(c.trucks) : "",
     lifecycleStage: c.lifecycleStage || "new",
-    leadState: c.leadState || "prospect",
     source: c.source || "",
     campaign: c.campaign || "",
     tags: Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
@@ -153,7 +169,7 @@ function emptyForm(currentUser) {
     firstName: "", lastName: "", company: "", title: "",
     email: "", phone: "", website: "", address: "",
     socialLinks: {},
-    trucks: "", lifecycleStage: "new", leadState: "prospect",
+    trucks: "", lifecycleStage: "new",
     source: "", campaign: "",
     tags: "", notes: "", contractValue: "", accountSize: "",
     ownedBy: currentUser?.name || "",
@@ -878,16 +894,15 @@ function ContainerBlock({
       case "pipeline":
         body = (
           <div style={{ padding: "14px 20px 6px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <ViewRow
+              label="Lead Type"
+              value={STAGE_TYPE_MAP[form.lifecycleStage] || "Prospect"}
+              color={stageTypeColor(STAGE_TYPE_MAP[form.lifecycleStage] || "Prospect", T)}
+            />
             {editMode ? (
-              <>
-                <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
-                <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
-              </>
+              <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
             ) : (
-              <>
-                <ViewRow label="Lead State" value={LEAD_STATE_OPTS.find(o => o.value === (form.leadState || "prospect"))?.label || "Prospect"} />
-                <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
-              </>
+              <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
             )}
           </div>
         );
@@ -1244,28 +1259,31 @@ function CustomSelect({ label, value, options, onChange, getColor, style: outerS
   const T = useTheme();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [rect, setRect] = useState(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 120 });
   const triggerRef = useRef(null);
   const dropRef = useRef(null);
 
-  function openMenu() {
-    const r = triggerRef.current?.getBoundingClientRect();
-    if (r) setRect(r);
-    setOpen(true);
-  }
-
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     function close(e) {
-      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) setOpen(false);
+      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) {
+        setOpen(false);
+      }
     }
     document.addEventListener("mousedown", close);
-    document.addEventListener("scroll", () => setOpen(false), { capture: true, once: true });
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
   const selected = options.find(o => o.value === value) || options[0];
   const selColor = getColor ? getColor(value) : T.text;
+
+  function toggle() {
+    if (open) { setOpen(false); return; }
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    setOpen(true);
+  }
 
   function pick(val) {
     onChange(val);
@@ -1277,11 +1295,10 @@ function CustomSelect({ label, value, options, onChange, getColor, style: outerS
 
   function handleKeyDown(e) {
     if (e.key === "Enter") {
-      // advance to next field like all other inputs
       fieldNav(e);
     } else if (e.key === " ") {
       e.preventDefault();
-      open ? setOpen(false) : openMenu();
+      toggle();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       const idx = options.findIndex(o => o.value === value);
@@ -1296,23 +1313,50 @@ function CustomSelect({ label, value, options, onChange, getColor, style: outerS
         const i = all.indexOf(triggerRef.current);
         if (i > 0) all[i - 1].focus();
       }
-    } else if (e.key === "Escape" || e.key === "Tab") {
+    } else if (e.key === "Escape") {
       setOpen(false);
     }
   }
 
-  const dropStyle = rect ? {
-    position: "fixed",
-    top: rect.bottom + 4,
-    left: rect.left,
-    width: rect.width,
-    zIndex: 99999,
-    background: T.card,
-    border: "1px solid " + T.border,
-    borderRadius: 8,
-    boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
-    overflow: "hidden",
-  } : null;
+  const dropdown = open && createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 99999,
+        background: T.card,
+        border: "1px solid " + T.border,
+        borderRadius: 8,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+        overflow: "hidden",
+      }}
+    >
+      {options.map(opt => {
+        const c = getColor ? getColor(opt.value) : T.text;
+        const active = opt.value === value;
+        return (
+          <div
+            key={opt.value}
+            onMouseDown={e => { e.preventDefault(); pick(opt.value); }}
+            style={{
+              padding: "9px 13px", cursor: "pointer", fontSize: 13,
+              color: c, fontFamily: "inherit",
+              background: active ? T.accent + "18" : "transparent",
+              fontWeight: active ? 700 : 400,
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = T.accent + "10"}
+            onMouseLeave={e => e.currentTarget.style.background = active ? T.accent + "18" : "transparent"}
+          >
+            {opt.label}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  );
 
   return (
     <div style={{ marginBottom: 14, ...outerStyle }}>
@@ -1321,13 +1365,10 @@ function CustomSelect({ label, value, options, onChange, getColor, style: outerS
         ref={triggerRef}
         data-field-nav
         type="button"
-        onClick={openMenu}
+        onClick={toggle}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
-        onBlur={e => {
-          setFocused(false);
-          if (!dropRef.current?.contains(e.relatedTarget)) setOpen(false);
-        }}
+        onBlur={() => setFocused(false)}
         style={{
           width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
           background: T.surface, border: "1.5px solid " + (focused ? T.accent : T.border),
@@ -1340,42 +1381,8 @@ function CustomSelect({ label, value, options, onChange, getColor, style: outerS
         <span>{selected?.label}</span>
         <span style={{ opacity: 0.45, fontSize: 10, marginLeft: 4, display: "inline-block", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
       </button>
-      {open && dropStyle && (
-        <div ref={dropRef} style={dropStyle}>
-          {options.map(opt => {
-            const c = getColor ? getColor(opt.value) : T.text;
-            const active = opt.value === value;
-            return (
-              <div
-                key={opt.value}
-                onMouseDown={e => { e.preventDefault(); pick(opt.value); }}
-                style={{
-                  padding: "9px 13px", cursor: "pointer", fontSize: 13,
-                  color: c, fontFamily: "inherit",
-                  background: active ? T.accent + "18" : "transparent",
-                  fontWeight: active ? 700 : 400,
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = T.accent + "10"}
-                onMouseLeave={e => e.currentTarget.style.background = active ? T.accent + "18" : "transparent"}
-              >
-                {opt.label}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {dropdown}
     </div>
-  );
-}
-
-function LeadStateSelect({ value, onChange }) {
-  return (
-    <CustomSelect
-      label="Lead State"
-      value={value || "prospect"}
-      options={LEAD_STATE_OPTS}
-      onChange={onChange}
-    />
   );
 }
 

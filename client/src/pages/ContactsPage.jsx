@@ -100,7 +100,8 @@ export default function ContactsPage({
         name.includes(ql) ||
         (c.email || "").toLowerCase().includes(ql) ||
         (c.company || "").toLowerCase().includes(ql) ||
-        (c.address || "").toLowerCase().includes(ql)
+        (c.address || "").toLowerCase().includes(ql) ||
+        (c.city || "").toLowerCase().includes(ql)
       );
     })
     .sort((a, b) => {
