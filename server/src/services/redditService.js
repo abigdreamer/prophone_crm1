@@ -8,18 +8,16 @@ const REQUEST_TIMEOUT = 15000;
  * Returns an array of simplified post objects.
  */
 export async function fetchSubredditPosts(subreddit, limit = 100) {
-  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/new.json?limit=${limit}&raw_json=1`;
+  const url = `https://old.reddit.com/r/${encodeURIComponent(subreddit)}/new.json?limit=${limit}&raw_json=1`;
 
   const { data } = await axios.get(url, {
     headers: {
       'User-Agent': REDDIT_USER_AGENT,
-      'Accept': 'application/json',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.5',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
     },
     timeout: REQUEST_TIMEOUT,
-    // Prevent axios from using cached 304 responses
+    maxRedirects: 5,
     validateStatus: (status) => status >= 200 && status < 300,
   });
 
