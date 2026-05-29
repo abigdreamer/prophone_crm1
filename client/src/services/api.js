@@ -76,8 +76,8 @@ export async function getDashboardSummary() {
 }
 
 // Reads active pool from singleton — no manual params needed
-// Optional status: 'active' | 'pending' | 'canceled' — filters server-side
-export async function getContacts(status = null) {
+// Options: { page, limit, status }
+export async function getContacts({ page = 1, limit = 100, status = null } = {}) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
@@ -85,6 +85,8 @@ export async function getContacts(status = null) {
     params.set('clientId', clientId);
   }
   if (status && status !== 'all') params.set('status', status);
+  params.set('page', page);
+  params.set('limit', limit);
   return request('GET', `/api/contacts?${params}`);
 }
 

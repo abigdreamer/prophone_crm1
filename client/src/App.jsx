@@ -43,7 +43,7 @@ import SendEmailInline from './components/inline/SendEmailInline';
 import { useAuth } from './hooks/useAuth';
 import { useContacts } from './hooks/useContacts';
 import { useClients } from './context/ClientsContext';
-import { PageLoader, ContentLoader } from './components/ui/Loader';
+import { PageLoader, ContentLoader, SkeletonDetailPanel } from './components/ui/Loader';
 import { useAppToast } from './context/ToastContext';
 import * as db from './services/api';
 
@@ -119,7 +119,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const [mktgMobileOpen, setMktgMobileOpen] = useState(false);
   const [templateEditing, setTemplateEditing] = useState(false);
 
-  const { contacts, setContacts, contactCounts, loading, firstLoad } = useContacts(currentUser);
+  const { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore } = useContacts(currentUser);
   const [canceledContacts, setCanceledContacts] = useState([]);
 
   // Contacts visible in the current viewMode — used to scope the selection display
@@ -307,7 +307,7 @@ function AppLayout({ currentUser, onSignOut }) {
       const refreshed = await db.restoreContact(selected.id);
       setCanceledContacts((prev) => prev.filter((c) => c.id !== selected.id));
       const fresh = await db.getContacts();
-      setContacts(fresh);
+      setContacts(fresh.data);
       setSelected(refreshed);
       setCenterMode(null);
       toast.success('Contact restored.');
@@ -321,7 +321,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleImportDone = useCallback(async () => {
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh);
+      setContacts(fresh.data);
     } catch {}
   }, [setContacts]);
 
@@ -329,7 +329,7 @@ function AppLayout({ currentUser, onSignOut }) {
     setCanceledContacts((prev) => prev.filter((c) => c.id !== contactId));
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh);
+      setContacts(fresh.data);
     } catch {}
   }, [setContacts]);
 
@@ -352,7 +352,7 @@ function AppLayout({ currentUser, onSignOut }) {
     setCenterMode(null);
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh);
+      setContacts(fresh.data);
     } catch {}
   }, [setContacts]);
 
@@ -753,6 +753,10 @@ function AppLayout({ currentUser, onSignOut }) {
                 onToggleSelect={handleToggleSelect}
                 onToggleSelectAll={handleToggleSelectAll}
                 onSelectBulk={handleSelectBulk}
+                hasMore={viewMode !== VIEW_MODE.CANCELED && hasMore}
+                loadMore={loadMore}
+                loadingMore={loadingMore}
+                total={total}
               />
             </div>
             {/* Sidebar ↔ center drag handle */}
@@ -878,7 +882,7 @@ function AppLayout({ currentUser, onSignOut }) {
           )}
 
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
-            {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
+            {!firstLoad && loading && <SkeletonDetailPanel />}
             {renderCenter()}
           </div>
         </div>

@@ -60,6 +60,7 @@ export default function Sidebar({
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
   selectedIds, onToggleSelect, onToggleSelectAll, onSelectBulk,
+  hasMore, loadMore, loadingMore, total,
 }) {
   const T = useTheme();
   const [stageF, setStageF] = useState("all");
@@ -101,17 +102,30 @@ export default function Sidebar({
   const limitFRef = useRef(0);
   limitFRef.current = limitF;
 
-  // Infinite scroll — disabled when a hard cap (limitF) is active
+  // Refs so the scroll handler always sees the latest values without re-registering
+  const hasMoreRef    = useRef(false);
+  const loadMoreRef   = useRef(null);
+  const loadingMoreRef = useRef(false);
+  hasMoreRef.current    = hasMore    ?? false;
+  loadMoreRef.current   = loadMore   ?? null;
+  loadingMoreRef.current = loadingMore ?? false;
+
+  // Infinite scroll — grows client display window; triggers server loadMore at the end
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     function onScroll() {
       if (limitFRef.current > 0) return; // hard cap set — don't grow
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
-        setDisplayLimit(prev => {
-          const next = prev + 150;
-          return next > filteredLenRef.current ? filteredLenRef.current : next;
-        });
+      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
+      if (!nearBottom) return;
+      // Grow client-side display window first
+      setDisplayLimit(prev => {
+        const next = prev + 150;
+        return next > filteredLenRef.current ? filteredLenRef.current : next;
+      });
+      // Once all loaded records are visible, fetch the next server page
+      if (hasMoreRef.current && !loadingMoreRef.current && loadMoreRef.current) {
+        loadMoreRef.current();
       }
     }
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -223,7 +237,9 @@ export default function Sidebar({
             <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
               {limitF > 0 && filtered.length > limitF
                 ? <><span style={{ color: col, fontWeight: 700 }}>{Math.min(limitF, filtered.length).toLocaleString()}</span> of {filtered.length.toLocaleString()} leads</>
-                : <>{filtered.length.toLocaleString()} leads</>
+                : total > contacts.length
+                  ? <>{filtered.length.toLocaleString()} shown · <span style={{ color: col, fontWeight: 700 }}>{total.toLocaleString()}</span> total</>
+                  : <>{filtered.length.toLocaleString()} leads</>
               }
               {selEnabled && (() => {
                 const totalSelected = filtered.filter(c => selectedIds?.has(c.id)).length;
@@ -464,12 +480,21 @@ export default function Sidebar({
             );
           })
         )}
-        {filtered.length > 0 && displayLimit < filtered.length && (
-          <div style={{ padding: "14px 16px", textAlign: "center", fontSize: 10, borderTop: "1px solid " + T.border, color: limitF > 0 ? col : T.muted }}>
-            {limitF > 0
-              ? <>Showing first {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — change limit to see more</>
-              : <>Showing {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — scroll to load more</>
-            }
+        {/* Hard-cap info */}
+        {filtered.length > 0 && limitF > 0 && displayLimit < filtered.length && (
+          <div style={{ padding: "10px 16px", textAlign: "center", fontSize: 10, borderTop: "1px solid " + T.border, color: col }}>
+            Showing first {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — change limit to see more
+          </div>
+        )}
+        {/* Auto-loading spinner while fetching next server page */}
+        {loadingMore && (
+          <div style={{ padding: "12px 16px", textAlign: "center", fontSize: 10, color: T.muted, borderTop: "1px solid " + T.border }}>
+            <span style={{
+              display: "inline-block", width: 12, height: 12, borderRadius: "50%",
+              border: "2px solid " + T.border, borderTopColor: col,
+              animation: "crm-spin 0.65s linear infinite", verticalAlign: "middle", marginRight: 6,
+            }} />
+            Loading…
           </div>
         )}
       </div>
