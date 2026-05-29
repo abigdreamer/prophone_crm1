@@ -51,9 +51,17 @@ function formatContact(c) {
     website: c.website,
     address: c.address,
     city: c.city,
+    state: c.state,
+    zip: c.zip,
     trucks: c.trucks,
+    servicesOffered: c.servicesOffered,
+    motorClubAffiliations: c.motorClubAffiliations,
+    dispatcherSoftware: c.dispatcherSoftware,
+    painPoints: c.painPoints,
+    estAnnualRevenue: c.estAnnualRevenue,
+    serviceAreaMiles: c.serviceAreaMiles,
+    yearsInBusiness: c.yearsInBusiness,
     lifecycleStage: c.lifecycleStage,
-    leadState: c.leadState ?? 'prospect',
     leadScore: c.leadScore,
     status: c.status,
     source: c.source,
@@ -147,9 +155,18 @@ async function createContact(req, res) {
       title: b.title || '',
       website: b.website || '',
       address: (b.address || '').trim(),
+      city: b.city || '',
+      state: b.state || '',
+      zip: b.zip || '',
       trucks: parseInt(b.trucks) || 0,
+      servicesOffered: b.servicesOffered || '',
+      motorClubAffiliations: b.motorClubAffiliations || '',
+      dispatcherSoftware: b.dispatcherSoftware || '',
+      painPoints: b.painPoints || '',
+      estAnnualRevenue: b.estAnnualRevenue || '',
+      serviceAreaMiles: parseInt(b.serviceAreaMiles) || 0,
+      yearsInBusiness: parseInt(b.yearsInBusiness) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
-      leadState: b.leadState || 'prospect',
       leadScore: b.leadScore || 10,
       status: b.status || STATUS.ACTIVE,
       source: b.source || '',
@@ -225,9 +242,18 @@ async function updateContact(req, res) {
       title: b.title ?? existing.title,
       website: b.website ?? existing.website,
       address: b.address !== undefined ? b.address.trim() : existing.address,
+      city: b.city ?? existing.city,
+      state: b.state ?? existing.state,
+      zip: b.zip ?? existing.zip,
       trucks: b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
+      servicesOffered: b.servicesOffered ?? existing.servicesOffered,
+      motorClubAffiliations: b.motorClubAffiliations ?? existing.motorClubAffiliations,
+      dispatcherSoftware: b.dispatcherSoftware ?? existing.dispatcherSoftware,
+      painPoints: b.painPoints ?? existing.painPoints,
+      estAnnualRevenue: b.estAnnualRevenue ?? existing.estAnnualRevenue,
+      serviceAreaMiles: b.serviceAreaMiles !== undefined ? parseInt(b.serviceAreaMiles) : existing.serviceAreaMiles,
+      yearsInBusiness: b.yearsInBusiness !== undefined ? parseInt(b.yearsInBusiness) : existing.yearsInBusiness,
       lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
-      leadState: b.leadState ?? existing.leadState,
       leadScore: b.leadScore ?? existing.leadScore,
       status: b.status ?? existing.status,
       source: b.source ?? existing.source,
@@ -368,12 +394,52 @@ async function importContacts(req, res) {
     // }
 
     const address = s('address');
+    const city = s('city');
+
+    // Detect social platform from a generic "socialMedia" column if provided
+    const detectSocialPlatform = (url) => {
+      const u = url.toLowerCase();
+      if (u.includes('facebook.com') || u.includes('fb.com')) return 'facebook';
+      if (u.includes('instagram.com')) return 'instagram';
+      if (u.includes('linkedin.com')) return 'linkedin';
+      if (u.includes('twitter.com') || u.includes('x.com')) return 'twitter';
+      if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+      if (u.includes('yelp.com')) return 'yelp';
+      if (u.includes('pinterest.com')) return 'pinterest';
+      if (u.includes('tiktok.com')) return 'tiktok';
+      return null;
+    };
 
     const socialLinks = {};
     for (const k of ['facebook','instagram','linkedin','twitter','youtube','yelp','pinterest','tiktok']) {
       const v = s(k) || s(`social_${k}`) || String(r.socialLinks?.[k] ?? '').trim();
       if (v) socialLinks[k] = v;
     }
+    // Generic social media column — detect platform from URL
+    const genericSocial = s('socialMedia');
+    if (genericSocial) {
+      const platform = detectSocialPlatform(genericSocial);
+      if (platform && !socialLinks[platform]) socialLinks[platform] = genericSocial;
+    }
+
+    // Normalize lifecycle stage value
+    const STAGE_ALIASES = {
+      new: STAGE.NEW, prospect: STAGE.NEW, fresh: STAGE.NEW,
+      contacted: STAGE.CONTACTED, contact: STAGE.CONTACTED,
+      engaged: STAGE.ENGAGED,
+      demo_scheduled: STAGE.DEMO_SCHEDULED, 'demo scheduled': STAGE.DEMO_SCHEDULED,
+      demo_done: STAGE.DEMO_DONE, 'demo done': STAGE.DEMO_DONE,
+      proposal_sent: STAGE.PROPOSAL_SENT, 'proposal sent': STAGE.PROPOSAL_SENT, proposal: STAGE.PROPOSAL_SENT,
+      negotiating: STAGE.NEGOTIATING,
+      customer: STAGE.CUSTOMER, client: STAGE.CUSTOMER,
+      not_qualified: STAGE.NOT_QUALIFIED, 'not qualified': STAGE.NOT_QUALIFIED, unqualified: STAGE.NOT_QUALIFIED,
+      lost: STAGE.LOST,
+      churned: STAGE.CHURNED,
+    };
+    const rawStage = s('lifecycleStage').toLowerCase();
+    const resolvedStage = VALID_STAGES.includes(r.lifecycleStage)
+      ? r.lifecycleStage
+      : (STAGE_ALIASES[rawStage] || STAGE.NEW);
 
     const data = {
       pool,
@@ -386,19 +452,31 @@ async function importContacts(req, res) {
       title: s('title'),
       website: normaliseDomain(s('website')),
       address,
+      city,
+      state: s('state'),
+      zip: s('zip'),
       description: s('description'),
       socialLinks,
       trucks: parseInt(r.trucks) || 0,
+      servicesOffered: s('servicesOffered') || s('services_offered'),
+      motorClubAffiliations: s('motorClubAffiliations') || s('motor_club_affiliations'),
+      dispatcherSoftware: s('dispatcherSoftware') || s('dispatcher_software'),
+      painPoints: s('painPoints') || s('pain_points'),
+      estAnnualRevenue: s('estAnnualRevenue') || s('est_annual_revenue'),
+      serviceAreaMiles: parseInt(r.serviceAreaMiles ?? r.service_area_miles) || 0,
+      yearsInBusiness: parseInt(r.yearsInBusiness ?? r.years_in_business) || 0,
       contractValue: parseInt(r.contractValue) || 0,
-      lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : STAGE.NEW,
-      leadScore: 10,
+      lifecycleStage: resolvedStage,
+      leadScore: parseInt(r.leadScore) || 10,
       status: STATUS.ACTIVE,
       source: s('source'),
+      campaign: s('campaign'),
       notes: s('notes'),
+      tags: Array.isArray(r.tags) ? r.tags : (r.tags ? String(r.tags).split(/[,;|]/).map(t => t.trim()).filter(Boolean) : []),
       ownedBy: s('ownedBy') || currentUserName,
       addedBy: s('addedBy') || currentUserName,
-      tags: [],
       lastActivityAt: new Date(),
+      ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
     };
 
     const key = email ? email.toLowerCase() : null;
