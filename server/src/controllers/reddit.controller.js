@@ -18,10 +18,14 @@ export async function createMonitor(req, res) {
   if (!clientId || !subreddit || !keywords?.length) {
     return res.status(400).json({ error: 'clientId, subreddit, and keywords are required' });
   }
+  const cleanSub = subreddit.replace(/^r\//, '').trim();
+  if (/\s/.test(cleanSub)) {
+    return res.status(400).json({ error: 'Subreddit name cannot contain spaces. Enter one subreddit at a time (e.g. "trucking", not "tow truck software").' });
+  }
   const monitor = await prisma.redditMonitor.create({
     data: {
       clientId,
-      subreddit: subreddit.replace(/^r\//, '').trim(),
+      subreddit: cleanSub,
       keywords,
       pollIntervalSec: pollIntervalSec || 60,
     },
