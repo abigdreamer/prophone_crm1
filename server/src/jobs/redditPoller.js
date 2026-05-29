@@ -92,7 +92,7 @@ async function pollAllMonitors() {
           }
         }
       } catch (err) {
-        console.error(`[reddit-poller] Failed to fetch r/${subreddit}:`, err.response?.status || err.message);
+        console.error(`[reddit-poller] All methods failed for r/${subreddit}:`, err.response?.status || err.message);
       }
     }
   } catch (err) {
