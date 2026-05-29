@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, Plus, Upload, Users, UserPlus, Flame, Zap, Star, Clock, AlertTriangle, XCircle, List, LayoutGrid, Menu, Mail } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -449,17 +449,6 @@ function AppLayout({ currentUser, onSignOut }) {
 
   // ── View mode filter options ──────────────────────────────────────────────
 
-  const VIEW_MODE_OPTS = [
-    { mode: VIEW_MODE.ALL,        label: "All",        Icon: List,          colorKey: "dim"    },
-    { mode: VIEW_MODE.PROSPECTS,  label: "Prospects",  Icon: UserPlus,      colorKey: "amber"  },
-    { mode: VIEW_MODE.LEADS,      label: "Leads",      Icon: Users,         colorKey: "blue"   },
-    { mode: VIEW_MODE.WARM,       label: "Warm",       Icon: Flame,         colorKey: "orange" },
-    { mode: VIEW_MODE.HOT,        label: "Hot",        Icon: Zap,           colorKey: "red"    },
-    { mode: VIEW_MODE.CUSTOMER,   label: "Customer",   Icon: Star,          colorKey: "green"  },
-    { mode: VIEW_MODE.BACKBURNER, label: "Backburner", Icon: Clock,         colorKey: "purple" },
-    { mode: VIEW_MODE.LOST,       label: "Lost",       Icon: AlertTriangle, colorKey: "muted"  },
-    { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
-  ];
 
   // ── Panel resize drag handlers ─────────────────────────────────────────────
 
@@ -783,66 +772,40 @@ function AppLayout({ currentUser, onSignOut }) {
           )}
           {isReports && <ReportsSubNav />}
           {isSettings && <SettingsSubNav />}
-          {/* ── Center filter bar (contacts only, not in modal modes) ─────── */}
-          {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && centerMode !== 'sendEmail' && (
+
+          {/* Center panel Add / Import buttons */}
+          {isContacts && !['import', 'cancel', 'restore', 'sendEmail'].includes(centerMode) && (
             <div style={{
-              flexShrink: 0, borderBottom: '1px solid ' + T.border,
-              background: T.surface, padding: '8px 12px',
-              display: 'flex', alignItems: 'center', gap: 8,
-              overflowX: 'auto', whiteSpace: 'nowrap',
+              flexShrink: 0, padding: '6px 14px',
+              borderBottom: '1px solid ' + T.border,
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8,
+              background: T.surface,
             }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, flex: 1 }}>
-                {VIEW_MODE_OPTS.map(({ mode, label, Icon, colorKey }) => {
-                  const c = T[colorKey] || T.dim;
-                  const active = viewMode === mode;
-                  return (
-                    <button
-                      key={mode}
-                      onClick={() => handleViewModeChange(mode)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '4px 10px', fontSize: 10, borderRadius: 20, cursor: 'pointer',
-                        fontFamily: 'inherit', fontWeight: active ? 700 : 500,
-                        background: active ? c + '22' : 'transparent',
-                        border: '1px solid ' + (active ? c : T.border),
-                        color: active ? c : T.muted,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <Icon size={10} strokeWidth={2.5} />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
-                <button
-                  onClick={handleAddNew}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 14px', background: T.accent, border: 'none',
-                    borderRadius: 7, color: '#fff', fontSize: 11, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    boxShadow: '0 2px 6px ' + T.accent + '44',
-                  }}
-                >
-                  <Plus size={12} strokeWidth={2.5} /> Add Contact
-                </button>
-                {viewMode !== VIEW_MODE.CANCELED && (
-                  <button
-                    onClick={() => { setCenterMode('import'); navigate('/contacts'); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '6px 13px', background: 'transparent',
-                      border: '1px solid ' + T.border, borderRadius: 7,
-                      color: T.dim, fontSize: 11, fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >
-                    <Upload size={12} strokeWidth={2} /> Import
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={handleAddNew}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '5px 14px', background: T.accent, border: 'none',
+                  borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: `0 2px 6px ${T.accent}44`,
+                  opacity: centerMode === 'add' ? 0.6 : 1,
+                }}
+              >+ Add</button>
+              <button
+                onClick={() => { setCenterMode('import'); navigate('/contacts'); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '5px 14px', background: 'transparent',
+                  border: '1px solid ' + T.border, borderRadius: 6,
+                  color: T.dim, fontSize: 11, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  flexShrink: 0, whiteSpace: 'nowrap',
+                  transition: 'border-color 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.dim; }}
+              >↑ Import</button>
             </div>
           )}
 
@@ -953,7 +916,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
         {/* Collapsed lifecycle — slim reopen tab */}
         {isContacts && !lifecycleOpen && (
-          <div style={{ flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.surface }}>
+          <div style={{ flexShrink: 0, width: 29, borderLeft: '1px solid ' + T.border, background: T.surface }}>
             <button
               onClick={() => setLifecycleOpen(true)}
               title="Open Lead Lifecycle"
