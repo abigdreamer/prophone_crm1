@@ -26,7 +26,11 @@ async function pollAllMonitors() {
       where: { isActive: true },
     });
 
-    if (monitors.length === 0) return;
+    if (monitors.length === 0) {
+      console.log('[reddit-poller] No active monitors found');
+      return;
+    }
+    console.log(`[reddit-poller] Polling ${monitors.length} active monitor(s)`);
 
     // Group monitors by subreddit to avoid duplicate fetches
     const subredditMap = new Map();
@@ -43,7 +47,9 @@ async function pollAllMonitors() {
       }
 
       try {
+        console.log(`[reddit-poller] Fetching r/${subreddit}...`);
         const posts = await fetchSubredditPosts(subreddit);
+        console.log(`[reddit-poller] r/${subreddit} returned ${posts.length} posts`);
         requestCount++;
 
         for (const post of posts) {
@@ -51,6 +57,7 @@ async function pollAllMonitors() {
           for (const monitor of monitorGroup) {
             const matched = matchKeywords(post, monitor.keywords);
             if (matched.length === 0) continue;
+            console.log(`[reddit-poller] Match found: "${post.title.substring(0, 60)}" → [${matched.join(', ')}]`);
 
             // Skip if already discovered
             const exists = await prisma.redditPost.findUnique({
