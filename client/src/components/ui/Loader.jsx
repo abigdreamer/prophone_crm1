@@ -227,71 +227,98 @@ export function SkeletonMetricCard() {
 }
 
 // ─── SkeletonDetailPanel (full contact detail loading state) ─────────────────
+// SkeletonDetailPanel -- mirrors the actual ContactDetailPanel sections
 export function SkeletonDetailPanel() {
   const T = useTheme();
-  const block = (w, h = 10, mb = 0) => (
-    <div style={shimmerStyle(T, { width: w, height: h, marginBottom: mb })} />
+  const b = (w, h = 10, mb = 0) => (
+    <div style={shimmerStyle(T, { width: w, height: h, marginBottom: mb, flexShrink: 0 })} />
+  );
+  const sectionHeader = (labelW) => (
+    <div style={{ padding: "9px 16px", borderBottom: "1px solid " + T.border, display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={shimmerStyle(T, { width: 10, height: 10, borderRadius: "50%" })} />
+      {b(labelW, 9)}
+    </div>
   );
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32, animation: "crm-fadein 0.2s ease" }}>
-      {/* Hero */}
+    <div style={{ maxWidth: 860, margin: "0 auto", paddingBottom: 32, animation: "crm-fadein 0.2s ease" }}>
+
+      {/* Profile card */}
       <div style={{
         display: "flex", alignItems: "flex-start", gap: 18,
-        padding: "20px 22px", background: T.card, border: "1px solid " + T.border,
-        borderRadius: 10, marginBottom: 16,
+        padding: "18px 20px", background: T.card, border: "1px solid " + T.border,
+        borderRadius: 10, marginBottom: 10,
       }}>
-        <div style={shimmerStyle(T, { width: 64, height: 64, borderRadius: "50%", flexShrink: 0 })} />
-        <div style={{ flex: 1, paddingTop: 4 }}>
-          {block("50%", 18, 10)}
-          {block("35%", 11, 8)}
-          <div style={{ display: "flex", gap: 6 }}>
-            {block("18%", 20)}{" "}{block("18%", 20)}{" "}{block("18%", 20)}
+        <div style={shimmerStyle(T, { width: 56, height: 56, borderRadius: "50%", flexShrink: 0, marginTop: 2 })} />
+        <div style={{ flex: 1 }}>
+          {b("45%", 20, 8)}
+          {b("30%", 11, 10)}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {b(80, 22)}{b(90, 22)}{b(70, 22)}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {block(72, 28)}{" "}{block(72, 28)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+          {b(80, 28)}{b(80, 28)}
         </div>
       </div>
 
-      {/* Metrics strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
-        {[0, 1, 2, 3].map(i => <SkeletonMetricCard key={i} />)}
+      {/* Pipeline Management */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, marginBottom: 10, overflow: "hidden" }}>
+        {sectionHeader("140px")}
+        <div style={{ padding: "16px 20px", display: "flex", alignItems: "center" }}>
+          {[0, 1, 2, 3, 4, 5].map((i, _, arr) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", flex: i < arr.length - 1 ? 1 : 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                <div style={shimmerStyle(T, { width: 28, height: 28, borderRadius: "50%" })} />
+                <div style={shimmerStyle(T, { width: 48, height: 8 })} />
+              </div>
+              {i < arr.length - 1 && (
+                <div style={shimmerStyle(T, { flex: 1, height: 2, margin: "0 4px", marginBottom: 22 })} />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Info grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-        {[0, 1].map(i => (
-          <div key={i} style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
-            <div style={{ padding: "8px 16px", borderBottom: "1px solid " + T.border }}>
-              {block("40%", 9)}
-            </div>
-            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {[0, 1, 2, 3].map(j => (
-                <div key={j} style={{ display: "flex", justifyContent: "space-between" }}>
-                  {block("30%")}{block("45%")}
-                </div>
+      {/* Name & Role -- 3 columns */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, marginBottom: 10, overflow: "hidden" }}>
+        {sectionHeader("90px")}
+        <div style={{ padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i}>{b("50%", 8, 6)}{b("80%", 14)}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Contact Info + Company -- two halves */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        {[4, 6].map((rows, idx) => (
+          <div key={idx} style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
+            {sectionHeader(idx === 0 ? "90px" : "150px")}
+            <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {Array.from({ length: rows }).map((_, j) => (
+                <div key={j}>{b("40%", 8, 5)}{b("70%", 14)}</div>
               ))}
             </div>
           </div>
         ))}
       </div>
 
-      {/* CRM metadata strip */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0,
-        background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-        marginBottom: 12, overflow: "hidden",
-      }}>
-        {[0, 1, 2, 3].map((_, i, arr) => (
-          <div key={_} style={{ padding: "12px 16px", borderRight: i < arr.length - 1 ? "1px solid " + T.border : "none" }}>
-            {block("55%", 8, 6)}{block("40%", 12)}
-          </div>
-        ))}
+      {/* Notes */}
+      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, marginBottom: 10, overflow: "hidden" }}>
+        {sectionHeader("50px")}
+        <div style={{ padding: "14px 16px" }}>
+          <div style={shimmerStyle(T, { width: "100%", height: 72, borderRadius: 6 })} />
+        </div>
       </div>
 
-      {/* Audit log placeholder */}
+      {/* Tags */}
       <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
-        <div style={{ padding: "8px 16px" }}>{block("30%", 9)}</div>
+        {sectionHeader("40px")}
+        <div style={{ padding: "14px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[60, 80, 50, 70, 55].map((w, i) => (
+            <div key={i} style={shimmerStyle(T, { width: w, height: 24, borderRadius: 12 })} />
+          ))}
+        </div>
       </div>
     </div>
   );

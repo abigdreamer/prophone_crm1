@@ -100,6 +100,10 @@ async function listContacts(req, res) {
     return res.status(400).json({ error: 'Invalid pool' });
   }
 
+  const page  = Math.max(1, parseInt(req.query.page)  || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+  const skip  = (page - 1) * limit;
+
   const where = {};
 
   if (pool) where.pool = pool;
@@ -118,15 +122,22 @@ async function listContacts(req, res) {
     }
   }
 
-  const contacts = await prisma.contact.findMany({
-    where,
-    orderBy: status === STATUS.CANCELED
-      ? { canceledAt: 'desc' }
-      : { lastActivityAt: 'desc' },
-  });
+  const orderBy = status === STATUS.CANCELED
+    ? { canceledAt: 'desc' }
+    : { lastActivityAt: 'desc' };
+
+  const [contacts, total] = await Promise.all([
+    prisma.contact.findMany({ where, orderBy, skip, take: limit }),
+    prisma.contact.count({ where }),
+  ]);
 
   const actMap = await fetchActivitiesBulk(contacts.map(c => c.id));
-  res.json(contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })));
+  res.json({
+    data: contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })),
+    total,
+    page,
+    hasMore: skip + contacts.length < total,
+  });
 }
 
 async function getContact(req, res) {
