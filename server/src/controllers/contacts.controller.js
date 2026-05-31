@@ -101,7 +101,7 @@ async function listContacts(req, res) {
   }
 
   const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+  const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
   const skip  = (page - 1) * limit;
 
   const where = {};

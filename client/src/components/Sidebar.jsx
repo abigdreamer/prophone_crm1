@@ -190,10 +190,14 @@ export default function Sidebar({
       if (sortF === "score_desc") return (b.leadScore || 0) - (a.leadScore || 0);
       if (sortF === "score_asc")  return (a.leadScore || 0) - (b.leadScore || 0);
       if (sortF === "old") return new Date(a.lastActivityAt || a.createdAt) - new Date(b.lastActivityAt || b.createdAt);
-      // "recent" default: named contacts first, then by most recent activity
-      const aHasName = !!contactDisplayName(a);
-      const bHasName = !!contactDisplayName(b);
-      if (aHasName !== bHasName) return aHasName ? -1 : 1;
+      // "recent" default: full name (2) > partial name (1) > email-only (0), then by date
+      const nameScore = c => {
+        const hasFirst = !!(c.firstName && c.firstName.trim());
+        const hasLast  = !!(c.lastName  && c.lastName.trim());
+        return hasFirst && hasLast ? 2 : hasFirst || hasLast ? 1 : 0;
+      };
+      const scoreDiff = nameScore(b) - nameScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
@@ -291,43 +295,45 @@ export default function Sidebar({
 
       {/* ── Search + Filter ──────────────────────────────────────────────────── */}
       <div style={{ padding: "10px 10px 8px", flexShrink: 0, position: "relative" }} ref={filterPanelRef}>
-        <div style={{ display: "flex", gap: 6 }}>
-          <div style={{ position: "relative", flex: 1 }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: (isFocused || search) ? col : T.muted, pointerEvents: "none" }}>
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              ref={searchRef} value={search} onChange={e => setSearch(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder="Search contacts…"
-              style={{
-                width: "100%", background: T.card,
-                border: "1px solid " + ((isFocused || search) ? col : T.border),
-                borderRadius: 7, padding: "7px 26px 7px 28px", color: T.text,
-                fontSize: 12, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
-                transition: "border-color 0.15s",
-              }}
-            />
-            {search && (
-              <button onClick={() => setSearch("")} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.muted, cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
-            )}
-          </div>
+        {/* Row 1: search input full width */}
+        <div style={{ position: "relative", marginBottom: 6 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: (isFocused || search) ? col : T.muted, pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            ref={searchRef} value={search} onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Search contacts…"
+            style={{
+              width: "100%", background: T.card,
+              border: "1px solid " + ((isFocused || search) ? col : T.border),
+              borderRadius: 7, padding: "7px 26px 7px 28px", color: T.text,
+              fontSize: 12, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+              transition: "border-color 0.15s",
+            }}
+          />
+          {search && (
+            <button onClick={() => setSearch("")} style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: T.muted, cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
+          )}
+        </div>
 
+        {/* Row 2: sort + filter button */}
+        <div style={{ display: "flex", gap: 6 }}>
           {/* Sort */}
           <select
             value={sortF}
             onChange={e => setSortF(e.target.value)}
             style={{
-              flexShrink: 0, height: 34,
+              flex: 1, height: 30,
               background: T.card, border: "1px solid " + T.border,
               borderRadius: 7, padding: "0 6px",
               color: sortF !== "recent" ? col : T.muted,
               fontSize: 11, fontWeight: sortF !== "recent" ? 600 : 400,
               outline: "none", fontFamily: "inherit", cursor: "pointer",
-              minWidth: 120,
+              minWidth: 0,
             }}
           >
             {SORT_OPTS.map(({ value, label }) => (
@@ -342,7 +348,7 @@ export default function Sidebar({
             title="Filters"
             style={{
               position: "relative", flexShrink: 0,
-              width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+              width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
               background: isFilterOpen || activeFilterCount > 0 ? col + "18" : T.card,
               border: "1px solid " + (isFilterOpen || activeFilterCount > 0 ? col + "60" : T.border),
               borderRadius: 7, cursor: "pointer",

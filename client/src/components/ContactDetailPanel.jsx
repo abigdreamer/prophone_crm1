@@ -352,10 +352,10 @@ export default function ContactDetailPanel({
       <Section icon={Share2} title="Social Links" T={T}>
         <G cols="1fr 1fr 1fr 1fr" mb={0}>
           {[
-            { key: "yelp",      label: "Yelp",      ph: "yelp.com/biz/…"    },
             { key: "facebook",  label: "Facebook",  ph: "facebook.com/…"    },
-            { key: "linkedin",  label: "LinkedIn",  ph: "linkedin.com/in/…" },
             { key: "instagram", label: "Instagram", ph: "instagram.com/…"   },
+            { key: "linkedin",  label: "LinkedIn",  ph: "linkedin.com/in/…" },
+            { key: "yelp",      label: "Yelp",      ph: "yelp.com/biz/…"    },
           ].map(({ key, label, ph }) => (
             <F key={key} label={label}>
               <FInput value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={ph} />
