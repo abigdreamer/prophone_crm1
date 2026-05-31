@@ -490,6 +490,9 @@ function AppLayout({ currentUser, onSignOut }) {
   const liveContact = liveFormData && selected ? {
     ...selected,
     ...liveFormData,
+    // leadScore is server-computed — always use the value from selected so the
+    // right panel reflects the saved score, not the stale form string.
+    leadScore:     selected.leadScore,
     trucks:        parseInt(liveFormData.trucks)        || selected.trucks        || 0,
     contractValue: parseInt(liveFormData.contractValue) || selected.contractValue || 0,
     tags: liveFormData.tags
