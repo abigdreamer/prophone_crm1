@@ -38,7 +38,7 @@ export function useContacts(currentUser) {
     setHasMore(false);
     setTotal(0);
     setLoading(true);
-    getContacts({ page: 1, limit: 100 })
+    getContacts({ page: 1, limit: 500 })
       .then(({ data, total: t, hasMore: more }) => {
         if (!cancelled) {
           setContacts(data);
@@ -58,7 +58,7 @@ export function useContacts(currentUser) {
     setLoadingMore(true);
     const nextPage = page + 1;
     try {
-      const { data, hasMore: more, total: t } = await getContacts({ page: nextPage, limit: 100 });
+      const { data, hasMore: more, total: t } = await getContacts({ page: nextPage, limit: 500 });
       setContacts(prev => [...prev, ...data]);
       setPage(nextPage);
       setHasMore(more);

@@ -1,40 +1,24 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import Avatar from "../components/ui/Avatar";
 import { useTheme } from "../context/ThemeContext";
-import USERS_DB from "../data/users";
-import { loginUser } from "../services/api";
-import { identifyUser, analytics } from "../services/analytics";
-import {
-  Check, Eye, EyeOff, ArrowRight, Phone,
-  Users, TrendingUp, Mail, BarChart2, Zap, Shield,
-  PhoneCall, Clock, Star,
-} from "lucide-react";
+import { clientLoginUser } from "../services/api";
+import { Eye, EyeOff, ArrowRight, Building2, Users, BarChart2, Shield } from "lucide-react";
 
 const accent = "#6366f1";
 
 const FEATURES = [
-  { icon: Users,      label: "Smart Contact Management",  desc: "Organize leads, clients & prospects in one place"    },
-  { icon: TrendingUp, label: "Lead Pipeline Tracking",    desc: "Track every stage from prospect to closed customer"   },
-  { icon: Mail,       label: "Email Campaigns",           desc: "Send targeted campaigns with real-time open tracking" },
-  { icon: BarChart2,  label: "Live Analytics & Reports",  desc: "Dashboards built for towing & roadside sales teams"   },
-  { icon: Zap,        label: "Activity Automation",       desc: "Auto-log calls, emails, and stage changes instantly"  },
-  { icon: Shield,     label: "Role-Based Access",         desc: "Admins, managers, and reps — each with the right view"},
+  { icon: Users,     label: "Your Leads",       desc: "View all your company's leads and contacts"       },
+  { icon: BarChart2, label: "Campaign Reports",  desc: "Track performance of email campaigns sent to you" },
+  { icon: Building2, label: "Company Overview",  desc: "See all activity tied to your account"            },
+  { icon: Shield,    label: "Secure Access",     desc: "Read-only portal — your data stays protected"     },
 ];
 
-const STATS = [
-  { icon: PhoneCall, value: "6 Stages",   label: "Lead Pipeline"      },
-  { icon: Clock,     value: "Real-time",  label: "Activity Tracking"  },
-  { icon: Star,      value: "Multi-user", label: "Team Roles & Access"},
-  { icon: Mail,      value: "Built-in",   label: "Email Campaigns"    },
-];
-
-export default function LoginPage({ onLogin }) {
+export default function ClientLoginPage({ onLogin }) {
   const T = useTheme();
   const navigate = useNavigate();
 
-  const [email,    setEmail]    = useState("mike@geniusai.biz");
-  const [password, setPassword] = useState("123456");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [showPass, setShowPass] = useState(false);
@@ -47,20 +31,22 @@ export default function LoginPage({ onLogin }) {
   }, []);
 
   async function handleLogin() {
+    if (!username || !password) {
+      setError("Please enter your username and password.");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
-      const user = await loginUser(email, password);
+      const user = await clientLoginUser(username, password);
       if (user) {
-        identifyUser(user);
-        analytics.signedIn(user);
         onLogin(user);
-        navigate("/contacts", { replace: true });
+        navigate("/portal/dashboard", { replace: true });
       } else {
-        setError("Invalid credentials. Check your email and password.");
+        setError("Invalid credentials. Please try again.");
       }
-    } catch {
-      setError("Connection error. Make sure the API server is running.");
+    } catch (err) {
+      setError(err.message || "Connection error. Make sure the API server is running.");
     } finally {
       setLoading(false);
     }
@@ -68,29 +54,21 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div style={{
-      display: "flex",
-      minHeight: "100vh",
-      fontFamily: "'Inter', sans-serif",
-      background: "#0a0a12",
+      display: "flex", minHeight: "100vh",
+      fontFamily: "'Inter', sans-serif", background: "#0a0a12",
     }}>
-
       {/* LEFT PROMO PANEL */}
       {!isMobile && (
         <div style={{
-          width: "42%",
-          flexShrink: 0,
+          width: "42%", flexShrink: 0,
           background: "linear-gradient(160deg, #0f0e1c 0%, #0b0b18 60%, #080c18 100%)",
           borderRight: "1px solid rgba(255,255,255,0.06)",
-          padding: "44px",
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          overflow: "hidden",
+          padding: "44px", display: "flex", flexDirection: "column",
+          position: "relative", overflow: "hidden",
         }}>
           <div style={{ position: "absolute", top: -60, left: -60, width: 300, height: 300, borderRadius: "50%", background: accent + "12", filter: "blur(80px)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", bottom: 80, right: -40, width: 240, height: 240, borderRadius: "50%", background: "#3b82f610", filter: "blur(70px)", pointerEvents: "none" }} />
 
-          {/* Badge */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 44, position: "relative" }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: accent, boxShadow: "0 0 6px " + accent }} />
             <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
@@ -98,34 +76,30 @@ export default function LoginPage({ onLogin }) {
             </span>
           </div>
 
-          {/* Brand */}
           <div style={{ position: "relative", marginBottom: 36 }}>
             <div style={{
               width: 60, height: 60, borderRadius: 16,
               background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 8px 28px " + accent + "44",
-              marginBottom: 18,
+              boxShadow: "0 8px 28px " + accent + "44", marginBottom: 18,
             }}>
-              <Phone size={28} color="#fff" strokeWidth={2} />
+              <Building2 size={28} color="#fff" strokeWidth={2} />
             </div>
             <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.03em", marginBottom: 6 }}>
-              ProPhone CRM
+              Client Portal
             </div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.28)", letterSpacing: "0.18em", textTransform: "uppercase" }}>
-              Towing &amp; Roadside Sales Suite
+              ProPhone CRM · Secure Access
             </div>
           </div>
 
-          {/* Features */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 36, position: "relative" }}>
             {FEATURES.map(({ icon: Icon, label, desc }) => (
               <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                   background: accent + "18", border: "1px solid " + accent + "30",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  marginTop: 1,
+                  display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1,
                 }}>
                   <Icon size={14} color={accent} strokeWidth={2} />
                 </div>
@@ -137,32 +111,14 @@ export default function LoginPage({ onLogin }) {
             ))}
           </div>
 
-          {/* Platform Highlights (replaces testimonials) */}
           <div style={{
             marginTop: "auto", position: "relative",
             background: "rgba(255,255,255,0.03)",
             border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 14, padding: "18px 20px",
+            borderRadius: 14, padding: "16px 20px",
           }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
-              Platform Highlights
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {STATS.map(({ icon: Icon, value, label }) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{
-                    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                    background: accent + "18", border: "1px solid " + accent + "25",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <Icon size={13} color={accent} strokeWidth={2} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#fff" }}>{value}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{label}</div>
-                  </div>
-                </div>
-              ))}
+            <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.2)", marginBottom: 6 }}>
+              This portal provides read-only access to your company data. For account changes, contact your ProPhone administrator.
             </div>
           </div>
         </div>
@@ -170,15 +126,10 @@ export default function LoginPage({ onLogin }) {
 
       {/* RIGHT SIGN-IN PANEL */}
       <div style={{
-        flex: 1,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: T.bg,
-        padding: "32px 24px",
+        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+        background: T.bg, padding: "32px 24px",
       }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
-
           {isMobile && (
             <div style={{ textAlign: "center", marginBottom: 28 }}>
               <div style={{
@@ -186,77 +137,25 @@ export default function LoginPage({ onLogin }) {
                 background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Phone size={24} color="#fff" strokeWidth={2} />
+                <Building2 size={24} color="#fff" strokeWidth={2} />
               </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>ProPhone CRM</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>Client Portal</div>
             </div>
           )}
 
           <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.02em" }}>Welcome back</h1>
-            <p style={{ fontSize: 13, color: T.muted }}>Sign in to your ProPhone account</p>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.02em" }}>Client Login</h1>
+            <p style={{ fontSize: 13, color: T.muted }}>Sign in to your company portal</p>
           </div>
 
-          {/* Quick Select */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-              Quick Select
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {USERS_DB.slice(0, 4).map((u) => {
-                const active = email === u.email;
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => setEmail(u.email)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                      background: active ? accent + "12" : T.card,
-                      border: "1.5px solid " + (active ? accent + "80" : T.border),
-                      borderRadius: 10, cursor: "pointer", position: "relative",
-                      transition: "border-color 0.15s, background 0.15s",
-                      textAlign: "left",
-                    }}
-                  >
-                    <Avatar user={u} size={28} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: active ? T.text : T.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {u.name.split(" ")[0]}
-                      </div>
-                      <div style={{ fontSize: 10, color: T.muted }}>{u.role || "Staff"}</div>
-                    </div>
-                    {active && (
-                      <div style={{
-                        position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                        width: 18, height: 18, borderRadius: "50%",
-                        background: "linear-gradient(135deg, " + accent + " 0%, #4f46e5 100%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        boxShadow: "0 2px 8px " + accent + "55",
-                      }}>
-                        <Check size={10} color="#fff" strokeWidth={3} />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-            <div style={{ flex: 1, height: 1, background: T.border }} />
-            <span style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: "0.1em" }}>OR ENTER MANUALLY</span>
-            <div style={{ flex: 1, height: 1, background: T.border }} />
-          </div>
-
-          {/* Inputs */}
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Email</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Username</label>
               <input
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                value={username}
+                onChange={e => setUsername(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleLogin()}
+                autoComplete="username"
                 style={{
                   width: "100%", padding: "11px 14px", boxSizing: "border-box",
                   background: T.surface, border: "1.5px solid " + T.border,
@@ -275,6 +174,7 @@ export default function LoginPage({ onLogin }) {
                   onChange={e => setPassword(e.target.value)}
                   type={showPass ? "text" : "password"}
                   onKeyDown={e => e.key === "Enter" && handleLogin()}
+                  autoComplete="current-password"
                   style={{
                     width: "100%", padding: "11px 42px 11px 14px", boxSizing: "border-box",
                     background: T.surface, border: "1.5px solid " + T.border,
@@ -325,21 +225,21 @@ export default function LoginPage({ onLogin }) {
             onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = "0 6px 28px " + accent + "66"; }}
             onMouseLeave={e => { if (!loading) e.currentTarget.style.boxShadow = "0 4px 20px " + accent + "44"; }}
           >
-            {loading ? "Signing in…" : <><span>Sign in</span><ArrowRight size={15} /></>}
+            {loading ? "Signing in…" : <><span>Sign in to Portal</span><ArrowRight size={15} /></>}
           </button>
 
           <div style={{ marginTop: 20, textAlign: "center" }}>
             <Link
-              to="/client-login"
+              to="/login"
               style={{ fontSize: 12, color: T.muted, textDecoration: "none" }}
               onMouseEnter={e => { e.currentTarget.style.color = accent; }}
               onMouseLeave={e => { e.currentTarget.style.color = T.muted; }}
             >
-              Client? Access your portal here
+              ProPhone admin? Sign in here
             </Link>
           </div>
 
-          <div style={{ marginTop: 16, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.1em", opacity: 0.5 }}>
+          <div style={{ marginTop: 24, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.1em", opacity: 0.5 }}>
             GENIUSAI · PROPHONE SUITE
           </div>
         </div>

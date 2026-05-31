@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import ClientsPage from "./ClientsPage";
-import ComingSoon from "../components/layout/ComingSoon";
+import UserSettingsPage from "../components/settings/UserSettingsPage";
 
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
@@ -312,7 +312,7 @@ function ContactFieldSettings({ clientId }) {
 // Main Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function SettingsPage() {
+export default function SettingsPage({ currentUser }) {
   const { clientId } = usePool();
   const [searchParams] = useSearchParams();
 
@@ -324,7 +324,7 @@ export default function SettingsPage() {
         <ContactFieldSettings clientId={clientId} />
       )}
       {activeTab === "clients" && <ClientsPage />}
-      {activeTab === "user_settings" && <ComingSoon page="User Settings" />}
+      {activeTab === "user" && <UserSettingsPage currentUser={currentUser} />}
     </div>
   );
 }

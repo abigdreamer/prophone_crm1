@@ -5,7 +5,7 @@ import { LayoutGrid, FolderOpen, Users, ChevronRight } from "lucide-react";
 const ITEMS = [
   { id: "contact_fields", label: "Contact Fields", Icon: LayoutGrid },
   { id: "clients",        label: "Clients",        Icon: FolderOpen },
-  { id: "user_settings",  label: "User Settings",  Icon: Users      },
+  { id: "user",  label: "Users",  Icon: Users      },
 ];
 
 export default function SettingsSubNav() {

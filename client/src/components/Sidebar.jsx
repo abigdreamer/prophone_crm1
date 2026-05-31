@@ -190,6 +190,10 @@ export default function Sidebar({
       if (sortF === "score_desc") return (b.leadScore || 0) - (a.leadScore || 0);
       if (sortF === "score_asc")  return (a.leadScore || 0) - (b.leadScore || 0);
       if (sortF === "old") return new Date(a.lastActivityAt || a.createdAt) - new Date(b.lastActivityAt || b.createdAt);
+      // "recent" default: named contacts first, then by most recent activity
+      const aHasName = !!contactDisplayName(a);
+      const bHasName = !!contactDisplayName(b);
+      if (aHasName !== bHasName) return aHasName ? -1 : 1;
       return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
