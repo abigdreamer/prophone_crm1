@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Building2, Plus, Users, X, Pencil, History, Search } from "lucide-react";
+import { Building2, Plus, Users, X, Pencil, History, Search, KeyRound, Trash2, UserPlus, ToggleLeft, ToggleRight } from "lucide-react";
 import RefreshBtn from "../components/ui/RefreshBtn";
 import { useSearchParams } from "react-router-dom";
 import Modal from "../components/ui/Modal";
@@ -127,6 +127,177 @@ function ClientModal({ client, onSave, onClose }) {
   );
 }
 
+// ── Portal Users Section ──────────────────────────────────────────────────────
+
+function PortalUsersSection({ clientId }) {
+  const T = useTheme();
+  const toast = useAppToast();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: "", username: "", password: "", email: "", role: "viewer" });
+  const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    db.getClientPortalUsers(clientId)
+      .then(data => setUsers(data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function handleCreate() {
+    if (!form.name || !form.username || !form.password) {
+      setFormErr("Name, username, and password are required.");
+      return;
+    }
+    setSaving(true); setFormErr("");
+    try {
+      const created = await db.createClientPortalUser(clientId, form);
+      setUsers(u => [...u, created]);
+      setForm({ name: "", username: "", password: "", email: "", role: "viewer" });
+      setShowForm(false);
+      toast.success("Portal user created.");
+    } catch (e) {
+      setFormErr(e.message || "Failed to create user.");
+    } finally { setSaving(false); }
+  }
+
+  async function handleToggleActive(user) {
+    try {
+      const updated = await db.updateClientPortalUser(clientId, user.id, { isActive: !user.isActive });
+      setUsers(u => u.map(x => x.id === updated.id ? updated : x));
+    } catch { toast.error("Failed to update user."); }
+  }
+
+  async function handleDelete(user) {
+    if (!window.confirm(`Remove portal access for ${user.name}?`)) return;
+    try {
+      await db.deleteClientPortalUser(clientId, user.id);
+      setUsers(u => u.filter(x => x.id !== user.id));
+      toast.success("Portal user removed.");
+    } catch { toast.error("Failed to remove user."); }
+  }
+
+  return (
+    <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <KeyRound size={12} color={T.muted} />
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Portal Users</span>
+          {users.length > 0 && (
+            <span style={{ fontSize: 10, color: T.muted, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "0px 6px" }}>{users.length}</span>
+          )}
+        </div>
+        <button
+          onClick={() => setShowForm(s => !s)}
+          style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, background: "none", border: `1px solid ${T.border}`, color: T.muted, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          <UserPlus size={10} /> Add User
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            {[
+              { k: "name",     label: "Full Name *",  placeholder: "John Smith"      },
+              { k: "username", label: "Username *",   placeholder: "john_smith"       },
+              { k: "password", label: "Password *",   placeholder: "••••••••", type: "password" },
+              { k: "email",    label: "Email",        placeholder: "john@company.com" },
+            ].map(({ k, label, placeholder, type }) => (
+              <div key={k}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+                <input
+                  type={type || "text"}
+                  value={form[k]}
+                  onChange={e => setF(k, e.target.value)}
+                  placeholder={placeholder}
+                  style={{
+                    width: "100%", padding: "6px 9px", boxSizing: "border-box",
+                    background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6,
+                    color: T.text, fontSize: 11, outline: "none", fontFamily: "inherit",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Role</div>
+            <select
+              value={form.role}
+              onChange={e => setF("role", e.target.value)}
+              style={{ padding: "6px 9px", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text, fontSize: 11, fontFamily: "inherit" }}
+            >
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          {formErr && <div style={{ color: "#f87171", fontSize: 11, marginBottom: 6 }}>{formErr}</div>}
+          <div style={{ display: "flex", gap: 7 }}>
+            <button onClick={handleCreate} disabled={saving} style={{ padding: "5px 14px", borderRadius: 6, background: T.accent, border: "none", color: "#fff", fontSize: 11, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+              {saving ? "Creating…" : "Create"}
+            </button>
+            <button onClick={() => { setShowForm(false); setFormErr(""); }} style={{ padding: "5px 12px", borderRadius: 6, background: "none", border: `1px solid ${T.border}`, color: T.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted, padding: "8px 0" }}>Loading…</div>
+      ) : users.length === 0 ? (
+        <div style={{ fontSize: 11, color: T.muted, fontStyle: "italic", padding: "4px 0 8px" }}>No portal users yet. Add one to give this client access.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {users.map(u => (
+            <div key={u.id} style={{
+              display: "flex", alignItems: "center", gap: 9,
+              padding: "8px 10px", borderRadius: 7,
+              background: u.isActive ? T.card : T.border + "40",
+              border: `1px solid ${T.border}`,
+              opacity: u.isActive ? 1 : 0.6,
+            }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                background: u.isActive ? T.accent + "22" : T.border,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 10, fontWeight: 800, color: u.isActive ? T.accent : T.muted,
+              }}>
+                {u.name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                <div style={{ fontSize: 10, color: T.muted }}>@{u.username} · {u.role}</div>
+              </div>
+              <button
+                onClick={() => handleToggleActive(u)}
+                title={u.isActive ? "Disable access" : "Enable access"}
+                style={{ background: "none", border: "none", cursor: "pointer", color: u.isActive ? T.green : T.muted, padding: 2, display: "flex" }}
+              >
+                {u.isActive ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+              </button>
+              <button
+                onClick={() => handleDelete(u)}
+                title="Remove user"
+                style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, padding: 2, display: "flex" }}
+                onMouseEnter={e => { e.currentTarget.style.color = "#f87171"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.muted; }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
 function activityDetail(a) {
@@ -238,6 +409,9 @@ export function DetailPanel({ client, total, onClose, onEdit, onCanceled, onRest
             </button>
           )}
         </div>
+
+        {/* Portal Users */}
+        {!client.isCanceled && <PortalUsersSection clientId={client.id} />}
 
         {/* Activity timeline */}
         <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>

@@ -41,14 +41,24 @@ import ImportInline from './components/inline/ImportInline';
 import SendEmailInline from './components/inline/SendEmailInline';
 
 import { useAuth } from './hooks/useAuth';
+import { useClientAuth } from './hooks/useClientAuth';
 import { useContacts } from './hooks/useContacts';
 import { useClients } from './context/ClientsContext';
 import { PageLoader, ContentLoader, SkeletonDetailPanel } from './components/ui/Loader';
 import { useAppToast } from './context/ToastContext';
 import * as db from './services/api';
 
+import ClientLoginPage from './pages/ClientLoginPage';
+import ClientPortalLayout from './components/portal/ClientPortalLayout';
+import ClientPortalDashboard from './pages/portal/ClientPortalDashboard';
+import ClientPortalLeads from './pages/portal/ClientPortalLeads';
+import ClientPortalCampaigns from './pages/portal/ClientPortalCampaigns';
+import ClientPortalReports from './pages/portal/ClientPortalReports';
+import ClientPortalProfile from './pages/portal/ClientPortalProfile';
+
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
+  const { clientUser, setClientUser, loading: clientLoading, clientSignOut } = useClientAuth();
   const { reload: reloadClients } = useClients();
 
   // ClientsProvider mounts before auth resolves, so the first fetch has no token.
@@ -57,13 +67,43 @@ export default function App() {
     if (currentUser) reloadClients();
   }, [currentUser?.id]); // eslint-disable-line
 
-  if (loading) return <PageLoader text="Loading…" />;
+  if (loading || clientLoading) return <PageLoader text="Loading…" />;
   return (
     <Routes>
+      {/* Admin auth */}
       <Route
         path="/login"
         element={currentUser ? <Navigate to="/contacts" replace /> : <LoginPage onLogin={setCurrentUser} />}
       />
+
+      {/* Client portal auth */}
+      <Route
+        path="/client-login"
+        element={clientUser ? <Navigate to="/portal/dashboard" replace /> : <ClientLoginPage onLogin={setClientUser} />}
+      />
+
+      {/* Client portal protected routes */}
+      <Route
+        path="/portal/*"
+        element={
+          clientUser ? (
+            <ClientPortalLayout clientUser={clientUser} onSignOut={clientSignOut}>
+              <Routes>
+                <Route path="dashboard" element={<ClientPortalDashboard clientUser={clientUser} />} />
+                <Route path="leads"     element={<ClientPortalLeads />} />
+                <Route path="campaigns" element={<ClientPortalCampaigns />} />
+                <Route path="reports"   element={<ClientPortalReports clientUser={clientUser} />} />
+                <Route path="profile"   element={<ClientPortalProfile clientUser={clientUser} onUpdate={setClientUser} />} />
+                <Route path="*"         element={<Navigate to="/portal/dashboard" replace />} />
+              </Routes>
+            </ClientPortalLayout>
+          ) : (
+            <Navigate to="/client-login" replace />
+          )
+        }
+      />
+
+      {/* Admin app */}
       <Route
         path="/*"
         element={currentUser ? <AppLayout currentUser={currentUser} onSignOut={signOut} /> : <Navigate to="/login" replace />}
@@ -611,7 +651,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/reddit" element={<RedditMonitorPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
         <Route path="/profile" element={<ProfilePage currentUser={currentUser} />} />
         <Route path="*" element={<Navigate to="/contacts" replace />} />
       </Routes>
