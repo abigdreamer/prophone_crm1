@@ -142,11 +142,11 @@ function AppLayout({ currentUser, onSignOut }) {
   // Resizable panel widths — persisted to localStorage
   const [sidebarW, setSidebarW] = useState(() => {
     const saved = localStorage.getItem('crm-sidebar-width');
-    return saved ? Math.max(160, Math.min(400, parseInt(saved))) : 248;
+    return saved ? Math.max(160, Math.min(500, parseInt(saved))) : Math.round(window.innerWidth * 0.20);
   });
   const [lifecycleW, setLifecycleW] = useState(() => {
     const saved = localStorage.getItem('crm-lifecycle-width');
-    return saved ? Math.max(220, Math.min(480, parseInt(saved))) : 310;
+    return saved ? Math.max(220, Math.min(600, parseInt(saved))) : Math.round(window.innerWidth * 0.25);
   });
 
   // Auto-collapse/expand lifecycle as window resizes
@@ -501,7 +501,7 @@ function AppLayout({ currentUser, onSignOut }) {
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     function onMove(ev) {
-      currentW = Math.max(160, Math.min(400, startW + (ev.clientX - startX)));
+      currentW = Math.max(160, Math.min(500, startW + (ev.clientX - startX)));
       setSidebarW(currentW);
     }
     function onUp() {
@@ -523,7 +523,7 @@ function AppLayout({ currentUser, onSignOut }) {
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     function onMove(ev) {
-      currentW = Math.max(220, Math.min(480, startW - (ev.clientX - startX)));
+      currentW = Math.max(220, Math.min(600, startW - (ev.clientX - startX)));
       setLifecycleW(currentW);
     }
     function onUp() {
