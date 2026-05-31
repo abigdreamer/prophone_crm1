@@ -1,32 +1,64 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Input from "../components/ui/Input";
 import Avatar from "../components/ui/Avatar";
-import { useTheme, useThemeName } from "../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
 import { loginUser } from "../services/api";
 import { identifyUser, analytics } from "../services/analytics";
-import { Check, Eye, ArrowRight } from "lucide-react";
+import {
+  Check, Eye, EyeOff, ArrowRight, Phone,
+  Users, TrendingUp, Mail, BarChart2, Zap, Shield,
+  PhoneCall, Clock, Star,
+} from "lucide-react";
+
+const accent = "#6366f1";
+
+const FEATURES = [
+  { icon: Users,      label: "Smart Contact Management",  desc: "Organize leads, clients & prospects in one place"    },
+  { icon: TrendingUp, label: "Lead Pipeline Tracking",    desc: "Track every stage from prospect to closed customer"   },
+  { icon: Mail,       label: "Email Campaigns",           desc: "Send targeted campaigns with real-time open tracking" },
+  { icon: BarChart2,  label: "Live Analytics & Reports",  desc: "Dashboards built for towing & roadside sales teams"   },
+  { icon: Zap,        label: "Activity Automation",       desc: "Auto-log calls, emails, and stage changes instantly"  },
+  { icon: Shield,     label: "Role-Based Access",         desc: "Admins, managers, and reps — each with the right view"},
+];
+
+const STATS = [
+  { icon: PhoneCall, value: "6 Stages",   label: "Lead Pipeline"      },
+  { icon: Clock,     value: "Real-time",  label: "Activity Tracking"  },
+  { icon: Star,      value: "Multi-user", label: "Team Roles & Access"},
+  { icon: Mail,      value: "Built-in",   label: "Email Campaigns"    },
+];
 
 export default function LoginPage({ onLogin }) {
   const T = useTheme();
-  const themeName = useThemeName();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("mike@geniusai.biz");
+  const [email,    setEmail]    = useState("mike@geniusai.biz");
   const [password, setPassword] = useState("demo");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
 
   async function handleLogin() {
     setError("");
     setLoading(true);
-
     try {
       const user = await loginUser(email, password);
-      if (user) { identifyUser(user); analytics.signedIn(user); onLogin(user); navigate('/contacts', { replace: true }); }
-      else setError("Invalid credentials. Check your email and password.");
+      if (user) {
+        identifyUser(user);
+        analytics.signedIn(user);
+        onLogin(user);
+        navigate("/contacts", { replace: true });
+      } else {
+        setError("Invalid credentials. Check your email and password.");
+      }
     } catch {
       setError("Connection error. Make sure the API server is running.");
     } finally {
@@ -34,250 +66,271 @@ export default function LoginPage({ onLogin }) {
     }
   }
 
-  const bgGradient =
-    themeName === "dark"
-      ? `radial-gradient(circle at 50% -20%, ${T.surface} 0%, ${T.bg} 100%)`
-      : `radial-gradient(circle at 50% -20%, ${T.card} 0%, ${T.bg} 100%)`;
-
-  const primaryGradient = `linear-gradient(90deg, ${T.accent} 0%, ${T.blue || T.accent} 100%)`;
-
   return (
-    <div
-      style={{
+    <div style={{
+      display: "flex",
+      minHeight: "100vh",
+      fontFamily: "'Inter', sans-serif",
+      background: "#0a0a12",
+    }}>
+
+      {/* LEFT PROMO PANEL */}
+      {!isMobile && (
+        <div style={{
+          width: "42%",
+          flexShrink: 0,
+          background: "linear-gradient(160deg, #0f0e1c 0%, #0b0b18 60%, #080c18 100%)",
+          borderRight: "1px solid rgba(255,255,255,0.06)",
+          padding: "44px",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          overflow: "hidden",
+        }}>
+          <div style={{ position: "absolute", top: -60, left: -60, width: 300, height: 300, borderRadius: "50%", background: accent + "12", filter: "blur(80px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: 80, right: -40, width: 240, height: 240, borderRadius: "50%", background: "#3b82f610", filter: "blur(70px)", pointerEvents: "none" }} />
+
+          {/* Badge */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 44, position: "relative" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: accent, boxShadow: "0 0 6px " + accent }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              Powered by GeniusAI
+            </span>
+          </div>
+
+          {/* Brand */}
+          <div style={{ position: "relative", marginBottom: 36 }}>
+            <div style={{
+              width: 60, height: 60, borderRadius: 16,
+              background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 8px 28px " + accent + "44",
+              marginBottom: 18,
+            }}>
+              <Phone size={28} color="#fff" strokeWidth={2} />
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.03em", marginBottom: 6 }}>
+              ProPhone CRM
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.28)", letterSpacing: "0.18em", textTransform: "uppercase" }}>
+              Towing &amp; Roadside Sales Suite
+            </div>
+          </div>
+
+          {/* Features */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 36, position: "relative" }}>
+            {FEATURES.map(({ icon: Icon, label, desc }) => (
+              <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  background: accent + "18", border: "1px solid " + accent + "30",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  marginTop: 1,
+                }}>
+                  <Icon size={14} color={accent} strokeWidth={2} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginBottom: 1 }}>{label}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", lineHeight: 1.4 }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Platform Highlights (replaces testimonials) */}
+          <div style={{
+            marginTop: "auto", position: "relative",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            borderRadius: 14, padding: "18px 20px",
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
+              Platform Highlights
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {STATS.map(({ icon: Icon, value, label }) => (
+                <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                    background: accent + "18", border: "1px solid " + accent + "25",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Icon size={13} color={accent} strokeWidth={2} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#fff" }}>{value}</div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RIGHT SIGN-IN PANEL */}
+      <div style={{
+        flex: 1,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        minHeight: "100vh",
         background: T.bg,
-        backgroundImage: bgGradient,
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      <div
-        style={{
-          width: 480,
-          background: T.surface,
-          border: `1px solid ${T.border}`,
-          borderRadius: 24,
-          padding: 40,
-          boxShadow: T.shadowLg,
-        }}
-      >
-        {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 18,
-              background: primaryGradient,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 32,
-              fontWeight: 900,
-              color: "#fff",
-              margin: "0 auto 16px",
-              boxShadow: T.shadowMd,
-            }}
-          >
-            G
+        padding: "32px 24px",
+      }}>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+
+          {isMobile && (
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: 14, margin: "0 auto 10px",
+                background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Phone size={24} color="#fff" strokeWidth={2} />
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>ProPhone CRM</div>
+            </div>
+          )}
+
+          <div style={{ marginBottom: 28 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.02em" }}>Welcome back</h1>
+            <p style={{ fontSize: 13, color: T.muted }}>Sign in to your ProPhone account</p>
           </div>
 
-          <div style={{ fontSize: 24, fontWeight: 800, color: T.text }}>
-            GeniusAI
+          {/* Quick Select */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+              Quick Select
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {USERS_DB.slice(0, 4).map((u) => {
+                const active = email === u.email;
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setEmail(u.email)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                      background: active ? accent + "12" : T.card,
+                      border: "1.5px solid " + (active ? accent + "80" : T.border),
+                      borderRadius: 10, cursor: "pointer", position: "relative",
+                      transition: "border-color 0.15s, background 0.15s",
+                      textAlign: "left",
+                    }}
+                  >
+                    <Avatar user={u} size={28} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: active ? T.text : T.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {u.name.split(" ")[0]}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.muted }}>{u.role || "Staff"}</div>
+                    </div>
+                    {active && (
+                      <div style={{
+                        position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                        width: 18, height: 18, borderRadius: "50%",
+                        background: "linear-gradient(135deg, " + accent + " 0%, #4f46e5 100%)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 2px 8px " + accent + "55",
+                      }}>
+                        <Check size={10} color="#fff" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div
-            style={{
-              fontSize: 11,
-              color: T.muted,
-              letterSpacing: "2px",
-              marginTop: 4,
-              fontWeight: 600,
-            }}
-          >
-            PROPHONE CRM
-          </div>
-        </div>
-
-        {/* Title */}
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: T.text }}>
-          Sign in
-        </h1>
-
-        {/* Quick Select */}
-        <div style={{ marginTop: 24, marginBottom: 28 }}>
-          <div
-            style={{
-              fontSize: 10,
-              color: T.muted,
-              fontWeight: 700,
-              letterSpacing: "1px",
-              marginBottom: 12,
-            }}
-          >
-            QUICK SELECT
+          {/* Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <div style={{ flex: 1, height: 1, background: T.border }} />
+            <span style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: "0.1em" }}>OR ENTER MANUALLY</span>
+            <div style={{ flex: 1, height: 1, background: T.border }} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {USERS_DB.slice(0, 4).map((u) => {
-              const active = email === u.email;
-
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => setEmail(u.email)}
+          {/* Inputs */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Email</label>
+              <input
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleLogin()}
+                style={{
+                  width: "100%", padding: "11px 14px", boxSizing: "border-box",
+                  background: T.surface, border: "1.5px solid " + T.border,
+                  borderRadius: 10, color: T.text, fontSize: 13,
+                  outline: "none", fontFamily: "inherit", transition: "border-color 0.15s",
+                }}
+                onFocus={e => { e.target.style.borderColor = accent; }}
+                onBlur={e => { e.target.style.borderColor = T.border; }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Password</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  type={showPass ? "text" : "password"}
+                  onKeyDown={e => e.key === "Enter" && handleLogin()}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: 12,
-                    background: active ? T.accentLow : T.card,
-                    border: `1px solid ${active ? T.accent : T.border}`,
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    position: "relative",
+                    width: "100%", padding: "11px 42px 11px 14px", boxSizing: "border-box",
+                    background: T.surface, border: "1.5px solid " + T.border,
+                    borderRadius: 10, color: T.text, fontSize: 13,
+                    outline: "none", fontFamily: "inherit", transition: "border-color 0.15s",
+                  }}
+                  onFocus={e => { e.target.style.borderColor = accent; }}
+                  onBlur={e => { e.target.style.borderColor = T.border; }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  style={{
+                    position: "absolute", right: 13, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", cursor: "pointer",
+                    color: T.muted, display: "flex", padding: 0,
                   }}
                 >
-                  <Avatar user={u} size={28} />
-
-                  <div style={{ textAlign: "left" }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: active ? T.text : T.dim,
-                      }}
-                    >
-                      {u.name.split(" ")[0]}
-                    </div>
-                    <div style={{ fontSize: 10, color: T.muted }}>
-                      {u.role || "Staff"}
-                    </div>
-                  </div>
-
-                  {active && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: 10,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        background: T.accent,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Check size={11} color="#fff" strokeWidth={3} />
-                    </div>
-                  )}
+                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Inputs */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
-            <label style={{ fontSize: 10, fontWeight: 700, color: T.muted }}>
-              EMAIL
-            </label>
-            <Input value={email} onChange={setEmail} />
+              </div>
+            </div>
           </div>
 
-          <div style={{ position: "relative" }}>
-            <label style={{ fontSize: 10, fontWeight: 700, color: T.muted }}>
-              PASSWORD
-            </label>
-
-            <Input
-              value={password}
-              onChange={setPassword}
-              type={showPass ? "text" : "password"}
-            />
-
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              style={{
-                position: "absolute",
-                right: 14,
-                top: "55%",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: T.muted,
-              }}
-            >
-              <Eye size={18} />
-            </button>
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div
-            style={{
-              marginTop: 20,
-              padding: 10,
-              borderRadius: 10,
-              background: T.accentLow,
-              border: `1px solid ${T.red}`,
-              color: T.red,
-              fontSize: 12,
-              textAlign: "center",
-            }}
-          >
-            {error}
-          </div>
-        )}
-
-        {/* Button */}
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{
-            width: "100%",
-            marginTop: 28,
-            padding: 16,
-            borderRadius: 12,
-            border: "none",
-            cursor: loading ? "not-allowed" : "pointer",
-            background: primaryGradient,
-            color: "#fff",
-            fontWeight: 700,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 8,
-            boxShadow: T.shadow,
-          }}
-        >
-          {loading ? "Signing in..." : (
-            <>
-              Sign in <ArrowRight size={18} />
-            </>
+          {error && (
+            <div style={{
+              marginTop: 14, padding: "10px 14px", borderRadius: 9,
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+              color: "#f87171", fontSize: 12,
+            }}>
+              {error}
+            </div>
           )}
-        </button>
 
-        {/* Footer */}
-        <div
-          style={{
-            marginTop: 36,
-            textAlign: "center",
-            fontSize: 9,
-            color: T.muted,
-            letterSpacing: "1.2px",
-            opacity: 0.7,
-          }}
-        >
-          GENIUSAI • PROPHONE SUITE
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            style={{
+              width: "100%", marginTop: 20, padding: "13px 0",
+              borderRadius: 10, border: "none",
+              cursor: loading ? "not-allowed" : "pointer",
+              background: loading ? accent + "60" : "linear-gradient(90deg, " + accent + " 0%, #4f46e5 100%)",
+              color: "#fff", fontWeight: 700, fontSize: 14,
+              display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
+              boxShadow: loading ? "none" : "0 4px 20px " + accent + "44",
+              transition: "box-shadow 0.15s",
+            }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = "0 6px 28px " + accent + "66"; }}
+            onMouseLeave={e => { if (!loading) e.currentTarget.style.boxShadow = "0 4px 20px " + accent + "44"; }}
+          >
+            {loading ? "Signing in…" : <><span>Sign in</span><ArrowRight size={15} /></>}
+          </button>
+
+          <div style={{ marginTop: 28, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.1em", opacity: 0.5 }}>
+            GENIUSAI · PROPHONE SUITE
+          </div>
         </div>
       </div>
     </div>

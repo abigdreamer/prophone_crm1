@@ -8,7 +8,6 @@ import { STAGE_DEF } from "../data/stages";
 import { VIEW_MODE, STATUS, STAGE_GROUPS } from "../constants/index";
 import fmt from "../utils/format";
 
-// Checkbox used in contact list rows
 function Checkbox({ checked, indeterminate, onChange, color }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -58,7 +57,6 @@ const SORT_OPTS = [
   { value: "name_za",    label: "Name Z → A"       },
 ];
 
-
 function contactDisplayName(c) {
   const name = [c?.firstName, c?.lastName].filter(Boolean).join(" ").trim();
   return name || c?.email || "Unknown Contact";
@@ -67,25 +65,22 @@ function contactDisplayName(c) {
 export default function Sidebar({
   pool, clientId,
   viewMode, onViewModeChange,
-  selected, onSelect, onAddNew, onEditInline, onImport,
+  selected, onSelect, onEditInline,
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
   selectedIds, onToggleSelect, onToggleSelectAll, onSelectBulk,
   hasMore, loadMore, loadingMore, total,
-  // controlled filter panel (optional — from App.jsx center header button)
   filterOpen: filterOpenProp, onFilterToggle,
 }) {
   const T = useTheme();
 
-  // Filter state
   const [checkedModes,    setCheckedModes]    = useState(new Set());
   const [checkedStatuses, setCheckedStatuses] = useState(new Set());
   const [sortF,           setSortF]           = useState("recent");
   const [scoreFrom,       setScoreFrom]       = useState(0);
   const [scoreTo,         setScoreTo]         = useState(100);
-
-  // Filter panel open/close — controlled externally or local
   const [localFilterOpen, setLocalFilterOpen] = useState(false);
+
   const isFilterOpen = filterOpenProp !== undefined ? filterOpenProp : localFilterOpen;
   function toggleFilter() {
     if (onFilterToggle) onFilterToggle();
@@ -122,7 +117,6 @@ export default function Sidebar({
     return () => clearTimeout(timer);
   }, [searchRef]);
 
-  // Reset local filters when parent viewMode changes (external navigation)
   useEffect(() => {
     setCheckedModes(new Set());
     setCheckedStatuses(new Set());
@@ -133,13 +127,10 @@ export default function Sidebar({
 
   useEffect(() => { setDisplayLimit(150); }, [search, sortF, checkedModes, checkedStatuses, scoreFrom, scoreTo]);
 
-  // Close panel on outside click
   useEffect(() => {
     if (!isFilterOpen) return;
     function handler(e) {
-      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) {
-        closeFilter();
-      }
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) closeFilter();
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -171,22 +162,18 @@ export default function Sidebar({
 
   const filtered = contacts
     .filter(c => {
-      // Stage filter — local checkboxes override viewMode when set
       if (checkedModes.size > 0) {
         const allowedStages = new Set([...checkedModes].flatMap(m => STAGE_GROUPS[m] || []));
         if (!allowedStages.has(c.lifecycleStage)) return false;
       } else if (viewModeStages?.length > 0) {
         if (!viewModeStages.includes(c.lifecycleStage)) return false;
       }
-      // Status filter
       if (checkedStatuses.size > 0) {
         const s = c.status || (c.isCanceled ? STATUS.CANCELED : STATUS.ACTIVE);
         if (!checkedStatuses.has(s)) return false;
       }
-      // Score range
       const score = c.leadScore || 0;
       if (score < scoreFrom || score > scoreTo) return false;
-      // Search
       if (!search.trim()) return true;
       const q = search.toLowerCase();
       const name = contactDisplayName(c).toLowerCase();
@@ -203,7 +190,7 @@ export default function Sidebar({
       if (sortF === "score_desc") return (b.leadScore || 0) - (a.leadScore || 0);
       if (sortF === "score_asc")  return (a.leadScore || 0) - (b.leadScore || 0);
       if (sortF === "old") return new Date(a.lastActivityAt || a.createdAt) - new Date(b.lastActivityAt || b.createdAt);
-      return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt); // recent
+      return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
     });
 
   filteredLenRef.current = filtered.length;
@@ -251,7 +238,6 @@ export default function Sidebar({
     });
   }
 
-  // Shared inline checkbox box visual
   function CbBox({ checked, color }) {
     return (
       <div style={{
@@ -274,46 +260,37 @@ export default function Sidebar({
   return (
     <div style={{ width: "100%", height: "100%", background: T.surface, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-      {/* Pool header */}
-      <div style={{ padding: "10px 14px", background: col + "0D", borderBottom: "1px solid " + T.border, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66`, flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
-              {total > contacts.length
-                ? <>{filtered.length.toLocaleString()} shown · <span style={{ color: col, fontWeight: 700 }}>{total.toLocaleString()}</span> total</>
-                : <>{filtered.length.toLocaleString()} leads</>
-              }
-              {selEnabled && (() => {
-                const n = filtered.filter(c => selectedIds?.has(c.id)).length;
-                return n > 0 ? <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {n.toLocaleString()} selected</span> : null;
-              })()}
-            </div>
-          </div>
-          {selEnabled && (() => {
-            const someChecked = filtered.some(c => selectedIds?.has(c.id));
-            const allChecked  = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
-            return (
-              <Checkbox
-                checked={allChecked}
-                indeterminate={someChecked && !allChecked}
-                onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
-                color={col}
-              />
-            );
-          })()}
-        </div>
+      {/* ── Pool Header ──────────────────────────────────────────────────────── */}
+      <div style={{
+        flexShrink: 0,
+        height: 38, flexShrink: 0, boxSizing: "border-box",
+        borderBottom: "1px solid " + T.border,
+        borderLeft: "3px solid " + col,
+        padding: "0 10px",
+        display: "flex", alignItems: "center", gap: 8,
+        background: `linear-gradient(90deg, ${col}10 0%, transparent 70%)`,
+      }}>
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 5px ${col}`, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: col, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, letterSpacing: "0.01em" }}>
+          {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
+        </span>
+        <span style={{
+          fontSize: 9, fontWeight: 700, flexShrink: 0,
+          color: col, background: col + "18",
+          border: "1px solid " + col + "35",
+          borderRadius: 20, padding: "1px 7px",
+          letterSpacing: "0.02em",
+        }}>
+          {total > contacts.length ? total.toLocaleString() : filtered.length.toLocaleString()}
+        </span>
       </div>
 
-      {/* Search + filter button */}
-      <div style={{ padding: "10px 12px 8px", flexShrink: 0, position: "relative" }} ref={filterPanelRef}>
+      {/* ── Search + Filter ──────────────────────────────────────────────────── */}
+      <div style={{ padding: "10px 10px 8px", flexShrink: 0, position: "relative" }} ref={filterPanelRef}>
         <div style={{ display: "flex", gap: 6 }}>
           <div style={{ position: "relative", flex: 1 }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: (isFocused || search) ? col : T.muted, pointerEvents: "none" }}>
+              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: (isFocused || search) ? col : T.muted, pointerEvents: "none" }}>
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
@@ -325,8 +302,9 @@ export default function Sidebar({
               style={{
                 width: "100%", background: T.card,
                 border: "1px solid " + ((isFocused || search) ? col : T.border),
-                borderRadius: 8, padding: "7px 26px 7px 30px", color: T.text,
+                borderRadius: 7, padding: "7px 26px 7px 28px", color: T.text,
                 fontSize: 12, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                transition: "border-color 0.15s",
               }}
             />
             {search && (
@@ -334,18 +312,18 @@ export default function Sidebar({
             )}
           </div>
 
-          {/* Sort dropdown */}
+          {/* Sort */}
           <select
             value={sortF}
             onChange={e => setSortF(e.target.value)}
             style={{
               flexShrink: 0, height: 34,
               background: T.card, border: "1px solid " + T.border,
-              borderRadius: 8, padding: "0 6px",
+              borderRadius: 7, padding: "0 6px",
               color: sortF !== "recent" ? col : T.muted,
               fontSize: 11, fontWeight: sortF !== "recent" ? 600 : 400,
               outline: "none", fontFamily: "inherit", cursor: "pointer",
-              minWidth: 130,
+              minWidth: 120,
             }}
           >
             {SORT_OPTS.map(({ value, label }) => (
@@ -353,7 +331,7 @@ export default function Sidebar({
             ))}
           </select>
 
-          {/* Filter toggle button */}
+          {/* Filter button */}
           <button
             onMouseDown={e => e.stopPropagation()}
             onClick={toggleFilter}
@@ -363,7 +341,7 @@ export default function Sidebar({
               width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
               background: isFilterOpen || activeFilterCount > 0 ? col + "18" : T.card,
               border: "1px solid " + (isFilterOpen || activeFilterCount > 0 ? col + "60" : T.border),
-              borderRadius: 8, cursor: "pointer",
+              borderRadius: 7, cursor: "pointer",
               color: isFilterOpen || activeFilterCount > 0 ? col : T.muted,
               transition: "all 0.15s",
             }}
@@ -376,27 +354,23 @@ export default function Sidebar({
                 background: col, color: "#fff",
                 fontSize: 8, fontWeight: 800,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                lineHeight: 1,
               }}>{activeFilterCount}</span>
             )}
           </button>
         </div>
 
-        {/* ── Filter dropdown panel ───────────────────────────────── */}
+        {/* Filter panel */}
         {isFilterOpen && (
           <div style={{
-            position: "absolute", top: "calc(100% - 2px)", left: 12, right: 12, zIndex: 300,
+            position: "absolute", top: "calc(100% - 2px)", left: 10, right: 10, zIndex: 300,
             background: T.card, border: "1px solid " + T.border, borderRadius: 12,
             boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
             animation: "crm-fadein 0.15s ease",
             maxHeight: "calc(100vh - 180px)", overflowY: "auto",
           }}>
-
-            {/* Sticky header */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "11px 14px 10px",
-              borderBottom: "1px solid " + T.border,
+              padding: "11px 14px 10px", borderBottom: "1px solid " + T.border,
               position: "sticky", top: 0, background: T.card, zIndex: 1,
               borderRadius: "12px 12px 0 0",
             }}>
@@ -404,30 +378,17 @@ export default function Sidebar({
                 <SlidersHorizontal size={13} style={{ color: col }} />
                 <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>Filters</span>
                 {activeFilterCount > 0 && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 800,
-                    background: col + "22", color: col,
-                    padding: "2px 7px", borderRadius: 10,
-                  }}>{activeFilterCount} active</span>
+                  <span style={{ fontSize: 9, fontWeight: 800, background: col + "22", color: col, padding: "2px 7px", borderRadius: 10 }}>{activeFilterCount} active</span>
                 )}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {activeFilterCount > 0 && (
                   <button
-                    onClick={() => {
-                      setCheckedModes(new Set());
-                      setCheckedStatuses(new Set());
-                      setSortF("recent");
-                      setScoreFrom(0);
-                      setScoreTo(100);
-                    }}
+                    onClick={() => { setCheckedModes(new Set()); setCheckedStatuses(new Set()); setSortF("recent"); setScoreFrom(0); setScoreTo(100); }}
                     style={{ background: "none", border: "none", color: T.accent, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
                   >Clear all</button>
                 )}
-                <button
-                  onClick={closeFilter}
-                  style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 3, display: "flex", borderRadius: 4, lineHeight: 1 }}
-                >
+                <button onClick={closeFilter} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 3, display: "flex", borderRadius: 4, lineHeight: 1 }}>
                   <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
@@ -436,8 +397,7 @@ export default function Sidebar({
             </div>
 
             <div style={{ padding: "12px 14px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
-
-              {/* ── STAGE ── */}
+              {/* Stage */}
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>Stage</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
@@ -449,15 +409,12 @@ export default function Sidebar({
                       <div
                         key={mode}
                         onClick={() => {
-                          if (isAll) {
-                            setCheckedModes(new Set());
-                          } else {
-                            setCheckedModes(prev => {
-                              const next = new Set(prev);
-                              if (next.has(mode)) next.delete(mode); else next.add(mode);
-                              return next;
-                            });
-                          }
+                          if (isAll) setCheckedModes(new Set());
+                          else setCheckedModes(prev => {
+                            const next = new Set(prev);
+                            if (next.has(mode)) next.delete(mode); else next.add(mode);
+                            return next;
+                          });
                         }}
                         style={{
                           display: "flex", alignItems: "center", gap: 6,
@@ -468,16 +425,14 @@ export default function Sidebar({
                       >
                         <CbBox checked={checked} color={c} />
                         <Icon size={10} strokeWidth={2} style={{ color: checked ? c : T.muted, flexShrink: 0 }} />
-                        <span style={{ fontSize: 10, color: checked ? T.text : T.dim, fontWeight: checked ? 700 : 400 }}>
-                          {label}
-                        </span>
+                        <span style={{ fontSize: 10, color: checked ? T.text : T.dim, fontWeight: checked ? 700 : 400 }}>{label}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* ── STATUS ── */}
+              {/* Status */}
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>Status</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -493,15 +448,12 @@ export default function Sidebar({
                       <div
                         key={value}
                         onClick={() => {
-                          if (isAll) {
-                            setCheckedStatuses(new Set());
-                          } else {
-                            setCheckedStatuses(prev => {
-                              const next = new Set(prev);
-                              if (next.has(value)) next.delete(value); else next.add(value);
-                              return next;
-                            });
-                          }
+                          if (isAll) setCheckedStatuses(new Set());
+                          else setCheckedStatuses(prev => {
+                            const next = new Set(prev);
+                            if (next.has(value)) next.delete(value); else next.add(value);
+                            return next;
+                          });
                         }}
                         style={{
                           display: "flex", alignItems: "center", gap: 8,
@@ -511,9 +463,7 @@ export default function Sidebar({
                         }}
                       >
                         <CbBox checked={checked} color={color} />
-                        <span style={{ fontSize: 11, color: checked ? T.text : T.dim, fontWeight: checked ? 600 : 400, flex: 1 }}>
-                          {label}
-                        </span>
+                        <span style={{ fontSize: 11, color: checked ? T.text : T.dim, fontWeight: checked ? 600 : 400, flex: 1 }}>{label}</span>
                         {dot && <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, opacity: checked ? 1 : 0.35, flexShrink: 0 }} />}
                       </div>
                     );
@@ -521,30 +471,15 @@ export default function Sidebar({
                 </div>
               </div>
 
-              {/* ── LEAD SCORE RANGE ── */}
+              {/* Lead Score */}
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Lead Score</div>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>FROM</div>
-                    <input
-                      type="number"
-                      min={0} max={100}
-                      value={scoreFrom}
-                      onChange={e => {
-                        const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
-                        setScoreFrom(v);
-                        if (scoreTo < v) setScoreTo(v);
-                      }}
-                      style={{
-                        width: "100%", background: T.bg,
-                        border: "1px solid " + (scoreFrom > 0 ? col : T.border),
-                        borderRadius: 6, padding: "6px 8px",
-                        color: T.text, fontSize: 12, fontWeight: 600,
-                        outline: "none", fontFamily: "inherit",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.15s",
-                      }}
+                    <input type="number" min={0} max={100} value={scoreFrom}
+                      onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreFrom(v); if (scoreTo < v) setScoreTo(v); }}
+                      style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreFrom > 0 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
                       onFocus={e => { e.currentTarget.style.borderColor = col; }}
                       onBlur={e => { e.currentTarget.style.borderColor = scoreFrom > 0 ? col : T.border; }}
                     />
@@ -552,42 +487,60 @@ export default function Sidebar({
                   <div style={{ color: T.muted, fontSize: 15, paddingBottom: 7, flexShrink: 0 }}>→</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>TO</div>
-                    <input
-                      type="number"
-                      min={0} max={100}
-                      value={scoreTo}
-                      onChange={e => {
-                        const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
-                        setScoreTo(v);
-                        if (scoreFrom > v) setScoreFrom(v);
-                      }}
-                      style={{
-                        width: "100%", background: T.bg,
-                        border: "1px solid " + (scoreTo < 100 ? col : T.border),
-                        borderRadius: 6, padding: "6px 8px",
-                        color: T.text, fontSize: 12, fontWeight: 600,
-                        outline: "none", fontFamily: "inherit",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.15s",
-                      }}
+                    <input type="number" min={0} max={100} value={scoreTo}
+                      onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreTo(v); if (scoreFrom > v) setScoreFrom(v); }}
+                      style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreTo < 100 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
                       onFocus={e => { e.currentTarget.style.borderColor = col; }}
                       onBlur={e => { e.currentTarget.style.borderColor = scoreTo < 100 ? col : T.border; }}
                     />
                   </div>
                 </div>
                 {(scoreFrom > 0 || scoreTo < 100) && (
-                  <div style={{ fontSize: 10, color: col, fontWeight: 700, marginTop: 6 }}>
-                    Showing score {scoreFrom} – {scoreTo}
-                  </div>
+                  <div style={{ fontSize: 10, color: col, fontWeight: 700, marginTop: 6 }}>Showing score {scoreFrom} – {scoreTo}</div>
                 )}
               </div>
-
             </div>
           </div>
         )}
       </div>
 
-      {/* Contact list */}
+      {/* ── List header: select-all + count ─────────────────────────────────── */}
+      {filtered.length > 0 && (
+        <div style={{
+          flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "5px 12px",
+          borderBottom: "1px solid " + T.border,
+          background: T.card,
+        }}>
+          {selEnabled && (() => {
+            const someChecked = filtered.some(c => selectedIds?.has(c.id));
+            const allChecked  = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
+            return (
+              <Checkbox
+                checked={allChecked}
+                indeterminate={someChecked && !allChecked}
+                onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
+                color={col}
+              />
+            );
+          })()}
+          <span style={{ fontSize: 10, color: T.muted, flex: 1 }}>
+            {filtered.length.toLocaleString()} contact{filtered.length !== 1 ? "s" : ""}
+            {total > contacts.length && (
+              <span style={{ color: T.dim }}> · {total.toLocaleString()} total</span>
+            )}
+          </span>
+          {selEnabled && (() => {
+            const n = filtered.filter(c => selectedIds?.has(c.id)).length;
+            return n > 0
+              ? <span style={{ fontSize: 10, fontWeight: 700, color: col }}>{n} selected</span>
+              : null;
+          })()}
+        </div>
+      )}
+
+      {/* ── Contact list ─────────────────────────────────────────────────────── */}
       <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
         {filtered.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center" }}>
@@ -596,16 +549,12 @@ export default function Sidebar({
               {search ? "No results" : "No contacts"}
             </div>
             <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
-              {search
-                ? `Nothing matched "${search}"`
-                : viewMode !== VIEW_MODE.ALL
-                  ? "No contacts in this stage group"
-                  : "Add a contact to get started"}
+              {search ? `Nothing matched "${search}"` : viewMode !== VIEW_MODE.ALL ? "No contacts in this stage group" : "Add a contact to get started"}
             </div>
           </div>
         ) : (
           filtered.slice(0, displayLimit).map(c => {
-            const sd = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
+            const sd       = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
             const isSel    = selected?.id === c.id;
             const isChecked = selEnabled && selectedIds?.has(c.id);
             const displayName = contactDisplayName(c);
@@ -615,13 +564,16 @@ export default function Sidebar({
                 data-contact-id={c.id}
                 onClick={() => onSelect(c)}
                 style={{
-                  padding: "11px 14px", borderBottom: "1px solid " + T.border,
+                  padding: "10px 12px",
+                  borderBottom: "1px solid " + T.border,
                   cursor: "pointer",
-                  background: isChecked ? col + "0d" : isSel ? col + "14" : "transparent",
-                  borderLeft: `4px solid ${isSel ? col : "transparent"}`,
+                  background: isSel ? col + "16" : isChecked ? col + "0d" : "transparent",
+                  borderLeft: `3px solid ${isSel ? col : "transparent"}`,
                   transition: "background 0.1s",
                   display: "flex", alignItems: "flex-start", gap: 8,
                 }}
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = col + "0a"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = isSel ? col + "16" : isChecked ? col + "0d" : "transparent"; }}
               >
                 {selEnabled && (
                   <div style={{ paddingTop: 2, flexShrink: 0 }}>
@@ -629,29 +581,41 @@ export default function Sidebar({
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                    <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? col : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 6 }}>
+                  {/* Name + stage badge */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? col : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                       <Hi text={displayName} q={search} />
                     </div>
-                    <span style={{ fontSize: 9, color: sd.color, fontWeight: 800, background: sd.color + "15", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, flexShrink: 0,
+                      color: sd.color, background: sd.color + "18",
+                      padding: "2px 6px", borderRadius: 4,
+                      border: "1px solid " + sd.color + "30",
+                    }}>
                       {sd.label.toUpperCase()}
                     </span>
                   </div>
+
+                  {/* Company */}
                   {c.company && (
-                    <div style={{ fontSize: 11, color: T.dim, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 11, color: T.dim, marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       <Hi text={c.company} q={search} />
                     </div>
                   )}
+
+                  {/* Score bar */}
                   {!showingCanceled && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
                       <div style={{ flex: 1 }}><ScoreBar score={c.leadScore} /></div>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: T.text, flexShrink: 0 }}>{c.leadScore}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: T.text, flexShrink: 0, minWidth: 16, textAlign: "right" }}>{c.leadScore ?? 0}</span>
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", gap: 6, minWidth: 0 }}>
+
+                  {/* Footer row */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6, minWidth: 0, alignItems: "center" }}>
                       {c.address && (
-                        <span style={{ fontSize: 10, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>
+                        <span style={{ fontSize: 10, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>
                           📍 {c.address}
                         </span>
                       )}
@@ -666,6 +630,7 @@ export default function Sidebar({
             );
           })
         )}
+
         {loadingMore && (
           <div style={{ padding: "12px 16px", textAlign: "center", fontSize: 10, color: T.muted, borderTop: "1px solid " + T.border }}>
             <span style={{

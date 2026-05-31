@@ -14,6 +14,21 @@ import { Spinner } from "./ui/Loader";
 
 const PIPELINE = ["new", "contacted", "engaged", "demo_scheduled", "demo_done", "proposal_sent", "negotiating", "customer"];
 
+function parseStageNote(note) {
+  if (!note) return { transition: null, userNote: "" };
+  const match = note.match(/^Stage changed:\s*(.+?)\s*→\s*(.+?)(?:\n([\s\S]*))?$/);
+  if (!match) return { transition: null, userNote: note };
+  return {
+    transition: { from: match[1].trim(), to: match[2].trim() },
+    userNote: match[3]?.trim() || "",
+  };
+}
+
+function stageLabelToColor(label, T) {
+  const entry = Object.values(STAGE_DEF).find(s => s.label === label);
+  return entry?.color || T.muted;
+}
+
 function ScoreRing({ score = 0 }) {
   const r = 18; const circ = 2 * Math.PI * r;
   const offset = circ * (1 - Math.min(score, 100) / 100);
@@ -527,6 +542,9 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                 const def = ACT_DEF[act.type] || { label: act.type.replace(/_/g, " "), icon: "·", color: T.muted, cat: "system" };
                 const byUser = USERS_DB.find(u => u.name === act.by);
                 const hovered = hoveredActId === act.id;
+                const isStageChange = act.type === "stage_changed";
+                const stageNote = isStageChange ? parseStageNote(act.note) : null;
+
                 return (
                   <div
                     key={act.id}
@@ -538,7 +556,7 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                       {def.icon}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: isStageChange ? 6 : 2 }}>
                         <span style={{ fontSize: 11, fontWeight: 600, color: T.text }}>{def.label}</span>
                         <Pill color={def.color} small>{def.cat}</Pill>
                         {act.points > 0 && (
@@ -547,7 +565,38 @@ export default function LifecycleChart({ contact, onLogActivity, onCancelContact
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{act.note}</div>
+
+                      {isStageChange && stageNote?.transition ? (
+                        <div style={{ marginBottom: stageNote.userNote ? 6 : 0 }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.surface, border: "1px solid " + T.border, borderRadius: 7, padding: "5px 9px" }}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, color: stageLabelToColor(stageNote.transition.from, T),
+                              background: stageLabelToColor(stageNote.transition.from, T) + "18",
+                              border: "1px solid " + stageLabelToColor(stageNote.transition.from, T) + "35",
+                              borderRadius: 4, padding: "1px 6px",
+                            }}>
+                              {stageNote.transition.from}
+                            </span>
+                            <span style={{ fontSize: 12, color: def.color, fontWeight: 700 }}>→</span>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, color: stageLabelToColor(stageNote.transition.to, T),
+                              background: stageLabelToColor(stageNote.transition.to, T) + "18",
+                              border: "1px solid " + stageLabelToColor(stageNote.transition.to, T) + "35",
+                              borderRadius: 4, padding: "1px 6px",
+                            }}>
+                              {stageNote.transition.to}
+                            </span>
+                          </div>
+                          {stageNote.userNote && (
+                            <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.5, marginTop: 5, paddingLeft: 2, borderLeft: "2px solid " + def.color + "50", paddingRight: 6 }}>
+                              {stageNote.userNote}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{act.note}</div>
+                      )}
+
                       <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
                         {byUser && <Avatar user={byUser} size={14} />}
                         <span style={{ fontSize: 9, color: T.muted }}>
