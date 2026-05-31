@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { VALID_ACTIVITY_TYPES } from '../constants/index.js';
+import { calculateLeadScore } from '../lib/leadScore.js';
 
 async function addActivity(req, res) {
   const { contactId } = req.params;
@@ -21,9 +22,11 @@ async function addActivity(req, res) {
     },
   });
 
+  const newScore = calculateLeadScore(contact);
+
   await prisma.contact.update({
     where: { id: contactId },
-    data: { lastActivityAt: new Date() },
+    data: { lastActivityAt: new Date(), leadScore: newScore },
   });
 
   res.status(201).json({ id: activity.id, type: activity.type, note: activity.note, createdAt: activity.createdAt, by: activity.by });

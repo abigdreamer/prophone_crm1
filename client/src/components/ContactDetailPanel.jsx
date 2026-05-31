@@ -176,6 +176,19 @@ export default function ContactDetailPanel({
     onFormChange?.(next);
   }, [contact?.id]); // eslint-disable-line
 
+  // Sync server-computed leadScore back into the form after a save,
+  // without resetting other fields the user may have in-flight.
+  useEffect(() => {
+    if (!contact) return;
+    const serverScore = String(contact.leadScore ?? 0);
+    setForm(prev => {
+      if (prev.leadScore === serverScore) return prev;
+      const next = { ...prev, leadScore: serverScore };
+      formRef.current = next;
+      return next;
+    });
+  }, [contact?.leadScore]); // eslint-disable-line
+
   useEffect(() => {
     if (contact) return;
     const t = setTimeout(() => {

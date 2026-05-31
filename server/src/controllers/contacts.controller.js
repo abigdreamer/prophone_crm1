@@ -7,6 +7,7 @@ import {
   TRACKED_CONTACT_FIELDS,
 } from '../constants/index.js';
 import { logActivity } from '../lib/activityLogger.js';
+import { calculateLeadScore } from '../lib/leadScore.js';
 
 function normaliseDomain(raw) {
   if (!raw) return '';
@@ -185,6 +186,23 @@ async function createContact(req, res) {
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
   if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
 
+  // Pre-compute lead score from the incoming data
+  const initScore = calculateLeadScore({
+    firstName:      b.firstName       || '',
+    lastName:       b.lastName        || '',
+    email:          b.email           || '',
+    phone:          b.phone           || '',
+    company:        b.company         || '',
+    source:         b.source          || '',
+    title:          b.title           || '',
+    website:        b.website         || '',
+    address:        b.address         || '',
+    lifecycleStage: b.lifecycleStage  || STAGE.NEW,
+    status:         b.status          || STATUS.ACTIVE,
+    isCanceled:     false,
+    lastActivityAt: new Date(),
+  });
+
   const contact = await prisma.contact.create({
     data: {
       pool: b.pool || POOL.PROSPECT,
@@ -209,7 +227,7 @@ async function createContact(req, res) {
       serviceAreaMiles: parseInt(b.serviceAreaMiles) || 0,
       yearsInBusiness: parseInt(b.yearsInBusiness) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
-      leadScore: b.leadScore || 10,
+      leadScore: initScore,
       status: b.status || STATUS.ACTIVE,
       source: b.source || '',
       campaign: b.campaign || '',
@@ -273,17 +291,35 @@ async function updateContact(req, res) {
     });
   }
 
+  // Build the merged snapshot used for score calculation.
+  const merged = {
+    firstName:      b.firstName      ?? existing.firstName,
+    lastName:       b.lastName       ?? existing.lastName,
+    email:          b.email          ?? existing.email,
+    phone:          b.phone          ?? existing.phone,
+    company:        b.company        ?? existing.company,
+    source:         b.source         ?? existing.source,
+    title:          b.title          ?? existing.title,
+    website:        b.website        ?? existing.website,
+    address:        b.address !== undefined ? b.address.trim() : existing.address,
+    lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
+    status:         b.status         ?? existing.status,
+    isCanceled:     existing.isCanceled,
+    lastActivityAt: existing.lastActivityAt,
+  };
+  const newScore = calculateLeadScore(merged);
+
   const updated = await prisma.contact.update({
     where: { id },
     data: {
-      firstName: b.firstName ?? existing.firstName,
-      lastName: b.lastName ?? existing.lastName,
-      email: b.email ?? existing.email,
-      phone: b.phone ?? existing.phone,
-      company: b.company ?? existing.company,
-      title: b.title ?? existing.title,
-      website: b.website ?? existing.website,
-      address: b.address !== undefined ? b.address.trim() : existing.address,
+      firstName: merged.firstName,
+      lastName: merged.lastName,
+      email: merged.email,
+      phone: merged.phone,
+      company: merged.company,
+      title: merged.title,
+      website: merged.website,
+      address: merged.address,
       city: b.city ?? existing.city,
       state: b.state ?? existing.state,
       zip: b.zip ?? existing.zip,
@@ -295,10 +331,10 @@ async function updateContact(req, res) {
       estAnnualRevenue: b.estAnnualRevenue ?? existing.estAnnualRevenue,
       serviceAreaMiles: b.serviceAreaMiles !== undefined ? parseInt(b.serviceAreaMiles) : existing.serviceAreaMiles,
       yearsInBusiness: b.yearsInBusiness !== undefined ? parseInt(b.yearsInBusiness) : existing.yearsInBusiness,
-      lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
-      leadScore: b.leadScore ?? existing.leadScore,
-      status: b.status ?? existing.status,
-      source: b.source ?? existing.source,
+      lifecycleStage: merged.lifecycleStage,
+      leadScore: newScore,
+      status: merged.status,
+      source: merged.source,
       campaign: b.campaign ?? existing.campaign,
       contractValue:
         b.contractValue !== undefined
@@ -509,7 +545,14 @@ async function importContacts(req, res) {
       yearsInBusiness: parseInt(r.yearsInBusiness ?? r.years_in_business) || 0,
       contractValue: parseInt(r.contractValue) || 0,
       lifecycleStage: resolvedStage,
-      leadScore: parseInt(r.leadScore) || 10,
+      leadScore: calculateLeadScore({
+        firstName, lastName, email, phone,
+        company: s('company'), source: s('source'),
+        title: s('title'), website: s('website'), address,
+        lifecycleStage: resolvedStage,
+        status: STATUS.ACTIVE, isCanceled: false,
+        lastActivityAt: new Date(),
+      }),
       status: STATUS.ACTIVE,
       source: s('source'),
       campaign: s('campaign'),
@@ -703,4 +746,43 @@ async function getDashboardSummary(req, res) {
   res.json({ counts, recentContacts });
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary };
+// ── Bulk score recalculation ──────────────────────────────────────────────────
+// Recalculates leadScore for every contact using the current formula and
+// saves the result. Run once after any formula change to fix stale scores.
+async function recalculateAllScores(req, res) {
+  const CHUNK = 500;
+  let updated = 0;
+  let cursor = undefined;
+
+  for (;;) {
+    const batch = await prisma.contact.findMany({
+      take: CHUNK,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        firstName: true, lastName: true, email: true, phone: true,
+        company: true, source: true, title: true, website: true, address: true,
+        lifecycleStage: true, status: true, isCanceled: true, lastActivityAt: true,
+      },
+    });
+
+    if (!batch.length) break;
+
+    await Promise.all(
+      batch.map(c =>
+        prisma.contact.update({
+          where: { id: c.id },
+          data:  { leadScore: calculateLeadScore(c) },
+        })
+      )
+    );
+
+    updated += batch.length;
+    cursor = batch[batch.length - 1].id;
+  }
+
+  res.json({ updated });
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary, recalculateAllScores };
