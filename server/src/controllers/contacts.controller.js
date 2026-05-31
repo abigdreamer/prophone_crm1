@@ -110,10 +110,8 @@ async function listContacts(req, res) {
   if (pool === 'client' && clientId) where.clientId = clientId;
 
   const isAllStatus = !status || status === 'all';
-
   if (!isAllStatus) {
     const isCanceled = status === STATUS.CANCELED;
-
     if (isCanceled) {
       where.isCanceled = true;
     } else if (VALID_STATUSES.includes(status)) {
@@ -122,9 +120,42 @@ async function listContacts(req, res) {
     }
   }
 
-  const orderBy = status === STATUS.CANCELED
-    ? { canceledAt: 'desc' }
-    : { lastActivityAt: 'desc' };
+  // Full-text search across name, email, company, phone
+  const search = req.query.search?.trim();
+  if (search) {
+    where.OR = [
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName:  { contains: search, mode: 'insensitive' } },
+      { email:     { contains: search, mode: 'insensitive' } },
+      { company:   { contains: search, mode: 'insensitive' } },
+      { phone:     { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  // Lifecycle stage filter (comma-separated list)
+  const stagesParam = req.query.stages;
+  if (stagesParam) {
+    const stageList = stagesParam.split(',').filter(Boolean);
+    if (stageList.length > 0) where.lifecycleStage = { in: stageList };
+  }
+
+  // Lead score range
+  const scoreMin = parseInt(req.query.scoreMin);
+  const scoreMax = parseInt(req.query.scoreMax);
+  if (!isNaN(scoreMin) && scoreMin > 0)   where.leadScore = { ...where.leadScore, gte: scoreMin };
+  if (!isNaN(scoreMax) && scoreMax < 100) where.leadScore = { ...where.leadScore, lte: scoreMax };
+
+  // Sort
+  const SORT_MAP = {
+    recent:     { lastActivityAt: 'desc' },
+    old:        { lastActivityAt: 'asc'  },
+    score_desc: { leadScore: 'desc' },
+    score_asc:  { leadScore: 'asc'  },
+    name_az:    { firstName: 'asc'  },
+    name_za:    { firstName: 'desc' },
+  };
+  const orderBy = SORT_MAP[req.query.sortBy]
+    || (status === STATUS.CANCELED ? { canceledAt: 'desc' } : { lastActivityAt: 'desc' });
 
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({ where, orderBy, skip, take: limit }),
