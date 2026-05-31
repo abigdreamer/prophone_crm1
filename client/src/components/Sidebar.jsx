@@ -57,6 +57,29 @@ const SORT_OPTS = [
   { value: "name_za",    label: "Name Z → A"       },
 ];
 
+function SkeletonRow({ T }) {
+  const s = {
+    borderRadius: 4,
+    background: `linear-gradient(90deg, ${T.border}, ${T.surface}, ${T.border})`,
+    backgroundSize: "400px 100%",
+    animation: "crm-shimmer 1.4s ease infinite",
+  };
+  return (
+    <div style={{ padding: "11px 12px", borderBottom: "1px solid " + T.border, display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div style={{ ...s, height: 11, width: "55%" }} />
+        <div style={{ ...s, height: 11, width: "18%", borderRadius: 6 }} />
+      </div>
+      <div style={{ ...s, height: 9, width: "38%" }} />
+      <div style={{ ...s, height: 5, width: "100%", borderRadius: 3 }} />
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <div style={{ ...s, height: 8, width: "42%" }} />
+        <div style={{ ...s, height: 8, width: "14%" }} />
+      </div>
+    </div>
+  );
+}
+
 function contactDisplayName(c) {
   const name = [c?.firstName, c?.lastName].filter(Boolean).join(" ").trim();
   return name || c?.email || "Unknown Contact";
@@ -69,8 +92,9 @@ export default function Sidebar({
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
   selectedIds, onToggleSelect, onToggleSelectAll, onSelectBulk,
-  hasMore, loadMore, loadingMore, total,
+  hasMore, loadMore, loadingMore, loading, firstLoad, total,
   filterOpen: filterOpenProp, onFilterToggle,
+  onFiltersChange,
 }) {
   const T = useTheme();
 
@@ -127,6 +151,16 @@ export default function Sidebar({
 
   useEffect(() => { setDisplayLimit(150); }, [search, sortF, checkedModes, checkedStatuses, scoreFrom, scoreTo]);
 
+  // Push filter changes to the server via parent callback
+  useEffect(() => {
+    if (!onFiltersChange) return;
+    const viewModeStages = STAGE_GROUPS[viewMode];
+    const stages = checkedModes.size > 0
+      ? [...checkedModes].flatMap(m => STAGE_GROUPS[m] || [])
+      : (viewModeStages?.length > 0 ? viewModeStages : []);
+    onFiltersChange({ stages, sortBy: sortF, scoreMin: scoreFrom, scoreMax: scoreTo });
+  }, [viewMode, checkedModes, sortF, scoreFrom, scoreTo]); // eslint-disable-line
+
   useEffect(() => {
     if (!isFilterOpen) return;
     function handler(e) {
@@ -158,47 +192,29 @@ export default function Sidebar({
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  const viewModeStages = STAGE_GROUPS[viewMode];
-
+  // Search, stages, sort, and score are all handled server-side.
+  // Status filter stays client-side (server only supports a single status value).
+  // Name-priority for "recent" sort is applied client-side as a secondary pass.
   const filtered = contacts
     .filter(c => {
-      if (checkedModes.size > 0) {
-        const allowedStages = new Set([...checkedModes].flatMap(m => STAGE_GROUPS[m] || []));
-        if (!allowedStages.has(c.lifecycleStage)) return false;
-      } else if (viewModeStages?.length > 0) {
-        if (!viewModeStages.includes(c.lifecycleStage)) return false;
-      }
       if (checkedStatuses.size > 0) {
         const s = c.status || (c.isCanceled ? STATUS.CANCELED : STATUS.ACTIVE);
         if (!checkedStatuses.has(s)) return false;
       }
-      const score = c.leadScore || 0;
-      if (score < scoreFrom || score > scoreTo) return false;
-      if (!search.trim()) return true;
-      const q = search.toLowerCase();
-      const name = contactDisplayName(c).toLowerCase();
-      return (
-        name.includes(q) ||
-        (c.email   || "").toLowerCase().includes(q) ||
-        (c.company || "").toLowerCase().includes(q) ||
-        (c.address || "").toLowerCase().includes(q)
-      );
+      return true;
     })
     .sort((a, b) => {
-      if (sortF === "name_az") return contactDisplayName(a).localeCompare(contactDisplayName(b));
-      if (sortF === "name_za") return contactDisplayName(b).localeCompare(contactDisplayName(a));
-      if (sortF === "score_desc") return (b.leadScore || 0) - (a.leadScore || 0);
-      if (sortF === "score_asc")  return (a.leadScore || 0) - (b.leadScore || 0);
-      if (sortF === "old") return new Date(a.lastActivityAt || a.createdAt) - new Date(b.lastActivityAt || b.createdAt);
-      // "recent" default: full name (2) > partial name (1) > email-only (0), then by date
-      const nameScore = c => {
-        const hasFirst = !!(c.firstName && c.firstName.trim());
-        const hasLast  = !!(c.lastName  && c.lastName.trim());
-        return hasFirst && hasLast ? 2 : hasFirst || hasLast ? 1 : 0;
-      };
-      const scoreDiff = nameScore(b) - nameScore(a);
-      if (scoreDiff !== 0) return scoreDiff;
-      return new Date(b.lastActivityAt || b.createdAt) - new Date(a.lastActivityAt || a.createdAt);
+      // For "recent", elevate fully-named leads above email-only ones within the page
+      if (sortF === "recent") {
+        const nameScore = c => {
+          const hasFirst = !!(c.firstName && c.firstName.trim());
+          const hasLast  = !!(c.lastName  && c.lastName.trim());
+          return hasFirst && hasLast ? 2 : hasFirst || hasLast ? 1 : 0;
+        };
+        const diff = nameScore(b) - nameScore(a);
+        if (diff !== 0) return diff;
+      }
+      return 0; // preserve server order for all other sorts
     });
 
   filteredLenRef.current = filtered.length;
@@ -515,7 +531,7 @@ export default function Sidebar({
       </div>
 
       {/* ── List header: select-all + count ─────────────────────────────────── */}
-      {filtered.length > 0 && (
+      {filtered.length > 0 && !loading && (
         <div style={{
           flexShrink: 0,
           display: "flex", alignItems: "center", gap: 8,
@@ -552,7 +568,10 @@ export default function Sidebar({
 
       {/* ── Contact list ─────────────────────────────────────────────────────── */}
       <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
-        {filtered.length === 0 ? (
+        {(loading || firstLoad) && filtered.length === 0 ? (
+          // Skeleton rows while initial data is loading
+          Array.from({ length: 12 }).map((_, i) => <SkeletonRow key={i} T={T} />)
+        ) : filtered.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center" }}>
             <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.3 }}>{search ? "🔍" : "👥"}</div>
             <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 4 }}>

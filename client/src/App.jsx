@@ -128,6 +128,16 @@ function AppLayout({ currentUser, onSignOut }) {
   const searchRef = useRef(null);
   const toast = useAppToast();
 
+  // Debounce search so the API only fires 400 ms after the user stops typing
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Server-side filter params driven by Sidebar callbacks
+  const [contactFilters, setContactFilters] = useState({ stages: [], sortBy: 'recent', scoreMin: 0, scoreMax: 100 });
+
   // live form data from center panel → feeds right-panel live preview
   const [liveFormData, setLiveFormData] = useState(null);
   // center panel dirty flag → prevents App-level Escape from deselecting while editing
@@ -159,7 +169,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const [mktgMobileOpen, setMktgMobileOpen] = useState(false);
   const [templateEditing, setTemplateEditing] = useState(false);
 
-  const { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore } = useContacts(currentUser);
+  const { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore } = useContacts(currentUser, { search: debouncedSearch, ...contactFilters });
   const [canceledContacts, setCanceledContacts] = useState([]);
 
   // Contacts visible in the current viewMode — used to scope the selection display
@@ -783,7 +793,10 @@ function AppLayout({ currentUser, onSignOut }) {
                 hasMore={viewMode !== VIEW_MODE.CANCELED && hasMore}
                 loadMore={loadMore}
                 loadingMore={loadingMore}
+                loading={loading}
+                firstLoad={firstLoad}
                 total={total}
+                onFiltersChange={setContactFilters}
               />
             </div>
             {/* Sidebar ↔ center drag handle */}

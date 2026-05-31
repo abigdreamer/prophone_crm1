@@ -92,15 +92,19 @@ export async function getDashboardSummary() {
 }
 
 // Reads active pool from singleton — no manual params needed
-// Options: { page, limit, status }
-export async function getContacts({ page = 1, limit = 100, status = null } = {}) {
+export async function getContacts({ page = 1, limit = 1000, status = null, search = '', stages = [], sortBy = 'recent', scoreMin = 0, scoreMax = 100 } = {}) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
     params.set('pool', 'client');
     params.set('clientId', clientId);
   }
-  if (status && status !== 'all') params.set('status', status);
+  if (status && status !== 'all')  params.set('status', status);
+  if (search)                      params.set('search', search);
+  if (stages.length > 0)           params.set('stages', stages.join(','));
+  if (sortBy && sortBy !== 'recent') params.set('sortBy', sortBy);
+  if (scoreMin > 0)                params.set('scoreMin', scoreMin);
+  if (scoreMax < 100)              params.set('scoreMax', scoreMax);
   params.set('page', page);
   params.set('limit', limit);
   return request('GET', `/api/contacts?${params}`);
