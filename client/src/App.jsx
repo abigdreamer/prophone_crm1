@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, LayoutGrid, Menu, Mail } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -730,9 +730,7 @@ function AppLayout({ currentUser, onSignOut }) {
                 pool={pool} clientId={clientId}
                 viewMode={viewMode} onViewModeChange={e => { handleViewModeChange(e); setMobileSidebarOpen(false); }}
                 selected={selected} onSelect={c => { handleSelect(c); if (isMobile) setMobileSidebarOpen(false); }}
-                onAddNew={() => { handleAddNew(); setMobileSidebarOpen(false); }}
                 onEditInline={handleEditInline}
-                onImport={() => { setCenterMode('import'); navigate('/contacts'); setMobileSidebarOpen(false); }}
                 search={search} setSearch={setSearch} searchRef={searchRef}
                 contacts={viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts}
                 canceledContacts={canceledContacts}
@@ -773,39 +771,48 @@ function AppLayout({ currentUser, onSignOut }) {
           {isReports && <ReportsSubNav />}
           {isSettings && <SettingsSubNav />}
 
-          {/* Center panel Add / Import buttons */}
-          {isContacts && !['import', 'cancel', 'restore', 'sendEmail'].includes(centerMode) && (
+
+          {/* ── Contacts action bar — Add / Import ───────────────────────── */}
+          {isContacts && centerMode !== 'sendEmail' && centerMode !== 'import' && centerMode !== 'add' && (
             <div style={{
-              flexShrink: 0, padding: '6px 14px',
+              flexShrink: 0,
+              height: 38, flexShrink: 0, boxSizing: 'border-box',
               borderBottom: '1px solid ' + T.border,
-              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8,
+              padding: '0 14px',
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7,
               background: T.surface,
             }}>
               <button
-                onClick={handleAddNew}
+                onClick={() => { handleAddNew(); setMobileSidebarOpen(false); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '5px 14px', background: T.accent, border: 'none',
-                  borderRadius: 6, color: '#fff', fontSize: 11, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: `0 2px 6px ${T.accent}44`,
-                  opacity: centerMode === 'add' ? 0.6 : 1,
+                  padding: '5px 13px', background: T.accent, border: 'none', borderRadius: 6,
+                  color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: `0 1px 6px ${T.accent}44`,
+                  transition: 'box-shadow 0.15s',
                 }}
-              >+ Add</button>
+                onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 3px 12px ${T.accent}66`; }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 1px 6px ${T.accent}44`; }}
+              >
+                <Plus size={12} strokeWidth={2.5} />
+                Add Contact
+              </button>
               <button
-                onClick={() => { setCenterMode('import'); navigate('/contacts'); }}
+                onClick={() => { setCenterMode('import'); navigate('/contacts'); setMobileSidebarOpen(false); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '5px 14px', background: 'transparent',
-                  border: '1px solid ' + T.border, borderRadius: 6,
-                  color: T.dim, fontSize: 11, fontWeight: 700,
+                  padding: '5px 13px', background: 'transparent',
+                  border: '1px solid ' + T.accent + '55',
+                  borderRadius: 6, color: T.accent, fontSize: 11, fontWeight: 700,
                   cursor: 'pointer', fontFamily: 'inherit',
-                  flexShrink: 0, whiteSpace: 'nowrap',
-                  transition: 'border-color 0.15s, color 0.15s',
+                  transition: 'background 0.15s, border-color 0.15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.dim; }}
-              >↑ Import</button>
+                onMouseEnter={e => { e.currentTarget.style.background = T.accent + '12'; e.currentTarget.style.borderColor = T.accent + '99'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = T.accent + '55'; }}
+              >
+                <Upload size={11} strokeWidth={2.5} />
+                Import
+              </button>
             </div>
           )}
 
@@ -844,9 +851,11 @@ function AppLayout({ currentUser, onSignOut }) {
             </div>
           )}
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 8 : isTablet ? 10 : '10px 18px', position: 'relative' }}>
             {!firstLoad && loading && <SkeletonDetailPanel />}
-            {renderCenter()}
+            <div style={isContacts ? { maxWidth: 900, margin: '0 auto' } : undefined}>
+              {renderCenter()}
+            </div>
           </div>
         </div>
 
@@ -871,8 +880,9 @@ function AppLayout({ currentUser, onSignOut }) {
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}>
             <div style={{
-              padding: '10px 14px', borderBottom: '1px solid ' + T.border,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+              height: 38, flexShrink: 0, boxSizing: 'border-box',
+              padding: '0 14px', borderBottom: '1px solid ' + T.border,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: T.text, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Lead Lifecycle
