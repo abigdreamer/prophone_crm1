@@ -112,7 +112,7 @@ async function addDomain(req, res) {
   const domain = await prisma.domain.upsert({
     where:  { domainName: cleanName },
     update: { clientId: clientId || null, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
-    create: { clientId: clientId || null, domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord },
+    create: { clientId: clientId || null, domainName: cleanName, resendDomainId: resendId, status: resendStatus, spfRecord, dkimRecord, dmarcRecord, defaultFromEmail: `noreply@${cleanName}` },
   });
 
   const by = req.user?.name || req.user?.email || 'system';
