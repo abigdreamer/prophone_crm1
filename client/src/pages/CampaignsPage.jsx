@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Mail, FlaskConical, CheckCircle2,
   Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
-  Send, Eye, MousePointerClick,
+  Send, Eye, MousePointerClick, Share2,
 } from "lucide-react";
+import ShareLinkModal from "../components/ui/ShareLinkModal";
 import { SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
 import RefreshBtn from "../components/ui/RefreshBtn";
 import { useTheme } from "../context/ThemeContext";
@@ -70,7 +71,7 @@ function StatCell({ icon: Icon, value, color, T }) {
   );
 }
 
-function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate }) {
+function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate, onShare }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [hovered, setHovered]   = useState(false);
@@ -205,6 +206,14 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
               onMouseLeave={e => e.currentTarget.style.background = "none"}
             >
               <Copy size={12} /> Duplicate
+            </button>
+            <button
+              onClick={() => { setMenuOpen(false); onShare(campaign); }}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}
+              onMouseEnter={e => e.currentTarget.style.background = T.surface}
+              onMouseLeave={e => e.currentTarget.style.background = "none"}
+            >
+              <Share2 size={12} /> Share link
             </button>
             {campaign.isCanceled ? (
               <button
@@ -752,14 +761,15 @@ export default function CampaignsPage() {
   const T = useTheme();
   const navigate = useNavigate();
   const { clientId } = usePool();
-  const [campaigns,  setCampaigns]  = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showNew,    setShowNew]    = useState(false);
-  const [toCancel,   setToCancel]   = useState(null);
-  const [toRestore,  setToRestore]  = useState(null);
-  const [acting,     setActing]     = useState(false);
-  const [search,     setSearch]     = useState("");
+  const [campaigns,    setCampaigns]    = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [showNew,      setShowNew]      = useState(false);
+  const [toCancel,     setToCancel]     = useState(null);
+  const [toRestore,    setToRestore]    = useState(null);
+  const [acting,       setActing]       = useState(false);
+  const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [shareTarget,  setShareTarget]  = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -990,6 +1000,7 @@ export default function CampaignsPage() {
                 onCancel={setToCancel}
                 onRestore={setToRestore}
                 onDuplicate={handleDuplicate}
+                onShare={setShareTarget}
               />
             ))
           )}
@@ -999,6 +1010,13 @@ export default function CampaignsPage() {
       {showNew    && <NewCampaignModal    onClose={() => setShowNew(false)}   onCreated={handleCreated} />}
       {toCancel   && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
       {toRestore  && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
+      {shareTarget && (
+        <ShareLinkModal
+          title={`Share "${shareTarget.name}"`}
+          url={`${window.location.origin}/campaigns/${shareTarget.id}`}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
     </div>
   );
 }
