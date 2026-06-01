@@ -1,28 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { getContacts, getContactCounts } from "../services/api";
 import { usePool } from "../context/PoolContext";
 
-export function useContacts(currentUser, serverFilters = {}) {
+export function useContacts(currentUser) {
   const { pool, clientId } = usePool();
   const [contacts,      setContacts]      = useState([]);
   const [contactCounts, setContactCounts] = useState({ prospect: 0, clients: {} });
   const [loading,       setLoading]       = useState(false);
   const [firstLoad,     setFirstLoad]     = useState(true);
-  const [page,          setPage]          = useState(1);
-  const [hasMore,       setHasMore]       = useState(false);
-  const [total,         setTotal]         = useState(0);
-  const [loadingMore,   setLoadingMore]   = useState(false);
-
-  const {
-    search   = '',
-    stages   = [],
-    sortBy   = 'recent',
-    scoreMin = 0,
-    scoreMax = 100,
-  } = serverFilters;
-
-  // Stable cache key so the effect only fires when values actually change
-  const stagesKey = stages.join(',');
 
   // Load aggregate counts once on login
   useEffect(() => {
@@ -30,56 +15,29 @@ export function useContacts(currentUser, serverFilters = {}) {
     getContactCounts().then(setContactCounts).catch(() => {});
   }, [currentUser]);
 
-  // Keep sidebar count badge in sync
+  // Keep counts in sync with the currently loaded pool
   useEffect(() => {
     if (!currentUser || loading) return;
-    const count = total || contacts.length;
     setContactCounts(prev => {
-      if (pool === "prospect") return { ...prev, prospect: count };
-      return { ...prev, clients: { ...prev.clients, [clientId]: count } };
+      if (pool === "prospect") return { ...prev, prospect: contacts.length };
+      return { ...prev, clients: { ...prev.clients, [clientId]: contacts.length } };
     });
-  }, [contacts, total, pool, clientId, currentUser, loading]);
+  }, [contacts, pool, clientId, currentUser, loading]);
 
-  // Re-fetch page 1 whenever pool, client, or any filter changes
+  // Re-fetch whenever pool or client changes — clear immediately to prevent stale selection
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
-    setContacts([]);
-    setPage(1);
-    setHasMore(false);
-    setTotal(0);
+    setContacts([]);   // flush old data synchronously before new fetch arrives
     setLoading(true);
-    getContacts({ page: 1, limit: 1000, search, stages, sortBy, scoreMin, scoreMax })
-      .then(({ data, total: t, hasMore: more }) => {
-        if (!cancelled) {
-          setContacts(data);
-          setTotal(t);
-          setHasMore(more);
-        }
-      })
+    getContacts()
+      .then(data => { if (!cancelled) setContacts(data); })
       .catch(err => console.error("Failed to load contacts:", err))
       .finally(() => {
         if (!cancelled) { setLoading(false); setFirstLoad(false); }
       });
     return () => { cancelled = true; };
-  }, [pool, clientId, currentUser, search, stagesKey, sortBy, scoreMin, scoreMax]); // eslint-disable-line
+  }, [pool, clientId, currentUser]);
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore || loadingMore) return;
-    setLoadingMore(true);
-    const nextPage = page + 1;
-    try {
-      const { data, hasMore: more, total: t } = await getContacts({ page: nextPage, limit: 1000, search, stages, sortBy, scoreMin, scoreMax });
-      setContacts(prev => [...prev, ...data]);
-      setPage(nextPage);
-      setHasMore(more);
-      setTotal(t);
-    } catch (err) {
-      console.error("Failed to load more contacts:", err);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [hasMore, loadingMore, page, search, stagesKey, sortBy, scoreMin, scoreMax]); // eslint-disable-line
-
-  return { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore };
+  return { contacts, setContacts, contactCounts, loading, firstLoad };
 }

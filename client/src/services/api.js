@@ -61,22 +61,6 @@ export async function getUsers() {
   return request('GET', '/api/users');
 }
 
-export async function createSystemUser(data) {
-  return request('POST', '/api/users', data);
-}
-
-export async function updateSystemUser(id, data) {
-  return request('PATCH', `/api/users/${id}`, data);
-}
-
-export async function deleteSystemUser(id) {
-  return request('DELETE', `/api/users/${id}`);
-}
-
-export async function getAllPortalUsers() {
-  return request('GET', '/api/users/portal-users');
-}
-
 // ── Contacts ──────────────────────────────────────────────────────────────────
 
 export async function getContactCounts() {
@@ -92,21 +76,15 @@ export async function getDashboardSummary() {
 }
 
 // Reads active pool from singleton — no manual params needed
-export async function getContacts({ page = 1, limit = 1000, status = null, search = '', stages = [], sortBy = 'recent', scoreMin = 0, scoreMax = 100 } = {}) {
+// Optional status: 'active' | 'pending' | 'canceled' — filters server-side
+export async function getContacts(status = null) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
     params.set('pool', 'client');
     params.set('clientId', clientId);
   }
-  if (status && status !== 'all')  params.set('status', status);
-  if (search)                      params.set('search', search);
-  if (stages.length > 0)           params.set('stages', stages.join(','));
-  if (sortBy && sortBy !== 'recent') params.set('sortBy', sortBy);
-  if (scoreMin > 0)                params.set('scoreMin', scoreMin);
-  if (scoreMax < 100)              params.set('scoreMax', scoreMax);
-  params.set('page', page);
-  params.set('limit', limit);
+  if (status && status !== 'all') params.set('status', status);
   return request('GET', `/api/contacts?${params}`);
 }
 
@@ -477,94 +455,4 @@ export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, 
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || 'Failed to fetch subscribers');
   return data;
-}
-
-// ── Client Portal Auth ────────────────────────────────────────────────────────
-
-// Separate fetch wrapper that uses the client portal token
-async function portalRequest(method, path, body) {
-  const headers = { "Content-Type": "application/json" };
-  const token = localStorage.getItem("prophone_client_token");
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    const error = new Error(data?.error || "Request failed");
-    error.status = res.status;
-    error.data = data;
-    throw error;
-  }
-
-  return data;
-}
-
-export async function clientLoginUser(username, password) {
-  try {
-    const { token, user } = await request('POST', '/api/auth/client-login', { username, password });
-    localStorage.setItem('prophone_client_token', token);
-    return user;
-  } catch (err) {
-    if (err.message === 'Invalid credentials') return null;
-    throw err;
-  }
-}
-
-export async function clientGetMe() {
-  return portalRequest('GET', '/api/auth/client-me');
-}
-
-// ── Client Portal Data ────────────────────────────────────────────────────────
-
-export async function portalGetDashboard() {
-  return portalRequest('GET', '/api/portal/dashboard');
-}
-
-export async function portalGetLeads(params = {}) {
-  const q = new URLSearchParams(params).toString();
-  return portalRequest('GET', `/api/portal/leads${q ? '?' + q : ''}`);
-}
-
-export async function portalGetLead(id) {
-  return portalRequest('GET', `/api/portal/leads/${id}`);
-}
-
-export async function portalGetCampaigns() {
-  return portalRequest('GET', '/api/portal/campaigns');
-}
-
-export async function portalGetCampaign(id) {
-  return portalRequest('GET', `/api/portal/campaigns/${id}`);
-}
-
-export async function portalGetProfile() {
-  return portalRequest('GET', '/api/portal/profile');
-}
-
-export async function portalUpdateProfile(data) {
-  return portalRequest('PATCH', '/api/portal/profile', data);
-}
-
-// ── Admin: Client Portal User Management ─────────────────────────────────────
-
-export async function getClientPortalUsers(clientId) {
-  return request('GET', `/api/clients/${clientId}/portal-users`);
-}
-
-export async function createClientPortalUser(clientId, data) {
-  return request('POST', `/api/clients/${clientId}/portal-users`, data);
-}
-
-export async function updateClientPortalUser(clientId, userId, data) {
-  return request('PATCH', `/api/clients/${clientId}/portal-users/${userId}`, data);
-}
-
-export async function deleteClientPortalUser(clientId, userId) {
-  return request('DELETE', `/api/clients/${clientId}/portal-users/${userId}`);
 }

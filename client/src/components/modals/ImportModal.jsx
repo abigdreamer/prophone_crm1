@@ -6,245 +6,152 @@ import { useTheme } from "../../context/ThemeContext";
 import { Spinner } from "../ui/Loader";
 import * as db from "../../services/api";
 
-// Detect social platform purely from URL content — ignores column name entirely
-function detectSocialPlatform(url) {
-  const u = (url || "").toLowerCase();
-  if (u.includes("facebook.com") || u.includes("fb.com")) return "facebook";
-  if (u.includes("instagram.com")) return "instagram";
-  if (u.includes("linkedin.com")) return "linkedin";
-  if (u.includes("twitter.com") || u.includes("x.com")) return "twitter";
-  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
-  if (u.includes("yelp.com")) return "yelp";
-  if (u.includes("pinterest.com")) return "pinterest";
-  if (u.includes("tiktok.com")) return "tiktok";
-  if (u.includes("maps.google.com") || u.includes("google.com/maps") || u.includes("goo.gl/maps")) return "google";
-  return null;
-}
-
-const STAGE_ALIASES = {
-  new: "new", prospect: "new", fresh: "new", cold: "new", "cold lead": "new",
-  contacted: "contacted", contact: "contacted", warm: "contacted", "warm lead": "contacted",
-  engaged: "engaged",
-  demo_scheduled: "demo_scheduled", "demo scheduled": "demo_scheduled",
-  demo_done: "demo_done", "demo done": "demo_done",
-  proposal_sent: "proposal_sent", "proposal sent": "proposal_sent", proposal: "proposal_sent",
-  hot: "proposal_sent", "hot lead": "proposal_sent",
-  negotiating: "negotiating",
-  customer: "customer", client: "customer",
-  not_qualified: "not_qualified", "not qualified": "not_qualified", unqualified: "not_qualified",
-  lost: "lost",
-  churned: "churned",
-};
-function normalizeStage(raw) {
-  return STAGE_ALIASES[(raw || "").toLowerCase().trim()] || null;
-}
-
+// ── Contact field definitions ─────────────────────────────────────────────────
 const CONTACT_FIELDS = [
-  { key: "fullName",              label: "Full Name (auto-split)",    group: "Identity" },
-  { key: "firstName",             label: "First Name",                group: "Identity" },
-  { key: "lastName",              label: "Last Name",                 group: "Identity" },
-  { key: "email",                 label: "Email",                     group: "Contact" },
-  { key: "phone",                 label: "Phone",                     group: "Contact" },
-  { key: "company",               label: "Company",                   group: "Company" },
-  { key: "title",                 label: "Job Title",                 group: "Company" },
-  { key: "website",               label: "Website",                   group: "Company" },
-  { key: "address",               label: "Address",                   group: "Company" },
-  { key: "city",                  label: "City",                      group: "Company" },
-  { key: "state",                 label: "State",                     group: "Company" },
-  { key: "zip",                   label: "ZIP Code",                  group: "Company" },
-  { key: "trucks",                label: "# of Trucks",               group: "Business" },
-  { key: "contractValue",         label: "Contract Value ($)",        group: "Business" },
-  { key: "estAnnualRevenue",      label: "Est. Annual Revenue",       group: "Business" },
-  { key: "yearsInBusiness",       label: "Years in Business",         group: "Business" },
-  { key: "servicesOffered",       label: "Services Offered",          group: "Business" },
-  { key: "serviceAreaMiles",      label: "Service Area (miles)",      group: "Business" },
-  { key: "motorClubAffiliations", label: "Motor Club Affiliations",   group: "Business" },
-  { key: "dispatcherSoftware",    label: "Dispatcher Software",       group: "Business" },
-  { key: "painPoints",            label: "Pain Points",               group: "Business" },
-  { key: "leadScore",             label: "Lead Score",                group: "Business" },
-  { key: "lifecycleStage",        label: "Lead Stage",                group: "Business" },
-  { key: "source",                label: "Source",                    group: "Business" },
-  { key: "campaign",              label: "Campaign",                  group: "Business" },
-  { key: "tags",                  label: "Tags (comma-separated)",    group: "Other" },
-  { key: "notes",                 label: "Notes",                     group: "Other" },
-  { key: "description",           label: "Description",               group: "Other" },
-  { key: "createdAt",             label: "Date Added",                group: "Other" },
-  { key: "socialMedia",           label: "Social / URL (auto-detect)", group: "Social" },
-  { key: "__skip__",              label: "— Skip column —",           group: "" },
+  { key: "fullName", label: "Full Name (auto-split)", required: false },
+  { key: "firstName", label: "First Name", required: true },
+  { key: "lastName", label: "Last Name", required: false },
+  { key: "email", label: "Email", required: true },
+  { key: "phone", label: "Phone", required: false },
+  { key: "company", label: "Company", required: false },
+  { key: "title", label: "Job Title", required: false },
+  { key: "website", label: "Website", required: false },
+  { key: "address", label: "Address", required: false },
+  { key: "trucks", label: "# of Trucks", required: false },
+  { key: "contractValue", label: "Contract Value ($)", required: false },
+  { key: "source", label: "Source", required: false },
+  { key: "notes", label: "Notes", required: false },
+  { key: "facebook", label: "Facebook", required: false },
+  { key: "instagram", label: "Instagram", required: false },
+  { key: "linkedin", label: "LinkedIn", required: false },
+  { key: "twitter", label: "Twitter / X", required: false },
+  { key: "youtube", label: "YouTube", required: false },
+  { key: "yelp", label: "Yelp", required: false },
+  { key: "pinterest", label: "Pinterest", required: false },
+  { key: "tiktok", label: "TikTok", required: false },
+  { key: "__skip__", label: "— Skip column —", required: false },
 ];
 
+const SOCIAL_KEYS = new Set(["facebook", "instagram", "linkedin", "twitter", "youtube", "yelp", "pinterest", "tiktok"]);
+
+// Common CSV header → contact field auto-detection
+// Common CSV header → contact field auto-detection (IMPROVED)
 const AUTO_MAP = {
-  // NAME
-  "full name": "fullName", fullname: "fullName", full_name: "fullName",
-  "contact name": "fullName", name: "fullName", contact: "fullName",
-  "owner/contact name": "fullName", "owner contact name": "fullName",
-  "contact person": "fullName", owner: "fullName",
-  firstname: "firstName", first_name: "firstName", "first name": "firstName", "given name": "firstName",
-  lastname: "lastName", last_name: "lastName", "last name": "lastName",
-  "family name": "lastName", surname: "lastName",
+  // ── NAME ─────────────────────────────────────────────
+  "full name": "fullName",
+  fullname: "fullName",
+  full_name: "fullName",
+  "contact name": "fullName",
+  name: "fullName",
 
-  // EMAIL
-  email: "email", "e-mail": "email", "email address": "email",
-  "e-mail address": "email", "email addr": "email",
+  firstname: "firstName",
+  first_name: "firstName",
+  "first name": "firstName",
 
-  // PHONE
-  phone: "phone", mobile: "phone", cell: "phone", "phone number": "phone",
-  "phone #": "phone", telephone: "phone", "business phone": "phone",
-  "office phone": "phone", "cell phone": "phone",
+  lastname: "lastName",
+  last_name: "lastName",
+  "last name": "lastName",
 
-  // COMPANY
-  company: "company", organization: "company", "company name": "company",
-  "business name": "company", business: "company", dba: "company", "org name": "company",
+  // ── EMAIL ────────────────────────────────────────────
+  email: "email",
+  "e-mail": "email",
+  "email address": "email",
 
-  // TITLE
-  title: "title", "job title": "title", position: "title", role: "title",
-  "position title": "title", "owner title": "title",
+  // ── PHONE ────────────────────────────────────────────
+  phone: "phone",
+  mobile: "phone",
+  cell: "phone",
+  "phone number": "phone",
 
-  // WEBSITE
-  website: "website", url: "website", "website url": "website", web: "website",
-  domain: "website", "web domain": "website", "company domain": "website",
-  site: "website", "company website": "website", "business website": "website",
+  // ── COMPANY ──────────────────────────────────────────
+  company: "company",
+  organization: "company",
+  "company name": "company",
 
-  // ADDRESS
-  address: "address", "street address": "address", street: "address",
-  "mailing address": "address", location: "address", "street 1": "address",
+  // ── TITLE ────────────────────────────────────────────
+  title: "title",
+  "job title": "title",
+  position: "title",
+  role: "title",
 
-  // CITY
-  city: "city", "city name": "city", town: "city",
+  // ── WEBSITE ──────────────────────────────────────────
+  website: "website",
+  url: "website",
+  "website url": "website",
+  web: "website",
+  domain: "website",
+  "web domain": "website",
+  "company domain": "website",
+  site: "website",
 
-  // STATE
-  state: "state", "us state": "state", "state/province": "state",
+  // ── ADDRESS ──────────────────────────────────────────
+  address: "address",
+  "street address": "address",
+  street: "address",
+  "mailing address": "address",
 
-  // ZIP
-  zip: "zip", "zip code": "zip", zipcode: "zip", "postal code": "zip",
-  postal_code: "zip", "zip/postal code": "zip", postal: "zip",
+  location: "address",
 
-  // TRUCKS
-  trucks: "trucks", "# of trucks": "trucks", "num trucks": "trucks",
-  "number of trucks": "trucks", "truck count": "trucks",
-  "company size trucks": "trucks", "company size (trucks)": "trucks",
-  "fleet size": "trucks", "# trucks": "trucks", "truck fleet": "trucks",
+  // ── NOTES (also catches bio/about columns) ───────────
+  bio: "notes",
+  about: "notes",
 
-  // CONTRACT VALUE
-  "contract value": "contractValue", contract: "contractValue",
-  mrr: "contractValue", "deal value": "contractValue",
+  // ── TRUCKS ───────────────────────────────────────────
+  trucks: "trucks",
+  "# of trucks": "trucks",
+  "num trucks": "trucks",
+  "number of trucks": "trucks",
 
-  // EST ANNUAL REVENUE
-  "est annual revenue": "estAnnualRevenue", "estimated annual revenue": "estAnnualRevenue",
-  "annual revenue": "estAnnualRevenue", "yearly revenue": "estAnnualRevenue",
-  "revenue estimate": "estAnnualRevenue", est_annual_revenue: "estAnnualRevenue",
-  "est. annual revenue": "estAnnualRevenue", "approx revenue": "estAnnualRevenue",
+  // ── CONTRACT ─────────────────────────────────────────
+  "contract value": "contractValue",
+  contract: "contractValue",
+  value: "contractValue",
+  mrr: "contractValue",
 
-  // YEARS IN BUSINESS
-  "years in business": "yearsInBusiness", "years operating": "yearsInBusiness",
-  "years established": "yearsInBusiness", "time in business": "yearsInBusiness",
-  years_in_business: "yearsInBusiness", "# years in business": "yearsInBusiness",
+  source: "source",
 
-  // SERVICES OFFERED
-  "services offered": "servicesOffered", services: "servicesOffered",
-  "service types": "servicesOffered", services_offered: "servicesOffered",
-  "services provided": "servicesOffered", "type of services": "servicesOffered",
+  notes: "notes",
+  comments: "notes",
 
-  // SERVICE AREA MILES
-  "service area miles": "serviceAreaMiles", "service area (miles)": "serviceAreaMiles",
-  "service radius": "serviceAreaMiles", "coverage area": "serviceAreaMiles",
-  service_area_miles: "serviceAreaMiles", "service area": "serviceAreaMiles",
-  "service range": "serviceAreaMiles",
+  // ── SOCIAL (IMPROVED + CONSISTENT) ───────────────────
+  facebook: "facebook",
+  "facebook url": "facebook",
+  "facebook link": "facebook",
 
-  // MOTOR CLUB
-  "motor club affiliations": "motorClubAffiliations", "motor clubs": "motorClubAffiliations",
-  "motor club": "motorClubAffiliations", motor_club_affiliations: "motorClubAffiliations",
-  "motor club memberships": "motorClubAffiliations", "club affiliations": "motorClubAffiliations",
+  instagram: "instagram",
+  "instagram url": "instagram",
+  "instagram handle": "instagram",
 
-  // DISPATCHER SOFTWARE
-  "dispatcher software": "dispatcherSoftware", "dispatching software": "dispatcherSoftware",
-  "dispatch system": "dispatcherSoftware", dispatcher_software: "dispatcherSoftware",
-  "dispatch software": "dispatcherSoftware", "towing software": "dispatcherSoftware",
+  linkedin: "linkedin",
+  "linkedin url": "linkedin",
+  "linkedin profile": "linkedin",
+  "linked in": "linkedin",
 
-  // PAIN POINTS
-  "pain points": "painPoints", "pain points notes": "painPoints",
-  challenges: "painPoints", problems: "painPoints", pain_points: "painPoints",
-  "pain point": "painPoints", "key challenges": "painPoints",
+  twitter: "twitter",
+  x: "twitter",
+  "twitter / x": "twitter",
+  "twitter/x": "twitter",
+  "twitter url": "twitter",
+  "twitter handle": "twitter",
 
-  // LEAD SCORE
-  "lead score": "leadScore", score: "leadScore", leadscore: "leadScore",
-  lead_score: "leadScore", "contact score": "leadScore",
+  youtube: "youtube",
+  "youtube url": "youtube",
+  "youtube channel": "youtube",
 
-  // LIFECYCLE STAGE
-  "lead stage": "lifecycleStage", "lifecycle stage": "lifecycleStage",
-  lifecyclestage: "lifecycleStage", lifecycle_stage: "lifecycleStage",
-  stage: "lifecycleStage", status: "lifecycleStage", "lead status": "lifecycleStage",
+  yelp: "yelp",
+  "yelp url": "yelp",
+  "yelp page": "yelp",
 
-  // SOURCE
-  source: "source", "lead source": "source", "referral source": "source",
+  pinterest: "pinterest",
+  "pinterest url": "pinterest",
 
-  // CAMPAIGN
-  campaign: "campaign", "campaign name": "campaign", "marketing campaign": "campaign",
-
-  // TAGS
-  tags: "tags", tag: "tags", labels: "tags", categories: "tags", keywords: "tags",
-
-  // NOTES
-  notes: "notes", note: "notes", bio: "notes", about: "notes",
-  comments: "notes", remarks: "notes",
-
-  // DESCRIPTION
-  description: "description", "company description": "description",
-  "business description": "description", summary: "description",
-
-  // CREATED AT
-  "date added": "createdAt", "created at": "createdAt", "created date": "createdAt",
-  "date created": "createdAt", "import date": "createdAt", createdat: "createdAt",
-  created_at: "createdAt", "added date": "createdAt", "date joined": "createdAt",
-
-  // SOCIAL — all routed through URL-based detection regardless of column name
-  facebook: "socialMedia", "facebook url": "socialMedia", "facebook link": "socialMedia",
-  instagram: "socialMedia", "instagram url": "socialMedia", "instagram handle": "socialMedia",
-  linkedin: "socialMedia", "linkedin url": "socialMedia", "linkedin profile": "socialMedia", "linked in": "socialMedia",
-  yelp: "socialMedia", "yelp url": "socialMedia", "yelp page": "socialMedia", "yelp listing": "socialMedia",
-  "google business url": "socialMedia", "google business": "socialMedia",
-  "google maps": "socialMedia", gmb: "socialMedia", "google listing": "socialMedia",
-  tiktok: "socialMedia", "tiktok url": "socialMedia", "tiktok handle": "socialMedia",
-  twitter: "socialMedia", "twitter url": "socialMedia", "twitter handle": "socialMedia",
-  x: "socialMedia", "twitter / x": "socialMedia", "twitter/x": "socialMedia",
-  youtube: "socialMedia", "youtube url": "socialMedia", "youtube channel": "socialMedia",
-  pinterest: "socialMedia", "pinterest url": "socialMedia",
-  "social media": "socialMedia", social: "socialMedia", "social url": "socialMedia",
-  "social link": "socialMedia", "social media url": "socialMedia",
-  "social media link": "socialMedia", "social media handle": "socialMedia",
+  tiktok: "tiktok",
+  "tiktok url": "tiktok",
+  "tiktok handle": "tiktok",
 };
 
-// Pre-sorted keys (longest first) for greedy prefix matching
-const _AUTO_MAP_KEYS = Object.keys(AUTO_MAP).sort((a, b) => b.length - a.length);
-
 function detectMapping(headers) {
-  return headers.map(h => {
-    const norm = h.toLowerCase().trim();
-
-    // Pass 1 — exact match
-    if (AUTO_MAP[norm]) return AUTO_MAP[norm];
-
-    // Pass 2 — strip common noise then exact-match:
-    //   "Lead Score (1-10)"          → "lead score"
-    //   "Dispatcher Software (Current)" → "dispatcher software"
-    //   "Pain Points / Notes"        → "pain points"
-    //   "Status: Active/Inactive"    → "status"
-    const clean = norm
-      .replace(/\s*\([^)]*\)/g, '')  // remove (...) blocks
-      .replace(/\s*[\/|:].*/,  '')   // remove everything from / | : onward
-      .trim();
-    if (clean && clean !== norm && AUTO_MAP[clean]) return AUTO_MAP[clean];
-
-    // Pass 3 — word-boundary prefix scan on cleaned string (longest key wins)
-    const target = clean || norm;
-    for (const key of _AUTO_MAP_KEYS) {
-      // key must appear at the start of target, followed by whitespace or end-of-string
-      const re = new RegExp('^' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)', 'i');
-      if (re.test(target)) return AUTO_MAP[key];
-    }
-
-    return "__skip__";
-  });
+  return headers.map(h => AUTO_MAP[h.toLowerCase().trim()] || "__skip__");
 }
 
 // ── Step indicator ────────────────────────────────────────────────────────────
@@ -366,97 +273,75 @@ function StepUpload({ onParsed }) {
       )}
 
       <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 8, background: T.surface, border: `1px solid ${T.border}` }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Supported columns (any order, any name)</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>Expected columns (any order)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[
-            "Company Name","Owner/Contact Name","Title","Email Address","Phone Number",
-            "Address","City","State","ZIP","Website",
-            "Facebook URL","Instagram URL","LinkedIn URL","Yelp URL","Google Business URL",
-            "Company Size Trucks","Est Annual Revenue","Years in Business",
-            "Services Offered","Service Area Miles","Motor Club Affiliations",
-            "Dispatcher Software","Pain Points Notes","Lead Score","Status","Date Added",
-          ].map(f => (
-            <span key={f} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: T.card, border: `1px solid ${T.border}`, color: T.dim }}>{f}</span>
+          {["First Name *", "Last Name", "Email", "Phone", "Company", "Job Title", "Website", "City", "Description", "# of Trucks", "Contract Value", "Facebook", "Instagram", "LinkedIn", "Twitter", "YouTube", "Yelp", "TikTok"].map(f => (
+            <span key={f} style={{
+              fontSize: 10, padding: "2px 8px", borderRadius: 4,
+              background: T.card, border: `1px solid ${T.border}`, color: T.dim,
+            }}>{f}</span>
           ))}
         </div>
         <div style={{ fontSize: 10, color: T.muted, marginTop: 8 }}>
-          Columns are auto-mapped from header names. Social URLs are detected from the URL value itself — column names like "Facebook URL" or "Google Business" work automatically. Each row must have an Email.
+          * Provide either First Name or Full Name (auto-split on space). Each row must have at least an Email or Phone. Supports up to 10,000 rows.
         </div>
       </div>
     </div>
   );
 }
 
-// Build grouped options for the field select
-const FIELD_GROUPS = ["Identity", "Contact", "Company", "Business", "Other", "Social", ""];
-const groupedFields = FIELD_GROUPS.map(g => ({
-  group: g,
-  fields: CONTACT_FIELDS.filter(f => f.group === g),
-})).filter(g => g.fields.length > 0);
-
 // ── Step 2: Map columns ───────────────────────────────────────────────────────
 function StepMap({ headers, mapping, setMapping }) {
   const T = useTheme();
-  const autoCount = mapping.filter(m => m && m !== "__skip__").length;
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          Column mapping
-        </div>
-        <div style={{ fontSize: 11, color: T.green }}>
-          {autoCount} of {headers.length} auto-detected
-        </div>
-      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Map your CSV columns to contact fields</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {headers.map((h, i) => {
-          const mapped = mapping[i] && mapping[i] !== "__skip__";
-          return (
-            <div key={h} style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", alignItems: "center", gap: 10 }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 7,
-                padding: "8px 12px", borderRadius: 6,
-                background: T.bg, border: `1px solid ${mapped ? T.green + "40" : T.border}`,
-                fontSize: 12, color: T.dim, fontFamily: "monospace",
-                overflow: "hidden",
-              }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: mapped ? T.green : T.border }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h}</span>
-              </div>
-              <ChevronRight size={14} color={T.muted} style={{ flexShrink: 0 }} />
-              <select
-                value={mapping[i] || "__skip__"}
-                onChange={e => { const next = [...mapping]; next[i] = e.target.value; setMapping(next); }}
-                style={{
-                  background: T.surface, border: `1px solid ${T.border}`,
-                  borderRadius: 6, padding: "8px 10px",
-                  color: mapping[i] === "__skip__" ? T.muted : T.text,
-                  fontSize: 12, outline: "none", fontFamily: "inherit", cursor: "pointer",
-                }}
-              >
-                {groupedFields.map(({ group, fields }) =>
-                  group ? (
-                    <optgroup key={group} label={group}>
-                      {fields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                    </optgroup>
-                  ) : (
-                    fields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)
-                  )
-                )}
-              </select>
-            </div>
-          );
-        })}
+        {headers.map((h, i) => (
+          <div key={h} style={{
+            display: "grid", gridTemplateColumns: "1fr 24px 1fr",
+            alignItems: "center", gap: 10,
+          }}>
+            <div style={{
+              padding: "8px 12px", borderRadius: 6,
+              background: T.bg, border: `1px solid ${T.border}`,
+              fontSize: 12, color: T.dim, fontFamily: "monospace",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{h}</div>
+
+            <ChevronRight size={14} color={T.muted} style={{ flexShrink: 0 }} />
+
+            <select
+              value={mapping[i] || "__skip__"}
+              onChange={e => {
+                const next = [...mapping];
+                next[i] = e.target.value;
+                setMapping(next);
+              }}
+              style={{
+                background: T.surface, border: `1px solid ${T.border}`,
+                borderRadius: 6, padding: "8px 10px",
+                color: mapping[i] === "__skip__" ? T.muted : T.text,
+                fontSize: 12, outline: "none", fontFamily: "inherit", cursor: "pointer",
+              }}
+            >
+              {CONTACT_FIELDS.map(f => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+        ))}
       </div>
+
       <div style={{ marginTop: 14, fontSize: 11, color: T.muted }}>
-        Green dot = auto-mapped. Fix any wrong mappings before continuing. Social URLs are detected from the actual URL value — the column name does not matter.
+        Columns mapped to "— Skip column —" will not be imported.
       </div>
     </div>
   );
 }
 
 // ── Step 3: Preview ───────────────────────────────────────────────────────────
-function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateAction, cityOverride, setCityOverride }) {
+function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateAction }) {
   const T = useTheme();
   const mapped = headers.map((h, i) => ({ header: h, field: mapping[i] })).filter(m => m.field !== "__skip__");
   const preview = rows.slice(0, 8);
@@ -481,36 +366,6 @@ function StepPreview({ headers, rows, mapping, duplicateAction, setDuplicateActi
             >{opt}</button>
           ))}
         </div>
-      </div>
-
-      {/* City override — applies to all imported leads */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
-        padding: "10px 14px", borderRadius: 8,
-        background: T.surface, border: `1px solid ${T.border}`,
-      }}>
-        <div style={{ fontSize: 11, color: T.dim, flexShrink: 0 }}>
-          Apply city to all leads:
-        </div>
-        <input
-          type="text"
-          value={cityOverride}
-          onChange={e => setCityOverride(e.target.value)}
-          placeholder="e.g. Dallas, TX  (optional)"
-          style={{
-            flex: 1, background: T.bg, border: `1px solid ${T.border}`,
-            borderRadius: 6, padding: "6px 10px",
-            color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit",
-          }}
-        />
-        {cityOverride && (
-          <button
-            onClick={() => setCityOverride("")}
-            style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 2 }}
-          >
-            <X size={13} />
-          </button>
-        )}
       </div>
 
       <div style={{ overflowX: "auto", borderRadius: 8, border: `1px solid ${T.border}` }}>
@@ -707,7 +562,6 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
   const [rawRows, setRawRows] = useState([]);
   const [mapping, setMapping] = useState([]);
   const [duplicateAction, setDuplicateAction] = useState("ignore");
-  const [cityOverride, setCityOverride] = useState("");
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
@@ -725,61 +579,36 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
   const firstValue = (raw, sep = /[,|]/) =>
     String(raw ?? "").split(sep).map(v => v.trim()).find(Boolean) ?? "";
 
+  // Convert raw rows using current mapping to contact-shaped objects
   const mapRows = useCallback(() => {
-    const INT_FIELDS = new Set(["trucks", "leadScore", "serviceAreaMiles", "yearsInBusiness"]);
     return rawRows.map(row => {
       const contact = {};
       const socialLinks = {};
-
       headers.forEach((h, i) => {
         const field = mapping[i];
         if (!field || field === "__skip__") return;
-        const raw = row[h] ?? "";
-
         if (field === "fullName") {
-          const full = String(raw).trim();
+          const full = (row[h] ?? "").trim();
           const space = full.indexOf(" ");
           if (space !== -1) {
             contact.firstName = contact.firstName || full.slice(0, space).trim();
-            contact.lastName  = contact.lastName  || full.slice(space + 1).trim();
+            contact.lastName = contact.lastName || full.slice(space + 1).trim();
           } else {
             contact.firstName = contact.firstName || full;
           }
         } else if (field === "email") {
-          contact.email = firstValue(raw, /[,|]/);
+          // Multiple emails separated by comma or pipe → use the first one
+          contact.email = firstValue(row[h], /[,|]/);
         } else if (field === "phone") {
-          contact.phone = firstValue(raw, /[,|;]/);
-        } else if (field === "socialMedia") {
-          // Platform detected entirely from URL value — column name is irrelevant
-          const v = String(raw).trim();
-          if (v) {
-            const platform = detectSocialPlatform(v);
-            if (platform && !socialLinks[platform]) socialLinks[platform] = v;
-          }
-        } else if (field === "lifecycleStage") {
-          const v = String(raw).trim();
-          contact.lifecycleStage = normalizeStage(v) || v || "";
-        } else if (field === "tags") {
-          const v = String(raw).trim();
-          contact.tags = v ? v.split(/[,;|]/).map(t => t.trim()).filter(Boolean) : [];
-        } else if (field === "createdAt") {
-          const v = String(raw).trim();
-          if (v) { const d = new Date(v); if (!isNaN(d)) contact.createdAt = d.toISOString(); }
-        } else if (INT_FIELDS.has(field)) {
-          contact[field] = parseInt(raw) || 0;
+          // Multiple phone numbers separated by comma, pipe, or semicolon → use the first one
+          contact.phone = firstValue(row[h], /[,|;]/);
+        } else if (SOCIAL_KEYS.has(field)) {
+          const v = (row[h] ?? "").trim();
+          if (v) socialLinks[field] = v;
         } else {
-          contact[field] = String(raw);
+          contact[field] = row[h] ?? "";
         }
       });
-
-      // URL scan — detect social links from EVERY cell regardless of mapping
-      for (const h of headers) {
-        const v = String(row[h] ?? "").trim();
-        if (!v) continue;
-        const platform = detectSocialPlatform(v);
-        if (platform && !socialLinks[platform]) socialLinks[platform] = v;
-      }
-
       contact.socialLinks = socialLinks;
       return contact;
     });
@@ -791,10 +620,6 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
     setProgress(0);
     try {
       const allMapped = mapRows();
-
-      // Apply city override to all rows if set
-      const city = cityOverride.trim();
-      if (city) allMapped.forEach(r => { r.city = city; });
 
       // Skip rows with no email address
       const withEmail    = allMapped.filter(r => r.email?.trim());
@@ -837,7 +662,7 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
 
   function reset() {
     setStep(0); setFileName(""); setHeaders([]); setRawRows([]);
-    setMapping([]); setCityOverride(""); setResult(null); setImportError("");
+    setMapping([]); setResult(null); setImportError("");
   }
 
   const canAdvance =
@@ -885,7 +710,6 @@ export default function ImportModal({ onClose, clientId, pool, onImported }) {
             <StepPreview
               headers={headers} rows={rawRows} mapping={mapping}
               duplicateAction={duplicateAction} setDuplicateAction={setDuplicateAction}
-              cityOverride={cityOverride} setCityOverride={setCityOverride}
             />
           )}
           {step === 3 && <StepSummary result={result} onClose={onClose} onStartOver={reset} />}
