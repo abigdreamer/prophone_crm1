@@ -485,15 +485,7 @@ export async function findSuppressedContactIds(contactIds) {
     distinct: ['contactId'],
   });
 
-  // Also check contacts table for globally unsubscribed contacts
-  const unsubRows = await prisma.contact.findMany({
-    where:  { id: { in: contactIds }, isUnsubscribed: true },
-    select: { id: true },
-  });
-
-  const set = new Set(recipientRows.map(r => r.contactId));
-  unsubRows.forEach(r => set.add(r.id));
-  return set;
+  return new Set(recipientRows.map(r => r.contactId));
 }
 
 /**
