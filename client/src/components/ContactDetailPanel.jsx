@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import { STAGE_DEF, ALL_STAGES } from "../data/stages";
-import { addActivity } from "../services/api";
+import { addActivity, getSettings } from "../services/api";
 import { Spinner } from "./ui/Loader";
 import {
   User, TrendingUp, Building2, Wrench, Share2, FileText, Tag, ChevronDown,
@@ -127,6 +127,19 @@ export default function ContactDetailPanel({
 
   const [form, setForm]             = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
   const [saveStatus, setSaveStatus] = useState(null);
+  const [vis, setVis] = useState({});
+
+  useEffect(() => {
+    getSettings(clientId, "contact_fields")
+      .then(res => {
+        if (res?.config && Object.keys(res.config).length > 0) {
+          setVis(res.config);
+        }
+      })
+      .catch(() => {});
+  }, [clientId]);
+
+  const show = key => vis[key] !== false;
 
   const firstNameRef   = useRef(null);
   const panelRef       = useRef(null);
@@ -304,107 +317,145 @@ export default function ContactDetailPanel({
       {/* ── CONTACT INFO ──────────────────────────────────────────────────────── */}
       <Section icon={User} title="Contact Info" T={T}>
         <G cols="1fr 1fr 1fr 1fr">
-          <F label="First Name"><FInput inputRef={firstNameRef} value={form.firstName} onChange={v => set("firstName", v)} placeholder="First name" /></F>
-          <F label="Last Name"><FInput value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last name" /></F>
-          <F label="Title"><FInput value={form.title} onChange={v => set("title", v)} placeholder="Job title" /></F>
-          <F label="Phone"><FInput value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} /></F>
+          {show("firstName") && <F label="First Name"><FInput inputRef={firstNameRef} value={form.firstName} onChange={v => set("firstName", v)} placeholder="First name" /></F>}
+          {show("lastName") && <F label="Last Name"><FInput value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last name" /></F>}
+          {show("title") && <F label="Title"><FInput value={form.title} onChange={v => set("title", v)} placeholder="Job title" /></F>}
+          {show("phone") && <F label="Phone"><FInput value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} /></F>}
         </G>
-        <G cols="1fr 1fr">
-          <F label="Email"><FInput value={form.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" /></F>
-          <F label="Website"><FInput value={form.website} onChange={v => set("website", v)} placeholder="https://website.com" onBlur={() => { const v = (form.website||"").trim(); if(v && !/^https?:\/\//i.test(v)) set("website","https://"+v); }} /></F>
-        </G>
-        <G cols="2fr 1fr 1fr 1fr" mb={0}>
-          <F label="Address"><FInput value={form.address} onChange={v => set("address", v)} placeholder="Street address" /></F>
-          <F label="City"><FInput value={form.city} onChange={v => set("city", v)} placeholder="City" /></F>
-          <F label="State"><FInput value={form.state} onChange={v => set("state", v)} placeholder="State" /></F>
-          <F label="Zip"><FInput value={form.zip} onChange={v => set("zip", v)} placeholder="Zip" /></F>
-        </G>
+        {(show("email") || show("website")) && (
+          <G cols="1fr 1fr">
+            {show("email") && <F label="Email"><FInput value={form.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" /></F>}
+            {show("website") && <F label="Website"><FInput value={form.website} onChange={v => set("website", v)} placeholder="https://website.com" onBlur={() => { const v = (form.website||"").trim(); if(v && !/^https?:\/\//i.test(v)) set("website","https://"+v); }} /></F>}
+          </G>
+        )}
+        {show("address") && (
+          <G cols="2fr 1fr 1fr 1fr" mb={0}>
+            <F label="Address"><FInput value={form.address} onChange={v => set("address", v)} placeholder="Street address" /></F>
+            <F label="City"><FInput value={form.city} onChange={v => set("city", v)} placeholder="City" /></F>
+            <F label="State"><FInput value={form.state} onChange={v => set("state", v)} placeholder="State" /></F>
+            <F label="Zip"><FInput value={form.zip} onChange={v => set("zip", v)} placeholder="Zip" /></F>
+          </G>
+        )}
       </Section>
 
       {/* ── PIPELINE ──────────────────────────────────────────────────────────── */}
-      <Section icon={TrendingUp} title="Pipeline" T={T}>
-        <G cols="1fr 1fr" mb={0}>
-          <F label="Lead Stage">
-            <InlineStageSelect
-              value={form.lifecycleStage}
-              onChange={(newStage) => set("lifecycleStage", newStage)}
-            />
-          </F>
-          <F label="Lead Score"><FInput value={form.leadScore} onChange={v => set("leadScore", v)} placeholder="0" onKeyDown={numKey} /></F>
-        </G>
-      </Section>
+      {(show("lifecycleStage") || show("leadScore")) && (
+        <Section icon={TrendingUp} title="Pipeline" T={T}>
+          <G cols="1fr 1fr" mb={0}>
+            {show("lifecycleStage") && (
+              <F label="Lead Stage">
+                <InlineStageSelect
+                  value={form.lifecycleStage}
+                  onChange={(newStage) => set("lifecycleStage", newStage)}
+                />
+              </F>
+            )}
+            {show("leadScore") && <F label="Lead Score"><FInput value={form.leadScore} onChange={v => set("leadScore", v)} placeholder="0" onKeyDown={numKey} /></F>}
+          </G>
+        </Section>
+      )}
 
       {/* ── COMPANY & ACCOUNT ─────────────────────────────────────────────────── */}
-      <Section icon={Building2} title="Company & Account" T={T}>
-        <G cols="2fr 1fr 1fr 1fr 1fr">
-          <F label="Company"><FInput value={form.company} onChange={v => set("company", v)} placeholder="Company name" /></F>
-          <F label="Account Size"><FInput value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="e.g. 1-5" /></F>
-          <F label="Trucks"><FInput value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} /></F>
-          <F label="Est. Revenue"><FInput value={form.estAnnualRevenue} onChange={v => set("estAnnualRevenue", v)} placeholder="$0" /></F>
-          <F label="Contract ($)"><FInput value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} /></F>
-        </G>
-        <G cols="1fr 1fr 1fr" mb={0}>
-          <F label="Years in Business"><FInput value={form.yearsInBusiness} onChange={v => set("yearsInBusiness", v)} placeholder="0" onKeyDown={numKey} /></F>
-          <F label="Service Area (mi)"><FInput value={form.serviceAreaMiles} onChange={v => set("serviceAreaMiles", v)} placeholder="0" onKeyDown={numKey} /></F>
-          <F label="Dispatcher Software"><FInput value={form.dispatcherSoftware} onChange={v => set("dispatcherSoftware", v)} placeholder="e.g. Omadi" /></F>
-        </G>
-      </Section>
+      {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue") || show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
+        <Section icon={Building2} title="Company & Account" T={T}>
+          {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue")) && (
+            <G cols="2fr 1fr 1fr 1fr 1fr">
+              {show("company") && <F label="Company"><FInput value={form.company} onChange={v => set("company", v)} placeholder="Company name" /></F>}
+              {show("accountSize") && <F label="Account Size"><FInput value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="e.g. 1-5" /></F>}
+              {show("trucks") && <F label="Trucks"><FInput value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("estAnnualRevenue") && <F label="Est. Revenue"><FInput value={form.estAnnualRevenue} onChange={v => set("estAnnualRevenue", v)} placeholder="$0" /></F>}
+              {show("contractValue") && <F label="Contract ($)"><FInput value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} /></F>}
+            </G>
+          )}
+          {(show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
+            <G cols="1fr 1fr 1fr" mb={0}>
+              {show("yearsInBusiness") && <F label="Years in Business"><FInput value={form.yearsInBusiness} onChange={v => set("yearsInBusiness", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("serviceAreaMiles") && <F label="Service Area (mi)"><FInput value={form.serviceAreaMiles} onChange={v => set("serviceAreaMiles", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("dispatcherSoftware") && <F label="Dispatcher Software"><FInput value={form.dispatcherSoftware} onChange={v => set("dispatcherSoftware", v)} placeholder="e.g. Omadi" /></F>}
+              {show("source") && <F label="Source"><FInput value={form.source} onChange={v => set("source", v)} placeholder="e.g. Cold Call" /></F>}
+              {show("campaign") && <F label="Campaign"><FInput value={form.campaign} onChange={v => set("campaign", v)} placeholder="Campaign name" /></F>}
+            </G>
+          )}
+        </Section>
+      )}
 
       {/* ── SERVICES & OPERATIONS ─────────────────────────────────────────────── */}
-      <Section icon={Wrench} title="Services & Operations" T={T}>
-        <G cols="1fr 1fr">
-          <F label="Services Offered"><FTextarea value={form.servicesOffered} onChange={v => set("servicesOffered", v)} placeholder="Heavy Duty, Semi Recovery, Accident…" rows={2} /></F>
-          <F label="Motor Club Affiliations"><FTextarea value={form.motorClubAffiliations} onChange={v => set("motorClubAffiliations", v)} placeholder="State Farm, NSD…" rows={2} /></F>
-        </G>
-        <G cols="1fr" mb={0}>
-          <F label="Pain Points"><FTextarea value={form.painPoints} onChange={v => set("painPoints", v)} placeholder="Key pain points or challenges…" rows={2} /></F>
-        </G>
-      </Section>
+      {(show("servicesOffered") || show("motorClubAffiliations") || show("painPoints")) && (
+        <Section icon={Wrench} title="Services & Operations" T={T}>
+          {(show("servicesOffered") || show("motorClubAffiliations")) && (
+            <G cols="1fr 1fr">
+              {show("servicesOffered") && <F label="Services Offered"><FTextarea value={form.servicesOffered} onChange={v => set("servicesOffered", v)} placeholder="Heavy Duty, Semi Recovery, Accident…" rows={2} /></F>}
+              {show("motorClubAffiliations") && <F label="Motor Club Affiliations"><FTextarea value={form.motorClubAffiliations} onChange={v => set("motorClubAffiliations", v)} placeholder="State Farm, NSD…" rows={2} /></F>}
+            </G>
+          )}
+          {show("painPoints") && (
+            <G cols="1fr" mb={0}>
+              <F label="Pain Points"><FTextarea value={form.painPoints} onChange={v => set("painPoints", v)} placeholder="Key pain points or challenges…" rows={2} /></F>
+            </G>
+          )}
+        </Section>
+      )}
 
       {/* ── SOCIAL LINKS ──────────────────────────────────────────────────────── */}
-      <Section icon={Share2} title="Social Links" T={T}>
-        <G cols="1fr 1fr 1fr 1fr" mb={0}>
-          {[
-            { key: "facebook",  label: "Facebook",  ph: "facebook.com/…"    },
-            { key: "instagram", label: "Instagram", ph: "instagram.com/…"   },
-            { key: "linkedin",  label: "LinkedIn",  ph: "linkedin.com/in/…" },
-            { key: "yelp",      label: "Yelp",      ph: "yelp.com/biz/…"    },
-          ].map(({ key, label, ph }) => (
-            <F key={key} label={label}>
-              <FInput value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={ph} />
-            </F>
-          ))}
-        </G>
-      </Section>
+      {(() => {
+        const ALL_SOCIAL = [
+          { key: "facebook",  vis: "social_facebook",  label: "Facebook",    ph: "facebook.com/…"    },
+          { key: "instagram", vis: "social_instagram", label: "Instagram",   ph: "instagram.com/…"   },
+          { key: "linkedin",  vis: "social_linkedin",  label: "LinkedIn",    ph: "linkedin.com/in/…" },
+          { key: "twitter",   vis: "social_twitter",   label: "Twitter / X", ph: "x.com/…"           },
+          { key: "youtube",   vis: "social_youtube",   label: "YouTube",     ph: "youtube.com/…"     },
+          { key: "yelp",      vis: "social_yelp",      label: "Yelp",        ph: "yelp.com/biz/…"    },
+          { key: "pinterest", vis: "social_pinterest", label: "Pinterest",   ph: "pinterest.com/…"   },
+          { key: "tiktok",    vis: "social_tiktok",    label: "TikTok",      ph: "tiktok.com/@…"     },
+        ].filter(s => show(s.vis));
+
+        if (ALL_SOCIAL.length === 0) return null;
+
+        return (
+          <Section icon={Share2} title="Social Links" T={T}>
+            <G cols="1fr 1fr 1fr 1fr" mb={0}>
+              {ALL_SOCIAL.map(({ key, label, ph }) => (
+                <F key={key} label={label}>
+                  <FInput value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={ph} />
+                </F>
+              ))}
+            </G>
+          </Section>
+        );
+      })()}
 
       {/* ── NOTES ─────────────────────────────────────────────────────────────── */}
-      <Section icon={FileText} title="Notes" T={T}>
-        <G cols="1fr" mb={0}>
-          <F label="Notes">
-            <FTextarea value={form.notes} onChange={v => set("notes", v)} placeholder="Add notes about this contact…" rows={3} />
-          </F>
-        </G>
-      </Section>
+      {show("notes") && (
+        <Section icon={FileText} title="Notes" T={T}>
+          <G cols="1fr" mb={0}>
+            <F label="Notes">
+              <FTextarea value={form.notes} onChange={v => set("notes", v)} placeholder="Add notes about this contact…" rows={3} />
+            </F>
+          </G>
+        </Section>
+      )}
 
       {/* ── TAGS ──────────────────────────────────────────────────────────────── */}
-      <Section icon={Tag} title="Tags" T={T} last>
-        <G cols="1fr" mb={parsedTags.length > 0 ? 10 : 0}>
-          <F label="Tags">
-            <FInput value={form.tags} onChange={v => set("tags", v)} placeholder="tag1, tag2, tag3  (comma-separated)" />
-          </F>
-        </G>
-        {parsedTags.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {parsedTags.map(tag => (
-              <span key={tag} style={{
-                padding: "3px 10px", borderRadius: 20, fontSize: 11,
-                background: T.accent + "18", color: T.accent,
-                border: "1px solid " + T.accent + "35", fontWeight: 600,
-              }}>{tag}</span>
-            ))}
-          </div>
-        )}
-      </Section>
+      {show("tags") && (
+        <Section icon={Tag} title="Tags" T={T} last>
+          <G cols="1fr" mb={parsedTags.length > 0 ? 10 : 0}>
+            <F label="Tags">
+              <FInput value={form.tags} onChange={v => set("tags", v)} placeholder="tag1, tag2, tag3  (comma-separated)" />
+            </F>
+          </G>
+          {parsedTags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {parsedTags.map(tag => (
+                <span key={tag} style={{
+                  padding: "3px 10px", borderRadius: 20, fontSize: 11,
+                  background: T.accent + "18", color: T.accent,
+                  border: "1px solid " + T.accent + "35", fontWeight: 600,
+                }}>{tag}</span>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* ── Cancellation info ─────────────────────────────────────────────────── */}
       {contact?.isCanceled && (

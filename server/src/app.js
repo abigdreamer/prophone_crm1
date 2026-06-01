@@ -24,6 +24,8 @@ import settingsRoutes          from './routes/settings.routes.js';
 import reportsRoutes           from './routes/reports.routes.js';
 import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 import redditRoutes            from './routes/reddit.routes.js';
+import udfRoutes               from './routes/udf.routes.js';
+import customOptionsRoutes     from './routes/customOptions.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -73,6 +75,8 @@ app.use('/api/settings',            settingsRoutes);
 app.use('/api/reports',             reportsRoutes);
 app.use('/api/posthog-projects',    posthogProjectsRoutes);
 app.use('/api/reddit',              redditRoutes);
+app.use('/api/udfs',                udfRoutes);
+app.use('/api/custom-options',      customOptionsRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;

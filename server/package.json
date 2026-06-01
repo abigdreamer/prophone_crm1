@@ -10,6 +10,9 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "node prisma/seed.js",
+    "db:seed:sorts": "node prisma/seed-sorts.js",
+    "db:seed:filters": "node prisma/seed-filters.js",
+    "db:seed:defaults": "node prisma/seed-sorts.js && node prisma/seed-filters.js",
     "db:reset": "prisma migrate reset --force && node prisma/seed.js",
     "db:studio": "prisma studio"
   },

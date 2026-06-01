@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle, SlidersHorizontal } from "lucide-react";
+import { List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle, SlidersHorizontal, ChevronDown } from "lucide-react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import { useTheme } from "../context/ThemeContext";
@@ -7,6 +7,7 @@ import { useClientById } from "../context/ClientsContext";
 import { STAGE_DEF } from "../data/stages";
 import { VIEW_MODE, STATUS, STAGE_GROUPS } from "../constants/index";
 import fmt from "../utils/format";
+import { getUdfs, getCustomSorts, getCustomFilterOpts, getSettings } from "../services/api";
 
 function Checkbox({ checked, indeterminate, onChange, color }) {
   const ref = useRef(null);
@@ -48,14 +49,107 @@ const VIEW_MODE_TABS = [
   { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
 ];
 
-const SORT_OPTS = [
-  { value: "recent",     label: "Newest first"     },
-  { value: "old",        label: "Oldest first"     },
-  { value: "score_desc", label: "Score high → low" },
-  { value: "score_asc",  label: "Score low → high" },
-  { value: "name_az",    label: "Name A → Z"       },
-  { value: "name_za",    label: "Name Z → A"       },
-];
+
+function UdfFilterControl({ udf, value, onChange, T, col }) {
+  const inputStyle = {
+    width: "100%", background: T.bg, border: "1px solid " + T.border,
+    borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 11,
+    outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+  };
+  if (udf.type === "DROPDOWN") {
+    const opts = Array.isArray(udf.options) ? udf.options : [];
+    return (
+      <select value={value || ""} onChange={e => onChange(e.target.value)}
+        style={{ ...inputStyle, cursor: "pointer" }}>
+        <option value="">Any</option>
+        {opts.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
+      </select>
+    );
+  }
+  if (udf.type === "CHECKBOX") {
+    const opts = Array.isArray(udf.options) ? udf.options : [];
+    const selected = Array.isArray(value) ? value : [];
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {opts.map(o => {
+          const v = o.value ?? o; const l = o.label ?? o;
+          const checked = selected.includes(v);
+          return (
+            <div key={v} onClick={() => onChange(checked ? selected.filter(x => x !== v) : [...selected, v])}
+              style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 7px", borderRadius: 5,
+                background: checked ? col + "20" : T.bg, border: "1px solid " + (checked ? col + "60" : T.border),
+                cursor: "pointer", fontSize: 10, color: checked ? T.text : T.muted, userSelect: "none" }}>
+              {l}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  if (udf.type === "NUMBER") {
+    const v = value || {};
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="number" placeholder="Min" value={v.min ?? ""} onChange={e => onChange({ ...v, min: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+        <span style={{ color: T.muted, fontSize: 13 }}>–</span>
+        <input type="number" placeholder="Max" value={v.max ?? ""} onChange={e => onChange({ ...v, max: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+      </div>
+    );
+  }
+  if (udf.type === "DATE") {
+    const v = value || {};
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="date" value={v.from ?? ""} onChange={e => onChange({ ...v, from: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+        <span style={{ color: T.muted, fontSize: 13 }}>–</span>
+        <input type="date" value={v.to ?? ""} onChange={e => onChange({ ...v, to: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+      </div>
+    );
+  }
+  // TEXT (default)
+  return <input type="text" placeholder={`Filter by ${udf.label}…`} value={value || ""} onChange={e => onChange(e.target.value)} style={inputStyle} />;
+}
+
+function ContactFieldRow({ fieldKey, contact: c, udfs, search, T }) {
+  if (fieldKey === "lead_score") {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ flex: 1 }}><ScoreBar score={c.leadScore} /></div>
+        <span style={{ fontSize: 10, fontWeight: 700, color: T.text, flexShrink: 0, minWidth: 16, textAlign: "right" }}>{c.leadScore ?? 0}</span>
+      </div>
+    );
+  }
+  if (fieldKey === "trucks") {
+    if (!c.trucks || c.trucks <= 0) return null;
+    return <span style={{ fontSize: 10, color: T.orange, fontWeight: 600 }}>🚛 {c.trucks}</span>;
+  }
+  if (fieldKey === "full_name") {
+    const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
+    if (!name) return null;
+    return <div style={{ fontSize: 11, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Hi text={name} q={search} /></div>;
+  }
+  if (fieldKey === "city_state") {
+    const val = [c.city, c.state].filter(Boolean).join(", ");
+    if (!val) return null;
+    return <div style={{ fontSize: 11, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>;
+  }
+  if (fieldKey === "address") {
+    if (!c.address) return null;
+    return <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {c.address}</div>;
+  }
+  // UDF field
+  if (fieldKey.startsWith("udf_")) {
+    const udf = udfs.find(u => u.sortKey === fieldKey);
+    const val = c.udfValues?.[fieldKey];
+    if (!val) return null;
+    const displayVal = Array.isArray(val) ? val.join(", ") : String(val);
+    return <div style={{ fontSize: 11, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{udf?.label ? `${udf.label}: ` : ""}{displayVal}</div>;
+  }
+  // Standard string fields: email, phone, company, etc.
+  const val = c[fieldKey];
+  if (!val) return null;
+  return <div style={{ fontSize: 11, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Hi text={String(val)} q={search} /></div>;
+}
 
 function SkeletonRow({ T }) {
   const s = {
@@ -100,13 +194,23 @@ export default function Sidebar({
 
   const [checkedModes,    setCheckedModes]    = useState(new Set());
   const [checkedStatuses, setCheckedStatuses] = useState(new Set());
-  const [sortF,           setSortF]           = useState("recent");
+  const [sortF,           setSortF]           = useState("company_az");
   const [scoreFrom,       setScoreFrom]       = useState(0);
   const [scoreTo,         setScoreTo]         = useState(100);
   const [localFilterOpen, setLocalFilterOpen] = useState(false);
 
+  const [udfs,            setUdfs]            = useState([]);
+  const [udfFilters,      setUdfFilters]      = useState({});
+  const [customSortOpts,  setCustomSortOpts]  = useState([]);
+  const [customFilterDefs,setCustomFilterDefs]= useState([]);
+  const [customFilters,   setCustomFilters]   = useState({});
+  const [displayFields,    setDisplayFields]    = useState(["company", "lead_score", "address"]);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const sortDropdownRef = useRef(null);
+
   const isFilterOpen = filterOpenProp !== undefined ? filterOpenProp : localFilterOpen;
   function toggleFilter() {
+    setShowSortDropdown(false);
     if (onFilterToggle) onFilterToggle();
     else setLocalFilterOpen(v => !v);
   }
@@ -130,11 +234,33 @@ export default function Sidebar({
   const showingCanceled = viewMode === VIEW_MODE.CANCELED;
   const selEnabled = !!onToggleSelect && !showingCanceled;
 
+  function isActiveFilterValue(v) {
+    if (v == null || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.values(v).some(x => x !== "" && x != null);
+    return true;
+  }
+
+  const activeUdfFilterCount    = Object.values(udfFilters).filter(isActiveFilterValue).length;
+  const activeCustomFilterCount = Object.values(customFilters).filter(isActiveFilterValue).length;
+
   const activeFilterCount = [
     checkedModes.size > 0,
     checkedStatuses.size > 0,
     scoreFrom > 0 || scoreTo < 100,
+    activeUdfFilterCount > 0,
+    activeCustomFilterCount > 0,
   ].filter(Boolean).length;
+
+  // Sort options come entirely from DB (built-in + custom, all per-client)
+  const activeUdfs = udfs.filter(u => u.isActive);
+  const sortOpts = [
+    ...customSortOpts.filter(o => o.isActive).map(o => ({ value: o.sortValue, label: o.label })),
+    ...activeUdfs.flatMap(u => [
+      { value: `${u.sortKey}_az`, label: `${u.label} A → Z` },
+      { value: `${u.sortKey}_za`, label: `${u.label} Z → A` },
+    ]),
+  ];
 
   useEffect(() => {
     const timer = setTimeout(() => { searchRef?.current?.focus(); }, 150);
@@ -142,10 +268,40 @@ export default function Sidebar({
   }, [searchRef]);
 
   useEffect(() => {
+    setUdfs([]);
+    setCustomSortOpts([]);
+    setCustomFilterDefs([]);
+    getUdfs().then(r => setUdfs(r.data || [])).catch(() => {});
+    getCustomSorts().then(r => setCustomSortOpts(r.data || [])).catch(() => {});
+    getCustomFilterOpts().then(r => setCustomFilterDefs(r.data || [])).catch(() => {});
+    getSettings(clientId || null, "sidebar_card_display")
+      .then(res => { if (res?.config?.fields?.length > 0) setDisplayFields(res.config.fields); })
+      .catch(() => {});
+  }, [pool, clientId]); // eslint-disable-line
+
+  useEffect(() => {
+    if (sortOpts.length > 0 && !sortOpts.find(o => o.value === sortF)) {
+      setSortF(sortOpts[0].value);
+    }
+  }, [sortOpts]); // eslint-disable-line
+
+  // Close sort dropdown on outside click
+  useEffect(() => {
+    if (!showSortDropdown) return;
+    function handler(e) {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target)) setShowSortDropdown(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSortDropdown]);
+
+  useEffect(() => {
     setCheckedModes(new Set());
     setCheckedStatuses(new Set());
     setScoreFrom(0);
     setScoreTo(100);
+    setUdfFilters({});
+    setCustomFilters({});
     setDisplayLimit(150);
   }, [viewMode]);
 
@@ -158,8 +314,8 @@ export default function Sidebar({
     const stages = checkedModes.size > 0
       ? [...checkedModes].flatMap(m => STAGE_GROUPS[m] || [])
       : (viewModeStages?.length > 0 ? viewModeStages : []);
-    onFiltersChange({ stages, sortBy: sortF, scoreMin: scoreFrom, scoreMax: scoreTo });
-  }, [viewMode, checkedModes, sortF, scoreFrom, scoreTo]); // eslint-disable-line
+    onFiltersChange({ stages, sortBy: sortF, scoreMin: scoreFrom, scoreMax: scoreTo, udfFilters, customFilters });
+  }, [viewMode, checkedModes, sortF, scoreFrom, scoreTo, udfFilters, customFilters]); // eslint-disable-line
 
   useEffect(() => {
     if (!isFilterOpen) return;
@@ -194,7 +350,6 @@ export default function Sidebar({
 
   // Search, stages, sort, and score are all handled server-side.
   // Status filter stays client-side (server only supports a single status value).
-  // Name-priority for "recent" sort is applied client-side as a secondary pass.
   const filtered = contacts
     .filter(c => {
       if (checkedStatuses.size > 0) {
@@ -202,19 +357,6 @@ export default function Sidebar({
         if (!checkedStatuses.has(s)) return false;
       }
       return true;
-    })
-    .sort((a, b) => {
-      // For "recent", elevate fully-named leads above email-only ones within the page
-      if (sortF === "recent") {
-        const nameScore = c => {
-          const hasFirst = !!(c.firstName && c.firstName.trim());
-          const hasLast  = !!(c.lastName  && c.lastName.trim());
-          return hasFirst && hasLast ? 2 : hasFirst || hasLast ? 1 : 0;
-        };
-        const diff = nameScore(b) - nameScore(a);
-        if (diff !== 0) return diff;
-      }
-      return 0; // preserve server order for all other sorts
     });
 
   filteredLenRef.current = filtered.length;
@@ -337,25 +479,64 @@ export default function Sidebar({
         </div>
 
         {/* Row 2: sort + filter button */}
-        <div style={{ display: "flex", gap: 6 }}>
-          {/* Sort */}
-          <select
-            value={sortF}
-            onChange={e => setSortF(e.target.value)}
-            style={{
-              flex: 1, height: 30,
-              background: T.card, border: "1px solid " + T.border,
-              borderRadius: 7, padding: "0 6px",
-              color: sortF !== "recent" ? col : T.muted,
-              fontSize: 11, fontWeight: sortF !== "recent" ? 600 : 400,
-              outline: "none", fontFamily: "inherit", cursor: "pointer",
-              minWidth: 0,
-            }}
-          >
-            {SORT_OPTS.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {/* Sort custom dropdown */}
+          <div style={{ position: "relative", flex: 1, minWidth: 0 }} ref={sortDropdownRef}>
+            <button
+              onClick={() => { closeFilter(); setShowSortDropdown(v => !v); }}
+              style={{
+                width: "100%", height: 30, display: "flex", alignItems: "center",
+                justifyContent: "space-between", gap: 4,
+                background: T.card, border: "1px solid " + (showSortDropdown ? col : T.border),
+                borderRadius: 7, padding: "0 8px",
+                color: T.text, fontSize: 11, fontWeight: 500,
+                outline: "none", fontFamily: "inherit", cursor: "pointer",
+                transition: "border-color 0.15s",
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+                {sortOpts.find(o => o.value === sortF)?.label || "Sort…"}
+              </span>
+              <ChevronDown size={11} style={{ flexShrink: 0, color: T.muted, transform: showSortDropdown ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+            </button>
+
+            {showSortDropdown && sortOpts.length > 0 && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 500,
+                background: T.card, border: "1px solid " + T.border, borderRadius: 10,
+                boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+                maxHeight: 320, overflowY: "auto",
+                animation: "crm-fadein 0.12s ease",
+              }}>
+                {sortOpts.map(({ value, label }) => {
+                  const isSel = sortF === value;
+                  return (
+                    <div
+                      key={value}
+                      onClick={() => { setSortF(value); setShowSortDropdown(false); }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "9px 12px", cursor: "pointer",
+                        background: isSel ? col + "18" : "transparent",
+                        color: isSel ? col : T.text,
+                        fontSize: 12, fontWeight: isSel ? 700 : 400,
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = T.surface; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = isSel ? col + "18" : "transparent"; }}
+                    >
+                      <span>{label}</span>
+                      {isSel && (
+                        <svg viewBox="0 0 10 8" width={10} height={8} fill="none">
+                          <polyline points="1,4 3.5,6.5 9,1" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Filter button */}
           <button
@@ -410,7 +591,7 @@ export default function Sidebar({
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {activeFilterCount > 0 && (
                   <button
-                    onClick={() => { setCheckedModes(new Set()); setCheckedStatuses(new Set()); setSortF("recent"); setScoreFrom(0); setScoreTo(100); }}
+                    onClick={() => { setCheckedModes(new Set()); setCheckedStatuses(new Set()); setSortF("company_az"); setScoreFrom(0); setScoreTo(100); setUdfFilters({}); setCustomFilters({}); }}
                     style={{ background: "none", border: "none", color: T.accent, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", padding: 0 }}
                   >Clear all</button>
                 )}
@@ -424,6 +605,7 @@ export default function Sidebar({
 
             <div style={{ padding: "12px 14px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
               {/* Stage */}
+              {(customFilterDefs.length === 0 || customFilterDefs.some(f => f.contactField === 'lifecycleStage' && f.isActive)) && (
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>Stage</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
@@ -457,8 +639,10 @@ export default function Sidebar({
                   })}
                 </div>
               </div>
+              )}
 
               {/* Status */}
+              {(customFilterDefs.length === 0 || customFilterDefs.some(f => f.contactField === 'status' && f.isActive)) && (
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 7 }}>Status</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -496,35 +680,100 @@ export default function Sidebar({
                   })}
                 </div>
               </div>
+              )}
 
               {/* Lead Score */}
+              {(customFilterDefs.length === 0 || customFilterDefs.some(f => f.contactField === 'leadScore' && f.isActive)) && (
               <div>
-                <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Lead Score</div>
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>FROM</div>
-                    <input type="number" min={0} max={100} value={scoreFrom}
-                      onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreFrom(v); if (scoreTo < v) setScoreTo(v); }}
-                      style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreFrom > 0 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
-                      onFocus={e => { e.currentTarget.style.borderColor = col; }}
-                      onBlur={e => { e.currentTarget.style.borderColor = scoreFrom > 0 ? col : T.border; }}
-                    />
+                  <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Lead Score</div>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>FROM</div>
+                      <input type="number" min={0} max={100} value={scoreFrom}
+                        onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreFrom(v); if (scoreTo < v) setScoreTo(v); }}
+                        style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreFrom > 0 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
+                        onFocus={e => { e.currentTarget.style.borderColor = col; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = scoreFrom > 0 ? col : T.border; }}
+                      />
+                    </div>
+                    <div style={{ color: T.muted, fontSize: 15, paddingBottom: 7, flexShrink: 0 }}>→</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>TO</div>
+                      <input type="number" min={0} max={100} value={scoreTo}
+                        onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreTo(v); if (scoreFrom > v) setScoreFrom(v); }}
+                        style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreTo < 100 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
+                        onFocus={e => { e.currentTarget.style.borderColor = col; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = scoreTo < 100 ? col : T.border; }}
+                      />
+                    </div>
                   </div>
-                  <div style={{ color: T.muted, fontSize: 15, paddingBottom: 7, flexShrink: 0 }}>→</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 9, color: T.muted, marginBottom: 4, fontWeight: 600, letterSpacing: "0.05em" }}>TO</div>
-                    <input type="number" min={0} max={100} value={scoreTo}
-                      onChange={e => { const v = Math.min(100, Math.max(0, Number(e.target.value) || 0)); setScoreTo(v); if (scoreFrom > v) setScoreFrom(v); }}
-                      style={{ width: "100%", background: T.bg, border: "1px solid " + (scoreTo < 100 ? col : T.border), borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontWeight: 600, outline: "none", fontFamily: "inherit", boxSizing: "border-box", transition: "border-color 0.15s" }}
-                      onFocus={e => { e.currentTarget.style.borderColor = col; }}
-                      onBlur={e => { e.currentTarget.style.borderColor = scoreTo < 100 ? col : T.border; }}
-                    />
+                  {(scoreFrom > 0 || scoreTo < 100) && (
+                    <div style={{ fontSize: 10, color: col, fontWeight: 700, marginTop: 6 }}>Showing score {scoreFrom} – {scoreTo}</div>
+                  )}
+              </div>
+              )}
+
+              {/* Admin-defined custom filters — skip built-in special types rendered above */}
+              {customFilterDefs.filter(f => f.isActive && f.filterType !== 'STAGE_SELECT' && f.filterType !== 'STATUS_SELECT' && f.contactField !== 'leadScore').length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>More Filters</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {customFilterDefs.filter(f => f.isActive && f.filterType !== 'STAGE_SELECT' && f.filterType !== 'STATUS_SELECT' && f.contactField !== 'leadScore').map(def => (
+                      <div key={def.id}>
+                        <div style={{ fontSize: 10, color: T.dim, fontWeight: 600, marginBottom: 4 }}>{def.label}</div>
+                        {def.filterType === "NUMBER" ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input type="number" placeholder="Min"
+                              value={(customFilters[def.contactField] || {}).min ?? ""}
+                              onChange={e => setCustomFilters(prev => ({ ...prev, [def.contactField]: { ...(prev[def.contactField] || {}), min: e.target.value } }))}
+                              style={{ flex: 1, background: T.bg, border: "1px solid " + T.border, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 11, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                            <span style={{ color: T.muted, fontSize: 13 }}>–</span>
+                            <input type="number" placeholder="Max"
+                              value={(customFilters[def.contactField] || {}).max ?? ""}
+                              onChange={e => setCustomFilters(prev => ({ ...prev, [def.contactField]: { ...(prev[def.contactField] || {}), max: e.target.value } }))}
+                              style={{ flex: 1, background: T.bg, border: "1px solid " + T.border, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 11, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                          </div>
+                        ) : def.filterType === "DROPDOWN" ? (
+                          <select value={customFilters[def.contactField] || ""}
+                            onChange={e => setCustomFilters(prev => ({ ...prev, [def.contactField]: e.target.value }))}
+                            style={{ width: "100%", background: T.bg, border: "1px solid " + T.border, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 11, outline: "none", fontFamily: "inherit", boxSizing: "border-box", cursor: "pointer" }}>
+                            <option value="">Any</option>
+                            {(Array.isArray(def.options) ? def.options : []).map(o => (
+                              <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input type="text" placeholder={`Filter by ${def.label}…`}
+                            value={customFilters[def.contactField] || ""}
+                            onChange={e => setCustomFilters(prev => ({ ...prev, [def.contactField]: e.target.value }))}
+                            style={{ width: "100%", background: T.bg, border: "1px solid " + T.border, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 11, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-                {(scoreFrom > 0 || scoreTo < 100) && (
-                  <div style={{ fontSize: 10, color: col, fontWeight: 700, marginTop: 6 }}>Showing score {scoreFrom} – {scoreTo}</div>
-                )}
-              </div>
+              )}
+
+              {/* Custom Fields (UDFs) */}
+              {activeUdfs.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Custom Fields</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {activeUdfs.map(udf => (
+                      <div key={udf.id}>
+                        <div style={{ fontSize: 10, color: T.dim, fontWeight: 600, marginBottom: 4 }}>{udf.label}</div>
+                        <UdfFilterControl
+                          udf={udf}
+                          value={udfFilters[udf.sortKey]}
+                          onChange={val => setUdfFilters(prev => ({ ...prev, [udf.sortKey]: val }))}
+                          T={T}
+                          col={col}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -532,37 +781,38 @@ export default function Sidebar({
 
       {/* ── List header: select-all + count ─────────────────────────────────── */}
       {filtered.length > 0 && !loading && (
-        <div style={{
-          flexShrink: 0,
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "5px 12px",
-          borderBottom: "1px solid " + T.border,
-          background: T.card,
-        }}>
-          {selEnabled && (() => {
-            const someChecked = filtered.some(c => selectedIds?.has(c.id));
-            const allChecked  = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
-            return (
-              <Checkbox
-                checked={allChecked}
-                indeterminate={someChecked && !allChecked}
-                onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
-                color={col}
-              />
-            );
-          })()}
-          <span style={{ fontSize: 10, color: T.muted, flex: 1 }}>
-            {filtered.length.toLocaleString()} contact{filtered.length !== 1 ? "s" : ""}
-            {total > contacts.length && (
-              <span style={{ color: T.dim }}> · {total.toLocaleString()} total</span>
-            )}
-          </span>
-          {selEnabled && (() => {
-            const n = filtered.filter(c => selectedIds?.has(c.id)).length;
-            return n > 0
-              ? <span style={{ fontSize: 10, fontWeight: 700, color: col }}>{n} selected</span>
-              : null;
-          })()}
+        <div style={{ flexShrink: 0 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "5px 8px 5px 12px",
+            borderBottom: "1px solid " + T.border,
+            background: T.card,
+          }}>
+            {selEnabled && (() => {
+              const someChecked = filtered.some(c => selectedIds?.has(c.id));
+              const allChecked  = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
+              return (
+                <Checkbox
+                  checked={allChecked}
+                  indeterminate={someChecked && !allChecked}
+                  onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
+                  color={col}
+                />
+              );
+            })()}
+            <span style={{ fontSize: 10, color: T.muted, flex: 1 }}>
+              {filtered.length.toLocaleString()} contact{filtered.length !== 1 ? "s" : ""}
+              {total > contacts.length && (
+                <span style={{ color: T.dim }}> · {total.toLocaleString()} total</span>
+              )}
+            </span>
+            {selEnabled && (() => {
+              const n = filtered.filter(c => selectedIds?.has(c.id)).length;
+              return n > 0
+                ? <span style={{ fontSize: 10, fontWeight: 700, color: col }}>{n} selected</span>
+                : null;
+            })()}
+          </div>
         </div>
       )}
 
@@ -609,9 +859,9 @@ export default function Sidebar({
                     <Checkbox checked={isChecked} onChange={() => onToggleSelect?.(c.id)} color={col} />
                   </div>
                 )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Name + stage badge */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 6 }}>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {/* Name + stage badge — always shown */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                     <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? col : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                       <Hi text={displayName} q={search} />
                     </div>
@@ -625,34 +875,14 @@ export default function Sidebar({
                     </span>
                   </div>
 
-                  {/* Company */}
-                  {c.company && (
-                    <div style={{ fontSize: 11, color: T.dim, marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <Hi text={c.company} q={search} />
-                    </div>
-                  )}
+                  {/* Configurable display fields */}
+                  {displayFields.map(key => (
+                    <ContactFieldRow key={key} fieldKey={key} contact={c} udfs={udfs} search={search} T={T} />
+                  ))}
 
-                  {/* Score bar */}
-                  {!showingCanceled && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                      <div style={{ flex: 1 }}><ScoreBar score={c.leadScore} /></div>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: T.text, flexShrink: 0, minWidth: 16, textAlign: "right" }}>{c.leadScore ?? 0}</span>
-                    </div>
-                  )}
-
-                  {/* Footer row */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                    <div style={{ display: "flex", gap: 6, minWidth: 0, alignItems: "center" }}>
-                      {c.address && (
-                        <span style={{ fontSize: 10, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 110 }}>
-                          📍 {c.address}
-                        </span>
-                      )}
-                      {c.trucks > 0 && (
-                        <span style={{ fontSize: 10, color: T.orange, fontWeight: 600, flexShrink: 0 }}>🚛 {c.trucks}</span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 9, color: T.muted, flexShrink: 0 }}>{fmt.ago(c.lastActivityAt || c.createdAt)}</span>
+                  {/* Last activity — always shown */}
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt || c.createdAt)}</span>
                   </div>
                 </div>
               </div>
