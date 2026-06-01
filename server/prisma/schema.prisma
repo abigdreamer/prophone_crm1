@@ -359,6 +359,7 @@ model CampaignRecipient {
   status     String    @default("pending")
   messageId  String?   @map("message_id")
   sendId     String?   @map("send_id")
+  sendLabel  String    @default("") @map("send_label")
   sentAt     DateTime? @map("sent_at")
   openedAt   DateTime? @map("opened_at")
   clickedAt  DateTime? @map("clicked_at")

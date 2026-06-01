@@ -254,6 +254,7 @@ export const sendCampaign = async (req, res) => {
     if (!campaign.templateId)          return sendError(res, 'Campaign has no template selected', 400);
 
     const sendLimit = req.body?.limit ? parseInt(req.body.limit, 10) : null;
+    const sendLabel = (req.body?.label || '').toString().trim().slice(0, 120);
 
     // Fetch template(s)
     const template = await templateRepo.findById(campaign.templateId);
@@ -394,7 +395,7 @@ export const sendCampaign = async (req, res) => {
         const results = await sendBatchEmails(emails);
 
         await Promise.all(emails.map((e, j) =>
-          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
+          repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId, sendLabel),
         ));
 
         batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)

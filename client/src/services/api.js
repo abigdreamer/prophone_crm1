@@ -385,8 +385,8 @@ export async function previewCampaignRecipients(campaignId, filter) {
   return r.data ?? r;
 }
 
-export async function sendCampaign(id, { limit } = {}) {
-  const body = limit ? { limit } : undefined;
+export async function sendCampaign(id, { limit, label } = {}) {
+  const body = (limit || label) ? { ...(limit ? { limit } : {}), ...(label ? { label } : {}) } : undefined;
   const r = await request('POST', `/api/campaigns/${id}/send`, body);
   return r.data ?? r;
 }
