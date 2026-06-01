@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, createContext, useContext } from "react";
+import { useSearchParams } from "react-router-dom";
 import CodeEditor from "../components/CodeEditor";
 import { useTheme } from "../context/ThemeContext";
 import { usePool } from "../context/PoolContext";
@@ -8,12 +9,13 @@ import {
   Type as TypeIcon, ChevronLeft, ChevronUp,
   GripVertical, Info, AlignLeft, AlignCenter, AlignRight,
   Tag as TagIcon, Eye, Layers, LayoutGrid, List as ListIcon,
-  Code2,
+  Code2, Share2,
 } from "lucide-react";
 import * as store from "../services/api";
 import { useAppToast } from "../context/ToastContext";
 import { SkeletonBlock, SkeletonRow } from "../components/ui/Loader";
 import RefreshBtn from "../components/ui/RefreshBtn";
+import ShareLinkModal from "../components/ui/ShareLinkModal";
 
 const CCtx = createContext(null);
 function makeC(T) {
@@ -184,6 +186,14 @@ function blockToHtml(block) {
     }
     default: return "";
   }
+}
+
+// Appends a preview unsubscribe footer to HTML for display in iframes.
+// Uses a click-disabled "#" href — real URLs are injected server-side on actual sends.
+function withPreviewUnsub(html) {
+  if (!html) return html;
+  const footer = `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:20px 24px 24px;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">You are receiving this email as part of our outreach.<br><a href="#" onclick="return false" style="color:#9ca3af;text-decoration:underline;">Unsubscribe</a></p></td></tr></table>`;
+  return html.includes('</body>') ? html.replace('</body>', footer + '</body>') : html + footer;
 }
 
 function bodyToHtml(body) {
@@ -698,7 +708,7 @@ function SendTestModal({ template, onClose }) {
 }
 
 // ─── Options dropdown ─────────────────────────────────────────────────────────
-function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onCancelRequest, onRestoreRequest, onSendTest }) {
+function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, onEdit, onDuplicate, onShare, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
   const isPub      = template.status === "published";
   const isCanceled = template.isCanceled;
@@ -711,6 +721,7 @@ function OptionsDropdown({ template, onClose, onRename, onDetails, onPublish, on
       ...(isPub ? [{ label: "Send test email",  Icon: Send,   action: () => { onSendTest();       onClose(); } }] : []),
       { label: "Rename template",               Icon: Pencil, action: () => { onRename();         onClose(); } },
       { label: "Duplicate template",            Icon: Copy,   action: () => { onDuplicate();      onClose(); } },
+      { label: "Share link",                    Icon: Share2, action: () => { onShare();          onClose(); } },
     ] : []),
     null,
     isCanceled
@@ -743,7 +754,7 @@ function fmtCardDate(iso) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
+function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate, onShare, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
@@ -766,7 +777,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
         {isOpen && (
           <OptionsDropdown template={template} onClose={() => onMenuToggle(null)} onEdit={onEdit}
             onDetails={onDetails} onPublish={onPublish} onRename={onRename}
-            onDuplicate={onDuplicate} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
+            onDuplicate={onDuplicate} onShare={onShare} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
         )}
       </div>
 
@@ -788,7 +799,7 @@ function TemplateCard({ template, menuOpenId, onMenuToggle, onEdit, onDuplicate,
 }
 
 // ─── Template row (list view) ─────────────────────────────────────────────────
-function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
+function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDuplicate, onShare, onRename, onDetails, onPublish, onCancelRequest, onRestoreRequest, onSendTest }) {
   const C = useContext(CCtx);
   const isOpen = menuOpenId === template.id;
   return (
@@ -834,7 +845,7 @@ function TemplateRow({ template, isLast, menuOpenId, onMenuToggle, onEdit, onDup
         {isOpen && (
           <OptionsDropdown template={template} onClose={() => onMenuToggle(null)} onEdit={onEdit}
             onDetails={onDetails} onPublish={onPublish} onRename={onRename}
-            onDuplicate={onDuplicate} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
+            onDuplicate={onDuplicate} onShare={onShare} onCancelRequest={onCancelRequest} onRestoreRequest={onRestoreRequest} onSendTest={onSendTest} />
         )}
       </div>
     </div>
@@ -1481,7 +1492,7 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
       <div style={{ flex: 1, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "flex-start", background: C.bg, padding: "28px 20px", overflowY: "auto" }}>
         <div style={{ width: previewDevice === "mobile" ? 390 : 600, maxWidth: "100%", background: "#fff", borderRadius: 8, overflow: "hidden", boxShadow: C.shadowLg }}>
           {htmlCode ? (
-            <iframe srcDoc={htmlCode} sandbox="allow-same-origin" style={{ width: "100%", minHeight: 400, border: "none", display: "block" }} title="Email Preview" />
+            <iframe srcDoc={withPreviewUnsub(htmlCode)} sandbox="allow-same-origin" style={{ width: "100%", minHeight: 400, border: "none", display: "block" }} title="Email Preview" />
           ) : (
             <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No HTML content yet.</div>
           )}
@@ -1583,7 +1594,7 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
         {/* Iframe preview */}
         <div style={{ flex: 1, overflow: "hidden", background: "#f4f4f4" }}>
           {htmlCode ? (
-            <iframe srcDoc={htmlCode} sandbox="allow-same-origin" style={{ width: "100%", height: "100%", border: "none" }} title="Live Preview" />
+            <iframe srcDoc={withPreviewUnsub(htmlCode)} sandbox="allow-same-origin" style={{ width: "100%", height: "100%", border: "none" }} title="Live Preview" />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, color: C.muted }}>
               <Code2 size={30} color={C.border} />
@@ -1656,7 +1667,6 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
       if (Array.isArray(d)) {
         const verified = d.filter(x => x.status === "verified");
         setDomains(verified);
-        // Auto-select first verified domain if no from is set yet
         if (!templateId && verified.length > 0 && !from) {
           const first = verified[0];
           setFrom(first.defaultFromEmail || `noreply@${first.domainName}`);
@@ -1664,6 +1674,16 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
       }
     }).catch(() => {});
   }, []);
+
+  // Auto-create a draft on mount for new templates so they always have an ID
+  // (enables share links and prevents accidental loss on tab close)
+  useEffect(() => {
+    if (templateId) return;
+    const defaultBody = { version: 1, backgroundColor: "#f4f4f4", containerBg: "#ffffff", containerWidth: 600, blocks: DEFAULT_BLOCKS };
+    store.createTemplate({ name: "Untitled Template", subject: "", body: defaultBody, htmlOutput: bodyToHtml(defaultBody), status: "draft" })
+      .then(created => setTid(created.id))
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handle(e) {
@@ -2025,6 +2045,13 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
               ) : (
                 blocks.map(block => <PreviewBlock key={block.id} block={block} />)
               )}
+              {/* Unsubscribe footer — always appended to real sends */}
+              <div style={{ padding: "16px 24px 20px", borderTop: "1px solid #e5e7eb", textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", lineHeight: 1.6, fontFamily: "Arial, Helvetica, sans-serif" }}>
+                  You are receiving this email as part of our outreach.<br />
+                  <a href="#" style={{ color: "#9ca3af", textDecoration: "underline" }} onClick={e => e.preventDefault()}>Unsubscribe</a>
+                </p>
+              </div>
             </div>
             <div style={{ fontSize: 11, color: C.muted, marginTop: 14 }}>
               {previewDevice === "mobile" ? "390px · mobile preview" : `${settings.containerWidth}px · desktop preview`}
@@ -2108,6 +2135,13 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
                   />
                 ))
               )}
+              {/* Unsubscribe footer — auto-appended on every real send */}
+              <div style={{ padding: "14px 24px 18px", borderTop: `1px solid #e5e7eb`, textAlign: "center", background: settings.containerBg }}>
+                <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", lineHeight: 1.6, fontFamily: "Arial, Helvetica, sans-serif" }}>
+                  You are receiving this email as part of our outreach.&nbsp;
+                  <span style={{ color: "#9ca3af", textDecoration: "underline" }}>Unsubscribe</span>
+                </p>
+              </div>
             </div>
 
             <div style={{ textAlign: "center", fontSize: 11, color: C.muted, marginTop: 12 }}>
@@ -2560,6 +2594,7 @@ function TemplateList({ onOpenBuilder }) {
   const [sendTestTarget, setSendTestTarget] = useState(null);
   const [cancelTarget,   setCancelTarget]   = useState(null);
   const [restoreTarget,  setRestoreTarget]  = useState(null);
+  const [shareTarget,    setShareTarget]    = useState(null);
   const statusRef = useRef(null);
   const toast   = useAppToast();
 
@@ -2778,6 +2813,7 @@ function TemplateList({ onOpenBuilder }) {
               onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
               onEdit={() => onOpenBuilder(t.id, t.body?.editorMode)}
               onDuplicate={() => handleDuplicate(t.id)}
+              onShare={() => setShareTarget(t)}
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
               onPublish={() => handlePublishToggle(t)}
@@ -2805,6 +2841,7 @@ function TemplateList({ onOpenBuilder }) {
               onMenuToggle={id => setMenuOpenId(prev => prev === id ? null : id)}
               onEdit={() => onOpenBuilder(t.id, t.body?.editorMode)}
               onDuplicate={() => handleDuplicate(t.id)}
+              onShare={() => setShareTarget(t)}
               onRename={() => setRenameTarget(t)}
               onDetails={() => setDetailsTarget(t)}
               onPublish={() => handlePublishToggle(t)}
@@ -2832,6 +2869,13 @@ function TemplateList({ onOpenBuilder }) {
       {restoreTarget && (
         <RestoreTemplateModal template={restoreTarget} onClose={() => setRestoreTarget(null)} onConfirm={handleRestoreConfirm} />
       )}
+      {shareTarget && (
+        <ShareLinkModal
+          title={`Share "${shareTarget.name}"`}
+          url={`${window.location.origin}/templates?open=${shareTarget.id}`}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2840,6 +2884,7 @@ function TemplateList({ onOpenBuilder }) {
 export default function TemplatesPage({ onEditingChange }) {
   const T = useTheme();
   const C = makeC(T);
+  const [searchParams, setSearchParams] = useSearchParams();
   // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,      setView]      = useState("list");
   const [editingId, setEditingId] = useState(null);
@@ -2849,6 +2894,15 @@ export default function TemplatesPage({ onEditingChange }) {
     setView(mode === "html" ? "builder-html" : "builder-visual");
     onEditingChange?.(true);
   };
+
+  // Open a template directly when navigated to via a share link (?open=id)
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) {
+      enterBuilder(openId, "visual");
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exitBuilder = () => {
     setView("list");

@@ -257,10 +257,9 @@ export async function getTemplates() {
 }
 
 export async function getTemplateById(id) {
-  const { clientId } = getActivePool();
-  const params = new URLSearchParams();
-  if (clientId) params.set('clientId', clientId);
-  const r = await request('GET', `/api/email-templates/${id}?${params}`);
+  // No client scoping — a direct UUID lookup is auth-gated and must work across pool contexts
+  // (e.g. share links opened under a different active client)
+  const r = await request('GET', `/api/email-templates/${id}`);
   return r.data ?? r;
 }
 
