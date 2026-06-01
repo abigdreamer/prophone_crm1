@@ -1197,9 +1197,37 @@ function ResendModal({ campaign, onClose, onConfirm, loading }) {
 
 // ── Send Confirm Modal ────────────────────────────────────────────────────────
 
+const SEND_LIMIT_PRESETS = [
+  { label: "500",   value: 500 },
+  { label: "1,000", value: 1000 },
+  { label: "2,000", value: 2000 },
+];
+
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   const T = useTheme();
-  const [batchLabel, setBatchLabel] = useState("");
+  const [batchLabel,  setBatchLabel]  = useState("");
+  const [limitMode,   setLimitMode]   = useState("all");   // "all" | "preset" | "custom"
+  const [presetVal,   setPresetVal]   = useState(500);
+  const [customVal,   setCustomVal]   = useState("");
+
+  const total = campaign.recipientsCount || 0;
+
+  const resolvedLimit = limitMode === "all"
+    ? null
+    : limitMode === "preset"
+      ? presetVal
+      : (parseInt(customVal, 10) || null);
+
+  const sendCount = resolvedLimit ? Math.min(resolvedLimit, total) : total;
+
+  const btnStyle = (active) => ({
+    padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+    cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s",
+    border: active ? "1.5px solid " + T.accent : "1px solid " + T.border,
+    background: active ? T.accent + "18" : "transparent",
+    color: active ? T.accent : T.muted,
+  });
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
@@ -1207,8 +1235,9 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 12,
-        padding: 28, width: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+        padding: 28, width: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
       }}>
+        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{
             width: 42, height: 42, borderRadius: "50%", background: T.accent + "18",
@@ -1222,18 +1251,66 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
           </div>
         </div>
 
-        <div style={{
-          background: T.accent + "0c", border: "1px solid " + T.accent + "25",
-          borderRadius: 8, padding: "10px 14px", marginBottom: 18,
-          fontSize: 13, color: T.muted, lineHeight: 1.6,
-        }}>
-          This will send to{" "}
-          <strong style={{ color: T.text }}>{campaign.recipientsCount}</strong> recipient
-          {campaign.recipientsCount !== 1 ? "s" : ""}. This action cannot be undone.
+        {/* How many to send */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 8 }}>
+            How many to send
+            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400 }}>
+              ({total.toLocaleString()} pending)
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <button style={btnStyle(limitMode === "all")} onClick={() => setLimitMode("all")}>
+              All {total.toLocaleString()}
+            </button>
+            {SEND_LIMIT_PRESETS.filter(p => p.value < total).map(p => (
+              <button
+                key={p.value}
+                style={btnStyle(limitMode === "preset" && presetVal === p.value)}
+                onClick={() => { setLimitMode("preset"); setPresetVal(p.value); }}
+              >
+                First {p.label}
+              </button>
+            ))}
+            <button style={btnStyle(limitMode === "custom")} onClick={() => setLimitMode("custom")}>
+              Custom
+            </button>
+          </div>
+
+          {limitMode === "custom" && (
+            <input
+              type="number"
+              min={1}
+              max={total}
+              value={customVal}
+              onChange={e => setCustomVal(e.target.value)}
+              placeholder={`Enter number (max ${total})`}
+              style={{
+                marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 7,
+                border: "1px solid " + T.border, background: T.surface, color: T.text,
+                fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+              }}
+              onFocus={e => e.target.style.borderColor = T.accent}
+              onBlur={e => e.target.style.borderColor = T.border}
+            />
+          )}
+
+          {resolvedLimit && resolvedLimit < total && (
+            <div style={{
+              marginTop: 8, fontSize: 12, color: T.muted,
+              background: T.surface, borderRadius: 6, padding: "6px 10px",
+            }}>
+              Will send to <strong style={{ color: T.text }}>{sendCount.toLocaleString()}</strong> of{" "}
+              {total.toLocaleString()} — remaining <strong style={{ color: T.text }}>
+                {(total - sendCount).toLocaleString()}
+              </strong> stay pending for next send.
+            </div>
+          )}
         </div>
 
+        {/* Batch label */}
         <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 6 }}>
-          Batch label <span style={{ fontSize: 11, fontWeight: 400, color: T.muted }}>(optional — helps identify this send later)</span>
+          Batch label <span style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span>
         </label>
         <input
           type="text"
@@ -1251,21 +1328,27 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
           onBlur={e => e.target.style.borderColor = T.border}
         />
 
+        {/* Actions */}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{
             padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border,
             background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
           }}>Cancel</button>
-          <button onClick={() => onConfirm(batchLabel.trim())} disabled={loading} style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "8px 20px", borderRadius: 7, border: "none",
-            background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
-            cursor: loading ? "default" : "pointer", fontFamily: "inherit",
-            opacity: loading ? 0.7 : 1,
-          }}>
+          <button
+            onClick={() => onConfirm(batchLabel.trim(), resolvedLimit)}
+            disabled={loading || (limitMode === "custom" && !parseInt(customVal, 10))}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: (loading || (limitMode === "custom" && !parseInt(customVal, 10))) ? "default" : "pointer",
+              fontFamily: "inherit",
+              opacity: (loading || (limitMode === "custom" && !parseInt(customVal, 10))) ? 0.5 : 1,
+            }}
+          >
             {loading
               ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending…</>
-              : <><Send size={13} /> Send Now</>
+              : <><Send size={13} /> Send {sendCount < total ? sendCount.toLocaleString() : "All"}</>
             }
           </button>
         </div>
@@ -1463,10 +1546,10 @@ export default function CampaignDetailPage() {
     }
   }, [selectedRecipient]);
 
-  const handleSend = useCallback(async (batchLabel = "") => {
+  const handleSend = useCallback(async (batchLabel = "", limit = null) => {
     setSending(true);
     try {
-      const updated = await sendCampaign(id, { label: batchLabel });
+      const updated = await sendCampaign(id, { label: batchLabel, limit });
       setCampaign(updated);
       analytics.campaignLaunched({
         clientId:       updated.clientId,
