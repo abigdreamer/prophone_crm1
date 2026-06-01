@@ -14,15 +14,19 @@ export function useContacts(currentUser, serverFilters = {}) {
   const [loadingMore,   setLoadingMore]   = useState(false);
 
   const {
-    search   = '',
-    stages   = [],
-    sortBy   = 'recent',
-    scoreMin = 0,
-    scoreMax = 100,
+    search     = '',
+    stages     = [],
+    sortBy     = 'company_az',
+    scoreMin   = 0,
+    scoreMax   = 100,
+    udfFilters    = {},
+    customFilters = {},
   } = serverFilters;
 
-  // Stable cache key so the effect only fires when values actually change
-  const stagesKey = stages.join(',');
+  // Stable cache keys so effects only fire when values actually change
+  const stagesKey        = stages.join(',');
+  const udfFiltersKey    = JSON.stringify(udfFilters);
+  const customFiltersKey = JSON.stringify(customFilters);
 
   // Load aggregate counts once on login
   useEffect(() => {
@@ -49,7 +53,7 @@ export function useContacts(currentUser, serverFilters = {}) {
     setHasMore(false);
     setTotal(0);
     setLoading(true);
-    getContacts({ page: 1, limit: 1000, search, stages, sortBy, scoreMin, scoreMax })
+    getContacts({ page: 1, limit: 1000, search, stages, sortBy, scoreMin, scoreMax, udfFilters, customFilters })
       .then(({ data, total: t, hasMore: more }) => {
         if (!cancelled) {
           setContacts(data);
@@ -62,14 +66,14 @@ export function useContacts(currentUser, serverFilters = {}) {
         if (!cancelled) { setLoading(false); setFirstLoad(false); }
       });
     return () => { cancelled = true; };
-  }, [pool, clientId, currentUser, search, stagesKey, sortBy, scoreMin, scoreMax]); // eslint-disable-line
+  }, [pool, clientId, currentUser, search, stagesKey, sortBy, scoreMin, scoreMax, udfFiltersKey, customFiltersKey]); // eslint-disable-line
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
     const nextPage = page + 1;
     try {
-      const { data, hasMore: more, total: t } = await getContacts({ page: nextPage, limit: 1000, search, stages, sortBy, scoreMin, scoreMax });
+      const { data, hasMore: more, total: t } = await getContacts({ page: nextPage, limit: 1000, search, stages, sortBy, scoreMin, scoreMax, udfFilters, customFilters });
       setContacts(prev => [...prev, ...data]);
       setPage(nextPage);
       setHasMore(more);
@@ -79,7 +83,7 @@ export function useContacts(currentUser, serverFilters = {}) {
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, page, search, stagesKey, sortBy, scoreMin, scoreMax]); // eslint-disable-line
+  }, [hasMore, loadingMore, page, search, stagesKey, sortBy, scoreMin, scoreMax, udfFiltersKey, customFiltersKey]); // eslint-disable-line
 
   return { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore };
 }

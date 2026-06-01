@@ -136,7 +136,7 @@ function AppLayout({ currentUser, onSignOut }) {
   }, [search]);
 
   // Server-side filter params driven by Sidebar callbacks
-  const [contactFilters, setContactFilters] = useState({ stages: [], sortBy: 'recent', scoreMin: 0, scoreMax: 100 });
+  const [contactFilters, setContactFilters] = useState({ stages: [], sortBy: 'company_az', scoreMin: 0, scoreMax: 100, udfFilters: {}, customFilters: {} });
 
   // live form data from center panel → feeds right-panel live preview
   const [liveFormData, setLiveFormData] = useState(null);
@@ -387,14 +387,16 @@ function AppLayout({ currentUser, onSignOut }) {
     setPool(p);
     setSelected(null);
     setCenterMode(null);
-  }, [setPool]);
+    setContacts([]);
+  }, [setPool, setContacts]);
 
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool('client');
     setSelected(null);
     setCenterMode(null);
-  }, [setClientId, setPool]);
+    setContacts([]);
+  }, [setClientId, setPool, setContacts]);
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
 

@@ -52,51 +52,20 @@ function StatusBadge({ status }) {
   );
 }
 
-// ── Campaign thumbnail ────────────────────────────────────────────────────────
-
-function CampaignThumb({ campaign }) {
-  const T = useTheme();
-  const isAB = campaign.type === "ab_test";
-  const bg   = isAB ? T.purple + "20" : T.accent + "20";
-  const bdr  = isAB ? T.purple + "35" : T.accent + "35";
-  const col  = isAB ? T.purple : T.accent;
-  return (
-    <div style={{
-      width: 44, height: 44, borderRadius: 8, flexShrink: 0,
-      background: bg, border: "1px solid " + bdr,
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      {isAB ? <FlaskConical size={17} color={col} /> : <Mail size={17} color={col} />}
-    </div>
-  );
-}
-
 // ── Campaign list row ─────────────────────────────────────────────────────────
 
-const GRID_COLS = "1fr 200px 110px 80px 80px 80px 44px";
-
-function StatPill({ icon: Icon, value, color }) {
-  const T = useTheme();
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 4,
-      padding: "3px 8px", borderRadius: 20,
-      background: color + "14", border: "1px solid " + color + "30",
-    }}>
-      <Icon size={11} color={color} />
-      <span style={{ fontSize: 11, fontWeight: 600, color }}>{value ?? 0}</span>
-    </div>
-  );
-}
+const GRID_COLS = "minmax(0,1.8fr) minmax(0,1.4fr) 120px 90px 90px 90px 40px";
 
 function StatCell({ icon: Icon, value, color, T }) {
   if (value === null || value === undefined) {
-    return <div style={{ fontSize: 12, color: T.muted }}>—</div>;
+    return <div style={{ fontSize: 12, color: T.border, fontWeight: 600 }}>—</div>;
   }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <Icon size={12} color={color} />
-      <span style={{ fontSize: 12, fontWeight: 600, color }}>{value}</span>
+      <div style={{ width: 22, height: 22, borderRadius: 6, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={11} color={color} />
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 700, color }}>{value}</span>
     </div>
   );
 }
@@ -104,6 +73,7 @@ function StatCell({ icon: Icon, value, color, T }) {
 function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hovered, setHovered]   = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -113,61 +83,99 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
     return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
-  const isSent = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending");
+  const isSent          = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending");
   const effectiveStatus = campaign.isCanceled ? "canceled" : campaign.status;
+  const isSending       = effectiveStatus === "sending";
+
+  const statusBorder = {
+    sending:  T.amber,
+    sent:     T.green,
+    draft:    T.border,
+    paused:   T.orange,
+    canceled: T.red,
+  }[effectiveStatus] ?? T.border;
 
   return (
     <div
       onClick={() => onOpen(campaign)}
-      onMouseEnter={e => { e.currentTarget.style.background = T.bg; }}
-      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
-        display: "grid", gridTemplateColumns: GRID_COLS, gap: 0,
-        padding: "12px 16px",
-        borderBottom: isLast ? "none" : "1px solid " + T.border,
-        borderRadius: isLast ? "0 0 12px 12px" : 0,
+        display: "grid", gridTemplateColumns: GRID_COLS,
+        padding: "13px 18px 13px 0",
+        borderBottom: isLast ? "none" : "1px solid " + T.border + "55",
         alignItems: "center", cursor: "pointer",
-        transition: "background 0.1s", position: "relative",
+        background: hovered ? T.surface : "transparent",
+        borderLeft: "3px solid " + (hovered ? statusBorder : "transparent"),
+        transition: "background 0.12s, border-left-color 0.12s",
+        paddingLeft: 15,
       }}
     >
       {/* TITLE col */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        <CampaignThumb campaign={campaign} />
+      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+          background: campaign.type === "ab_test" ? T.purple + "20" : T.accent + "20",
+          border: "1px solid " + (campaign.type === "ab_test" ? T.purple + "35" : T.accent + "35"),
+          display: "flex", alignItems: "center", justifyContent: "center",
+          position: "relative",
+        }}>
+          {campaign.type === "ab_test"
+            ? <FlaskConical size={16} color={T.purple} />
+            : <Mail size={16} color={T.accent} />}
+          {isSending && (
+            <span style={{
+              position: "absolute", bottom: -2, right: -2,
+              width: 8, height: 8, borderRadius: "50%",
+              background: T.amber,
+              boxShadow: "0 0 0 2px " + T.card,
+              animation: "pulse 1.5s ease-in-out infinite",
+            }} />
+          )}
+        </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <span
-              title={campaign.name}
-              style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>
+            <span title={campaign.name} style={{
+              fontSize: 13, fontWeight: 700, color: T.text,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
               {campaign.name}
             </span>
             {campaign.type === "ab_test" && (
-              <span style={{ fontSize: 9, fontWeight: 700, flexShrink: 0, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 3, padding: "1px 5px" }}>A/B</span>
+              <span style={{ fontSize: 9, fontWeight: 800, flexShrink: 0, color: T.purple, background: T.purple + "18", border: "1px solid " + T.purple + "30", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.04em" }}>A/B</span>
             )}
           </div>
           <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {campaign.fromName || "—"}{campaign.template?.name ? " · " + campaign.template.name : ""}
+            {campaign.fromName ? campaign.fromName : "—"}
+            {campaign.template?.name ? <span style={{ color: T.border }}> · </span> : ""}
+            {campaign.template?.name && <span style={{ color: T.dim }}>{campaign.template.name}</span>}
           </div>
         </div>
       </div>
 
       {/* SUBJECT col */}
-      <div style={{ minWidth: 0 }}>
-        <div
-          title={campaign.subject || ""}
-          style={{ fontSize: 13, fontWeight: 500, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {campaign.subject || <span style={{ color: T.muted, fontStyle: "italic" }}>No subject</span>}
+      <div style={{ minWidth: 0, paddingRight: 10 }}>
+        <div title={campaign.subject || ""} style={{
+          fontSize: 13, color: campaign.subject ? T.dim : T.muted,
+          fontStyle: campaign.subject ? "normal" : "italic",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {campaign.subject || "No subject"}
         </div>
         {campaign.type === "ab_test" && campaign.subjectB && (
-          <div
-            title={campaign.subjectB}
-            style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
+          <div title={campaign.subjectB} style={{
+            fontSize: 11, color: T.muted, marginTop: 2,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
             B: {campaign.subjectB}
           </div>
         )}
       </div>
 
       {/* STATUS col */}
-      <div><StatusBadge status={effectiveStatus} /></div>
+      <div>
+        <StatusBadge status={effectiveStatus} />
+      </div>
 
       {/* SENT col */}
       <StatCell icon={Send} value={isSent ? campaign.sentCount : null} color="#60a5fa" T={T} />
@@ -182,17 +190,17 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
       <div ref={menuRef} style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
         <button
           onClick={() => setMenuOpen(o => !o)}
-          style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid transparent", borderRadius: 7, color: T.muted, cursor: "pointer" }}
+          style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", background: menuOpen ? T.surface : "transparent", border: "1px solid " + (menuOpen ? T.border : "transparent"), borderRadius: 7, color: T.muted, cursor: "pointer", transition: "all 0.12s" }}
           onMouseEnter={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.borderColor = T.border; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
+          onMouseLeave={e => { if (!menuOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; } }}
         >
-          <MoreVertical size={15} />
+          <MoreVertical size={14} />
         </button>
         {menuOpen && (
-          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 8, minWidth: 160, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0" }}>
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 10, minWidth: 155, boxShadow: "0 12px 32px rgba(0,0,0,0.6)", padding: "4px 0" }}>
             <button
               onClick={() => { setMenuOpen(false); onDuplicate(campaign); }}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}
               onMouseEnter={e => e.currentTarget.style.background = T.surface}
               onMouseLeave={e => e.currentTarget.style.background = "none"}
             >
@@ -201,7 +209,7 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
             {campaign.isCanceled ? (
               <button
                 onClick={() => { setMenuOpen(false); onRestore(campaign); }}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
                 onMouseEnter={e => e.currentTarget.style.background = T.green + "12"}
                 onMouseLeave={e => e.currentTarget.style.background = "none"}
               >
@@ -210,7 +218,7 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
             ) : (
               <button
                 onClick={() => { setMenuOpen(false); onCancel(campaign); }}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "none", border: "none", color: T.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
                 onMouseEnter={e => e.currentTarget.style.background = T.red + "12"}
                 onMouseLeave={e => e.currentTarget.style.background = "none"}
               >
@@ -818,104 +826,159 @@ export default function CampaignsPage() {
   const newThisWeek = thisWeekCount(campaigns);
 
   return (
-    <div style={{ width: "100%", padding: "8px 8px 20px" }}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    <div style={{ width: "100%", padding: "20px 20px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.35); } }
+      `}</style>
 
-      {/* ── Page header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22, gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: T.text, lineHeight: 1.1, marginBottom: 4 }}>Email Campaigns</div>
-          <div style={{ fontSize: 13, color: T.muted }}>Create and manage your email campaigns.</div>
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 46, height: 46, borderRadius: 13, flexShrink: 0,
+            background: `linear-gradient(135deg, ${T.accent}30, ${T.accent}10)`,
+            border: "1px solid " + T.accent + "35",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Megaphone size={20} color={T.accent} strokeWidth={2} />
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: T.text, lineHeight: 1.15, letterSpacing: "-0.01em" }}>
+              Email Campaigns
+            </div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
+              {total > 0
+                ? `${total} campaign${total !== 1 ? "s" : ""}${newThisWeek > 0 ? ` · +${newThisWeek} this week` : ""}`
+                : "Create and manage your email campaigns"}
+            </div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <RefreshBtn onClick={load} loading={loading} style={{ borderRadius: 8 }} />
-          <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, border: "none", background: T.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          <button
+            onClick={() => setShowNew(true)}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 18px", borderRadius: 9, border: "none", background: T.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 2px 10px " + T.accent + "40" }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "0.88"}
+            onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+          >
             <Plus size={14} /> New Campaign
           </button>
         </div>
       </div>
 
-      {/* ── Stats cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+      {/* ── Stats ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
         {[
-          { label: "Total",   value: total,  sub: newThisWeek > 0 ? `+${newThisWeek} this week` : "all time", accent: T.accent },
-          { label: "Draft",   value: draft,  sub: "not sent yet",                                             accent: T.muted  },
-          { label: "Sending", value: active, sub: active === 0 ? "none active" : "in progress",               accent: T.amber  },
-          { label: "Sent",    value: sent,   sub: "successfully delivered",                                   accent: T.green  },
-        ].map(({ label, value, sub, accent }) => (
+          { label: "Total",    value: total,    sub: "all time",          color: T.accent,  icon: Megaphone        },
+          { label: "Draft",    value: draft,    sub: "not sent yet",      color: T.muted,   icon: Mail             },
+          { label: "Sending",  value: active,   sub: "in progress",       color: T.amber,   icon: Loader2          },
+          { label: "Sent",     value: sent,     sub: "delivered",         color: T.green,   icon: CheckCircle2     },
+          { label: "Paused",   value: paused,   sub: "on hold",           color: T.orange,  icon: Eye              },
+          { label: "Canceled", value: canceled, sub: "archived",          color: T.red,     icon: Ban              },
+        ].map(({ label, value, sub, color, icon: Icon }) => (
           <div key={label} style={{
-            padding: "18px 20px",
-            background: `linear-gradient(135deg, ${accent}12 0%, ${T.card} 65%)`,
-            border: `1px solid ${T.border}`,
-            borderLeft: `3px solid ${accent}`,
+            padding: "16px 18px",
+            background: T.card,
+            border: "1px solid " + T.border,
+            borderTop: "2px solid " + color,
             borderRadius: 12,
+            display: "flex", flexDirection: "column", gap: 8,
           }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>{label}</div>
-            <div style={{ fontSize: 32, fontWeight: 900, color: accent, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 5 }}>{value}</div>
-            <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>{sub}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+              <div style={{ width: 22, height: 22, borderRadius: 6, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={11} color={color} />
+              </div>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-0.02em" }}>{value}</div>
+            <div style={{ fontSize: 10, color: T.muted, fontWeight: 500 }}>{sub}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Search + filter ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+      {/* ── Toolbar ── */}
+      <div style={{
+        display: "flex", gap: 10, alignItems: "center",
+        background: T.card, border: "1px solid " + T.border,
+        borderRadius: 11, padding: "10px 14px",
+      }}>
         <div style={{ flex: 1, position: "relative" }}>
-          <Search size={13} color={T.muted} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+          <Search size={13} color={T.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
           <input
             placeholder="Search campaigns…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 36, paddingRight: 14, paddingTop: 10, paddingBottom: 10, borderRadius: 9, border: "1px solid " + T.border, background: T.card, color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}
+            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 32, paddingRight: 12, paddingTop: 7, paddingBottom: 7, borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}
             onFocus={e => e.target.style.borderColor = T.accent}
             onBlur={e => e.target.style.borderColor = T.border}
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: "10px 14px", borderRadius: 9, border: "1px solid " + T.border, background: T.card, color: statusFilter === "all" ? T.muted : T.text, fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 140 }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="sending">Sending</option>
-          <option value="sent">Sent</option>
-          <option value="paused">Paused</option>
-          <option value="canceled">Canceled</option>
-        </select>
+        <div style={{ width: 1, height: 24, background: T.border }} />
+        {["all", "draft", "sending", "sent", "paused", "canceled"].map(s => {
+          const isActive = statusFilter === s;
+          const labelMap = { all: "All", draft: "Draft", sending: "Sending", sent: "Sent", paused: "Paused", canceled: "Canceled" };
+          const colorMap  = { sending: T.amber, sent: T.green, paused: T.orange, canceled: T.red, draft: T.muted, all: T.accent };
+          const c = colorMap[s];
+          return (
+            <button key={s} onClick={() => setStatusFilter(s)} style={{
+              padding: "5px 12px", borderRadius: 7, border: "1px solid " + (isActive ? c + "60" : "transparent"),
+              background: isActive ? c + "15" : "transparent",
+              color: isActive ? c : T.muted, fontSize: 12, fontWeight: isActive ? 700 : 500,
+              cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s",
+            }}>
+              {labelMap[s]}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Table ── */}
       {loading ? (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}
-          </tbody>
-        </table>
+        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 12, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>{Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}</tbody>
+          </table>
+        </div>
       ) : campaigns.length === 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 12 }}>
-          <Megaphone size={44} color={T.border} style={{ marginBottom: 16 }} />
-          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 6 }}>No campaigns yet</div>
-          <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>Create your first campaign to start reaching out to contacts.</div>
-          <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", borderRadius: 8, border: "none", background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-            <Plus size={14} /> New Campaign
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "72px 20px", background: T.card, border: "1px solid " + T.border, borderRadius: 14 }}>
+          <div style={{ width: 72, height: 72, borderRadius: 20, background: T.accent + "12", border: "1px solid " + T.accent + "25", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+            <Megaphone size={30} color={T.accent} strokeWidth={1.5} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>No campaigns yet</div>
+          <div style={{ fontSize: 13, color: T.muted, marginBottom: 22, textAlign: "center", maxWidth: 320, lineHeight: 1.6 }}>
+            Create your first email campaign to start reaching out to your contacts.
+          </div>
+          <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 22px", borderRadius: 9, border: "none", background: T.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 2px 10px " + T.accent + "40" }}>
+            <Plus size={14} /> Create Campaign
           </button>
         </div>
       ) : (
-        <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 12 }}>
-          {/* Header row */}
+        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 14, overflow: "hidden" }}>
+          {/* Column headers */}
           <div style={{
             display: "grid", gridTemplateColumns: GRID_COLS,
-            padding: "10px 16px", borderBottom: "1px solid " + T.border,
-            background: T.card, borderRadius: "12px 12px 0 0",
+            padding: "9px 18px 9px 18px",
+            borderBottom: "1px solid " + T.border,
+            background: T.surface,
           }}>
-            {["Campaign", "Subject", "Status", "Sent", "Open", "Click", ""].map((h, i) => (
-              <div key={i} style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</div>
+            {[
+              { label: "Campaign", },
+              { label: "Subject", },
+              { label: "Status", },
+              { label: "Sent",  color: "#60a5fa" },
+              { label: "Opens", color: "#34d399" },
+              { label: "Clicks",color: "#a78bfa" },
+              { label: "" },
+            ].map(({ label, color }, i) => (
+              <div key={i} style={{ fontSize: 10, fontWeight: 700, color: color || T.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
             ))}
           </div>
-          {/* Data rows */}
+
+          {/* Rows */}
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 20px", textAlign: "center", color: T.muted, fontSize: 13 }}>
-              No campaigns match your search.
+              No campaigns match your filter.
             </div>
           ) : (
             filtered.map((c, idx) => (
@@ -933,9 +996,9 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {showNew && <NewCampaignModal onClose={() => setShowNew(false)} onCreated={handleCreated} />}
-      {toCancel  && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
-      {toRestore && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
+      {showNew    && <NewCampaignModal    onClose={() => setShowNew(false)}   onCreated={handleCreated} />}
+      {toCancel   && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
+      {toRestore  && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
     </div>
   );
 }

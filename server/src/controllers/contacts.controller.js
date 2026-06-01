@@ -146,17 +146,86 @@ async function listContacts(req, res) {
   if (!isNaN(scoreMin) && scoreMin > 0)   where.leadScore = { ...where.leadScore, gte: scoreMin };
   if (!isNaN(scoreMax) && scoreMax < 100) where.leadScore = { ...where.leadScore, lte: scoreMax };
 
-  // Sort
+  // UDF text filters
+  const udfFiltersParam = req.query.udfFilters;
+  if (udfFiltersParam) {
+    try {
+      const udfFilters = JSON.parse(udfFiltersParam);
+      for (const [key, val] of Object.entries(udfFilters)) {
+        if (val === '' || val == null) continue;
+        if (!where.AND) where.AND = [];
+        where.AND.push({ udfValues: { path: [key], string_contains: String(val) } });
+      }
+    } catch { /* ignore malformed JSON */ }
+  }
+
+  // Custom contact-field filters (admin-defined via CustomFilterOption)
+  const customFiltersParam = req.query.customFilters;
+  if (customFiltersParam) {
+    try {
+      const customFilters = JSON.parse(customFiltersParam);
+      const ALLOWED = new Set([
+        'email', 'phone', 'title', 'source', 'campaign', 'state', 'zip',
+        'ownedBy', 'addedBy', 'accountSize', 'dispatcherSoftware',
+        'trucks', 'contractValue', 'yearsInBusiness', 'serviceAreaMiles', 'leadScore',
+      ]);
+      for (const [field, val] of Object.entries(customFilters)) {
+        if (!ALLOWED.has(field) || val === '' || val == null) continue;
+        if (typeof val === 'object' && !Array.isArray(val)) {
+          // Number range: { min, max }
+          const range = {};
+          if (val.min !== '' && val.min != null) range.gte = Number(val.min);
+          if (val.max !== '' && val.max != null) range.lte = Number(val.max);
+          if (Object.keys(range).length) where[field] = range;
+        } else {
+          where[field] = { contains: String(val), mode: 'insensitive' };
+        }
+      }
+    } catch { /* ignore malformed JSON */ }
+  }
+
+  // Sort — central config; UDF and custom sorts detected by prefix
   const SORT_MAP = {
-    recent:     { lastActivityAt: 'desc' },
-    old:        { lastActivityAt: 'asc'  },
-    score_desc: { leadScore: 'desc' },
-    score_asc:  { leadScore: 'asc'  },
-    name_az:    { firstName: 'asc'  },
-    name_za:    { firstName: 'desc' },
+    recent:       { lastActivityAt: 'desc' },
+    old:          { lastActivityAt: 'asc'  },
+    score_desc:   { leadScore: 'desc' },
+    score_asc:    { leadScore: 'asc'  },
+    name_az:      { firstName: 'asc'  },
+    name_za:      { firstName: 'desc' },
+    company_az:   { company: 'asc'   },
+    company_za:   { company: 'desc'  },
+    lastname_az:  [{ lastName: 'asc'  }, { firstName: 'asc'  }],
+    lastname_za:  [{ lastName: 'desc' }, { firstName: 'desc' }],
+    firstname_az: [{ firstName: 'asc'  }, { lastName: 'asc'  }],
+    firstname_za: [{ firstName: 'desc' }, { lastName: 'desc' }],
+    city_az:      [{ city: 'asc'  }, { state: 'asc'  }],
+    city_za:      [{ city: 'desc' }, { state: 'desc' }],
   };
-  const orderBy = SORT_MAP[req.query.sortBy]
-    || (status === STATUS.CANCELED ? { canceledAt: 'desc' } : { lastActivityAt: 'desc' });
+  const CUSTOM_SORT_ALLOWED = new Set([
+    'email', 'phone', 'title', 'source', 'campaign', 'state', 'zip',
+    'ownedBy', 'addedBy', 'accountSize', 'dispatcherSoftware',
+    'trucks', 'contractValue', 'yearsInBusiness', 'serviceAreaMiles', 'leadScore',
+    'createdAt', 'lastActivityAt',
+  ]);
+  const sortBy = req.query.sortBy;
+  let orderBy;
+  if (sortBy?.startsWith('csort:')) {
+    // format: csort:{field}:{dir}
+    const [, field, dir] = sortBy.split(':');
+    if (CUSTOM_SORT_ALLOWED.has(field) && ['asc', 'desc'].includes(dir)) {
+      orderBy = { [field]: dir };
+    } else {
+      orderBy = { lastActivityAt: 'desc' };
+    }
+  } else if (sortBy?.startsWith('udf_') && sortBy.endsWith('_az')) {
+    const udfKey = sortBy.slice(0, -3);
+    orderBy = { udfValues: { path: [udfKey], sort: 'asc' } };
+  } else if (sortBy?.startsWith('udf_') && sortBy.endsWith('_za')) {
+    const udfKey = sortBy.slice(0, -3);
+    orderBy = { udfValues: { path: [udfKey], sort: 'desc' } };
+  } else {
+    orderBy = SORT_MAP[sortBy] || (status === STATUS.CANCELED ? { canceledAt: 'desc' } : { lastActivityAt: 'desc' });
+  }
 
   const [contacts, total] = await Promise.all([
     prisma.contact.findMany({ where, orderBy, skip, take: limit }),
