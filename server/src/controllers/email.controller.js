@@ -78,7 +78,6 @@ export async function handleUnsubscribe(req, res) {
       return res.send(unsubPage('You are already unsubscribed.', true));
     }
 
-    // Mark recipient as unsubscribed + flag the contact globally
     await Promise.all([
       prisma.campaignRecipient.update({
         where: { id: rid },
@@ -87,10 +86,6 @@ export async function handleUnsubscribe(req, res) {
       prisma.campaign.update({
         where: { id: recipient.campaignId },
         data:  { unsubscribedCount: { increment: 1 } },
-      }),
-      prisma.contact.update({
-        where: { id: recipient.contactId },
-        data:  { isUnsubscribed: true },
       }),
     ]);
 
@@ -117,7 +112,6 @@ export async function handleUnsubscribePost(req, res) {
     await Promise.all([
       prisma.campaignRecipient.update({ where: { id: rid }, data: { status: 'unsubscribed' } }),
       prisma.campaign.update({ where: { id: recipient.campaignId }, data: { unsubscribedCount: { increment: 1 } } }),
-      prisma.contact.update({ where: { id: recipient.contactId }, data: { is_unsubscribed: true } }),
     ]);
     res.json({ ok: true });
   } catch {

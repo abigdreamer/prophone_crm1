@@ -192,11 +192,11 @@ export async function findPendingRecipientsForSend(campaignId, limit = null) {
   });
 }
 
-export async function markRecipientSent(id, messageId, campaignId = null) {
+export async function markRecipientSent(id, messageId, campaignId = null, sendLabel = '') {
   const sendId = randomUUID();
   const result = await prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sendId, sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sendId, sendLabel: sendLabel || '', sentAt: new Date() },
   });
   if (campaignId) logEvent(id, campaignId, 'sent', null, sendId).catch(() => {});
   return result;

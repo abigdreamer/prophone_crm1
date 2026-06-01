@@ -332,7 +332,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
   if (loading) return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <tbody>
-        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}
+        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={7} />)}
       </tbody>
     </table>
   );
@@ -389,6 +389,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
             {isAbTest && <th style={{ ...thStyle, textAlign: "center" }}>Variant</th>}
             <th style={thStyle}>Status</th>
             <th style={thStyle}>Stage</th>
+            <th style={thStyle}>Batch</th>
           </tr>
         </thead>
         <tbody>
@@ -452,6 +453,16 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.contact?.lifecycleStage
                     ? <StagePill stage={r.contact.lifecycleStage} />
+                    : <span style={{ fontSize: 11, color: T.muted }}>—</span>
+                  }
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  {r.sendLabel
+                    ? <span style={{
+                        fontSize: 11, fontWeight: 600, color: T.accent,
+                        background: T.accent + "18", borderRadius: 10,
+                        padding: "2px 9px", whiteSpace: "nowrap",
+                      }}>{r.sendLabel}</span>
                     : <span style={{ fontSize: 11, color: T.muted }}>—</span>
                   }
                 </td>
@@ -1188,6 +1199,7 @@ function ResendModal({ campaign, onClose, onConfirm, loading }) {
 
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   const T = useTheme();
+  const [batchLabel, setBatchLabel] = useState("");
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
@@ -1195,35 +1207,59 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 12,
-        padding: 28, width: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+        padding: 28, width: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
       }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: "50%", background: T.green + "18",
-            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 42, height: 42, borderRadius: "50%", background: T.accent + "18",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}>
-            <Send size={22} color={T.green} />
+            <Send size={18} color={T.accent} />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>
-              Send campaign?
-            </div>
-            <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
-              This will send "<strong style={{ color: T.text }}>{campaign.name}</strong>" to{" "}
-              <strong style={{ color: T.text }}>{campaign.recipientsCount}</strong> recipient
-              {campaign.recipientsCount !== 1 ? "s" : ""}. This action cannot be undone.
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Send campaign?</div>
+            <div style={{ fontSize: 12, color: T.muted }}>"{campaign.name}"</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+
+        <div style={{
+          background: T.accent + "0c", border: "1px solid " + T.accent + "25",
+          borderRadius: 8, padding: "10px 14px", marginBottom: 18,
+          fontSize: 13, color: T.muted, lineHeight: 1.6,
+        }}>
+          This will send to{" "}
+          <strong style={{ color: T.text }}>{campaign.recipientsCount}</strong> recipient
+          {campaign.recipientsCount !== 1 ? "s" : ""}. This action cannot be undone.
+        </div>
+
+        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 6 }}>
+          Batch label <span style={{ fontSize: 11, fontWeight: 400, color: T.muted }}>(optional — helps identify this send later)</span>
+        </label>
+        <input
+          type="text"
+          value={batchLabel}
+          onChange={e => setBatchLabel(e.target.value)}
+          placeholder="e.g. Wave 1, June promo, Hot leads..."
+          maxLength={120}
+          style={{
+            width: "100%", padding: "8px 10px", borderRadius: 7,
+            border: "1px solid " + T.border, background: T.surface, color: T.text,
+            fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 20,
+            outline: "none",
+          }}
+          onFocus={e => e.target.style.borderColor = T.accent}
+          onBlur={e => e.target.style.borderColor = T.border}
+        />
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{
-            padding: "9px 20px", borderRadius: 7, border: "1px solid " + T.border,
+            padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border,
             background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
           }}>Cancel</button>
-          <button onClick={onConfirm} disabled={loading} style={{
+          <button onClick={() => onConfirm(batchLabel.trim())} disabled={loading} style={{
             display: "flex", alignItems: "center", gap: 6,
-            padding: "9px 22px", borderRadius: 7, border: "none",
-            background: T.green, color: "#fff", fontSize: 13, fontWeight: 600,
+            padding: "8px 20px", borderRadius: 7, border: "none",
+            background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
             cursor: loading ? "default" : "pointer", fontFamily: "inherit",
             opacity: loading ? 0.7 : 1,
           }}>
@@ -1427,10 +1463,10 @@ export default function CampaignDetailPage() {
     }
   }, [selectedRecipient]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (batchLabel = "") => {
     setSending(true);
     try {
-      const updated = await sendCampaign(id);
+      const updated = await sendCampaign(id, { label: batchLabel });
       setCampaign(updated);
       analytics.campaignLaunched({
         clientId:       updated.clientId,
