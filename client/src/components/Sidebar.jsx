@@ -241,7 +241,9 @@ export default function Sidebar({
   const sortDragIdx            = useRef(null);
   const filterGearContainerRef = useRef(null);
   const filterGearDragIdx      = useRef(null);
-  const cardGearContainerRef   = useRef(null);
+  const cardGearContainerRef      = useRef(null);
+  const displayNameDragIdx        = useRef(null);
+  const [displayNameDragOver, setDisplayNameDragOver] = useState(null);
   const displayFieldsLoadedRef = useRef(false);
   const searchGearRef          = useRef(null);
   const searchMethodsLoadedRef = useRef(false);
@@ -1337,133 +1339,89 @@ export default function Sidebar({
               background: T.card, border: "1px solid " + T.border, borderRadius: 10,
               boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
               animation: "crm-fadein 0.12s ease",
-              maxHeight: "calc(100vh - 280px)", overflowY: "auto",
             }}>
               {/* Header */}
               <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "8px 10px 7px",
+                padding: "8px 12px 7px",
                 borderBottom: "1px solid " + T.border + "66",
-                position: "sticky", top: 0, background: T.card, zIndex: 1,
-                borderRadius: "10px 10px 0 0",
               }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: T.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>Card Display</span>
-                <span style={{ fontSize: 10, color: T.muted }}>{displayFields.length}/5 selected</span>
               </div>
 
-              {/* Field chips */}
-              <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid " + T.border + "44" }}>
+              {/* ── Name Priority ── */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: "1px solid " + T.border + "55" }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 7 }}>
+                  Name Priority
+                </div>
+                {displayNameRules.map((rule, idx) => {
+                  const label = rule.type === "name" ? "Name" : rule.type === "company" ? "Company" : rule.type === "location" ? "City, State" : rule.type === "email" ? "Email" : rule.type === "phone" ? "Phone" : (udfs.find(u => u.sortKey === rule.key)?.label || rule.key);
+                  const isOver = displayNameDragOver === idx;
+                  return (
+                    <div
+                      key={rule.type + (rule.key || "")}
+                      draggable
+                      onDragStart={() => { displayNameDragIdx.current = idx; }}
+                      onDragOver={e => { e.preventDefault(); setDisplayNameDragOver(idx); }}
+                      onDragLeave={() => setDisplayNameDragOver(null)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setDisplayNameDragOver(null);
+                        const from = displayNameDragIdx.current;
+                        displayNameDragIdx.current = null;
+                        if (from == null || from === idx) return;
+                        const next = [...displayNameRules];
+                        const [moved] = next.splice(from, 1);
+                        next.splice(idx, 0, moved);
+                        setDisplayNameRules(next);
+                        saveSettings(clientId || null, "display_name_rules", { rules: next }).catch(() => {});
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        padding: "4px 6px", borderRadius: 5, cursor: "grab",
+                        background: isOver ? col + "14" : "transparent",
+                        transition: "background 0.1s",
+                      }}
+                    >
+                      <span style={{ color: T.muted, fontSize: 13, flexShrink: 0, opacity: 0.45, userSelect: "none", lineHeight: 1 }}>⠿</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, minWidth: 10, flexShrink: 0 }}>{idx + 1}</span>
+                      <span style={{ flex: 1, fontSize: 11, color: T.text, fontWeight: 500 }}>{label}</span>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 9, color: T.muted, marginTop: 5, paddingLeft: 6 }}>Drag to reorder</div>
+              </div>
+
+              {/* ── Card Fields ── */}
+              <div style={{ padding: "10px 12px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.07em", textTransform: "uppercase" }}>Fields</span>
+                  <span style={{ fontSize: 9, color: T.muted }}>{displayFields.length} / 5</span>
+                </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                   {allCardFields.map(({ key, label }) => {
-                    const idx   = displayFields.indexOf(key);
-                    const isOn  = idx !== -1;
+                    const active = displayFields.includes(key);
                     const canAdd = displayFields.length < 5;
                     return (
                       <div
                         key={key}
-                        onClick={() => (isOn || canAdd) && toggleCardField(key)}
+                        onClick={() => (active || canAdd) && toggleCardField(key)}
                         style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          padding: "3px 8px", borderRadius: 20,
-                          border: "1px solid " + (isOn ? col + "70" : T.border),
-                          background: isOn ? col + "18" : T.surface,
-                          cursor: isOn || canAdd ? "pointer" : "default",
+                          padding: "4px 10px", borderRadius: 20,
+                          border: "1px solid " + (active ? col + "80" : T.border),
+                          background: active ? col + "1a" : "transparent",
+                          color: active ? T.text : T.muted,
+                          fontSize: 11, fontWeight: active ? 600 : 400,
+                          cursor: active || canAdd ? "pointer" : "default",
                           userSelect: "none", transition: "all 0.12s",
-                          opacity: !isOn && !canAdd ? 0.4 : 1,
+                          opacity: !active && !canAdd ? 0.35 : 1,
                         }}
                       >
-                        {isOn && (
-                          <span style={{ fontSize: 9, fontWeight: 800, color: col, minWidth: 10, textAlign: "center" }}>
-                            {idx + 1}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 11, fontWeight: isOn ? 700 : 400, color: isOn ? T.text : T.muted }}>
-                          {label}
-                        </span>
+                        {label}
                       </div>
                     );
                   })}
                 </div>
-                <div style={{ fontSize: 9, color: T.muted, marginTop: 6 }}>
-                  Click to toggle · order = display order · max 5
-                </div>
-              </div>
-
-              {/* Display Name Priority */}
-              <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid " + T.border + "44" }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                  Name Priority
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  {displayNameRules.map((rule, idx) => {
-                    const label = rule.type === "name" ? "Name" : rule.type === "company" ? "Company" : rule.type === "location" ? "City, State" : rule.type === "email" ? "Email" : rule.type === "phone" ? "Phone" : (udfs.find(u => u.sortKey === rule.key)?.label || rule.key);
-                    const canUp = idx > 0;
-                    const canDown = idx < displayNameRules.length - 1;
-                    return (
-                      <div key={rule.type + (rule.key || "")} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, minWidth: 14, textAlign: "center" }}>{idx + 1}</span>
-                        <span style={{ flex: 1, fontSize: 10, color: T.text, fontWeight: 500 }}>{label}</span>
-                        <button onClick={() => {
-                          if (!canUp) return;
-                          const next = [...displayNameRules];
-                          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                          setDisplayNameRules(next);
-                          saveSettings(clientId || null, "display_name_rules", { rules: next }).catch(() => {});
-                        }} disabled={!canUp} style={{ background: "none", border: "none", color: canUp ? T.dim : T.border, cursor: canUp ? "pointer" : "default", padding: "0 2px", fontFamily: "inherit", fontSize: 10 }}>▲</button>
-                        <button onClick={() => {
-                          if (!canDown) return;
-                          const next = [...displayNameRules];
-                          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                          setDisplayNameRules(next);
-                          saveSettings(clientId || null, "display_name_rules", { rules: next }).catch(() => {});
-                        }} disabled={!canDown} style={{ background: "none", border: "none", color: canDown ? T.dim : T.border, cursor: canDown ? "pointer" : "default", padding: "0 2px", fontFamily: "inherit", fontSize: 10 }}>▼</button>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: 9, color: T.muted, marginTop: 4 }}>First non-empty value is used as the contact label</div>
-              </div>
-
-              {/* Live preview */}
-              <div style={{ padding: "8px 10px" }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
-                  Preview
-                </div>
-                <div style={{
-                  borderRadius: 7, padding: "9px 11px",
-                  borderLeft: "3px solid " + col,
-                  background: col + "08",
-                  border: "1px solid " + T.border,
-                  display: "flex", flexDirection: "column", gap: 3,
-                }}>
-                  {/* Name + stage — always shown */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontWeight: 700, fontSize: 12, color: T.text }}>ABC Towing Co.</span>
-                    <span style={{ fontSize: 8, fontWeight: 800, background: "#3b82f620", color: "#3b82f6", padding: "1px 5px", borderRadius: 3, whiteSpace: "nowrap" }}>LEAD</span>
-                  </div>
-                  {/* Selected fields */}
-                  {displayFields.map(key => {
-                    if (key === "lead_score") return (
-                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ flex: 1, height: 3, borderRadius: 2, background: T.border, overflow: "hidden" }}>
-                          <div style={{ width: "72%", height: "100%", background: col, borderRadius: 2 }} />
-                        </div>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: T.text, flexShrink: 0 }}>72</span>
-                      </div>
-                    );
-                    if (key.startsWith("udf_")) {
-                      const udf = udfs.find(u => u.sortKey === key);
-                      return <div key={key} style={{ fontSize: 10, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{udf?.label ? `${udf.label}: ` : ""}Sample value</div>;
-                    }
-                    const val = CARD_PREVIEW[key];
-                    if (!val) return null;
-                    return <div key={key} style={{ fontSize: 10, color: T.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>;
-                  })}
-                  {/* Last activity — always shown */}
-                  <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: 9, color: T.muted }}>2 hrs ago</span>
-                  </div>
-                </div>
+                <div style={{ fontSize: 9, color: T.muted, marginTop: 7 }}>Tap to toggle · max 5</div>
               </div>
             </div>
           )}
