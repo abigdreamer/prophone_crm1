@@ -12,7 +12,7 @@ import {
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 import { importHtml as processImport } from '../services/htmlImporter.js';
-import { injectUnsubscribeFooter, injectUnsubUrl } from '../services/email.js';
+import { injectUnsubscribeFooter, injectUnsubUrl, inlineCss } from '../services/email.js';
 
 // ── Guard: assert client exists ───────────────────────────────────────────────
 
@@ -289,7 +289,7 @@ export const sendTestEmail = async (req, res) => {
     const rawHtml = template.htmlOutput
       .replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview')
       .replace(/\{\{[^}]+\}\}/g, '');          // strip any remaining placeholders
-    const html = injectUnsubUrl(rawHtml, '#test-unsubscribe');
+    const html = injectUnsubUrl(inlineCss(rawHtml), '#test-unsubscribe');
 
     let fromEmail = null;
     const clientDomain = await domainRepo.findFirstVerified(template.clientId ?? null);

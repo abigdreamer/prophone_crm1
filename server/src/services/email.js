@@ -1,4 +1,23 @@
 import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
+import juice from 'juice';
+
+// ── CSS inlining ──────────────────────────────────────────────────────────────
+// Gmail strips <style> blocks. Inlining converts them to style="" attributes
+// so the email renders identically in Gmail and every other client.
+export function inlineCss(html) {
+  if (!html) return html;
+  try {
+    return juice(html, {
+      removeStyleTags:    true,   // remove <style> after inlining
+      preserveMediaQueries: true, // keep @media rules for responsive clients
+      preserveFontFaces:  true,
+      applyStyleTags:     true,
+      applyAttributesTableElements: true,
+    });
+  } catch {
+    return html; // never break a send over CSS inlining failure
+  }
+}
 
 // ── unsubscribe token ────────────────────────────────────────────────────────
 export function generateUnsubToken(recipientId, secret) {
