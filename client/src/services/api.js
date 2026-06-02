@@ -92,7 +92,7 @@ export async function getDashboardSummary() {
 }
 
 // Reads active pool from singleton — no manual params needed
-export async function getContacts({ page = 1, limit = 1000, status = null, search = '', stages = [], sortBy = 'recent', scoreMin = 0, scoreMax = 100, udfFilters = {}, customFilters = {} } = {}) {
+export async function getContacts({ page = 1, limit = 1000, status = null, search = '', stages = [], sortBy = 'recent', scoreMin = 0, scoreMax = 100, udfFilters = {}, customFilters = {}, searchMethods = {} } = {}) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
@@ -113,6 +113,8 @@ export async function getContacts({ page = 1, limit = 1000, status = null, searc
     return true;
   }));
   if (Object.keys(activeCustomFilters).length > 0) params.set('customFilters', JSON.stringify(activeCustomFilters));
+  const hasSearchOverrides = Object.values(searchMethods).some(v => v === false);
+  if (hasSearchOverrides) params.set('searchMethods', JSON.stringify(searchMethods));
   params.set('page', page);
   params.set('limit', limit);
   return request('GET', `/api/contacts?${params}`);
@@ -127,10 +129,13 @@ export const createCustomFilterOpt  = (data) => request('POST',   '/api/custom-o
 export const updateCustomFilterOpt  = (id, d)=> request('PATCH',  `/api/custom-options/filters/${id}`, d);
 export const deleteCustomFilterOpt  = (id)   => request('DELETE', `/api/custom-options/filters/${id}`);
 
-export const getUdfs   = ()           => { const p = new URLSearchParams(); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs?${p}`); };
-export const createUdf = (data)       => request('POST',   '/api/udfs',     { ...data, clientId: _clientId || null });
-export const updateUdf = (id, data)   => request('PATCH',  `/api/udfs/${id}`, data);
-export const deleteUdf = (id)         => request('DELETE', `/api/udfs/${id}`);
+export const getUdfs         = ()               => { const p = new URLSearchParams(); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs?${p}`); };
+export const createUdf       = (data)           => request('POST',   '/api/udfs',     { ...data, clientId: _clientId || null });
+export const updateUdf       = (id, data)       => request('PATCH',  `/api/udfs/${id}`, data);
+export const deleteUdf       = (id)             => request('DELETE', `/api/udfs/${id}`);
+export const getUdfValues    = (fieldKey, search = '') => { const p = new URLSearchParams({ fieldKey, search }); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs/values?${p}`); };
+export const getContactUdfs    = (contactId)    => request('GET', `/api/contacts/${contactId}/udfs`);
+export const updateContactUdfs = (contactId, values) => request('PUT', `/api/contacts/${contactId}/udfs`, values);
 
 export async function getContact(id) {
   return request('GET', `/api/contacts/${id}`);

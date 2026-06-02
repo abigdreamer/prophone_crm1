@@ -77,6 +77,7 @@ function formatContact(c) {
     accountSize: c.accountSize,
     description: c.description,
     socialLinks: c.socialLinks ?? {},
+    udfValues: c.udfValues ?? {},
     tags: c.tags,
     notes: c.notes,
     ownedBy: c.ownedBy,
@@ -121,16 +122,38 @@ async function listContacts(req, res) {
     }
   }
 
-  // Full-text search across name, email, company, phone
+  // Full-text search — fields included are configurable via searchMethods param
   const search = req.query.search?.trim();
   if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName:  { contains: search, mode: 'insensitive' } },
-      { email:     { contains: search, mode: 'insensitive' } },
-      { company:   { contains: search, mode: 'insensitive' } },
-      { phone:     { contains: search, mode: 'insensitive' } },
+    let sm = {};
+    try { sm = req.query.searchMethods ? JSON.parse(req.query.searchMethods) : {}; } catch { /* ignore */ }
+
+    const searchOr = [
+      ...(sm.firstName !== false ? [{ firstName: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.lastName  !== false ? [{ lastName:  { contains: search, mode: 'insensitive' } }] : []),
+      // Legacy: if old settings saved "name: true" instead of firstName/lastName, honour it
+      ...(sm.name === true && sm.firstName === undefined && sm.lastName === undefined ? [{ firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.email   !== false ? [{ email:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.company !== false ? [{ company: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.phone   !== false ? [{ phone:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.city    !== false ? [{ city:    { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.state   !== false ? [{ state:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.address !== false ? [{ address: { contains: search, mode: 'insensitive' } }] : []),
     ];
+
+    if (sm.udfs !== false) {
+      try {
+        const udfMatches = await prisma.$queryRaw`
+          SELECT id FROM contacts
+          WHERE LOWER(udf_values::text) LIKE ${`%${search.toLowerCase()}%`}
+        `;
+        if (udfMatches.length > 0) {
+          searchOr.push({ id: { in: udfMatches.map(r => r.id) } });
+        }
+      } catch { /* silent — UDF search degrades gracefully */ }
+    }
+
+    if (searchOr.length > 0) where.OR = searchOr;
   }
 
   // Lifecycle stage filter (comma-separated list)
@@ -146,15 +169,20 @@ async function listContacts(req, res) {
   if (!isNaN(scoreMin) && scoreMin > 0)   where.leadScore = { ...where.leadScore, gte: scoreMin };
   if (!isNaN(scoreMax) && scoreMax < 100) where.leadScore = { ...where.leadScore, lte: scoreMax };
 
-  // UDF text filters
+  // UDF text filters — case-insensitive via raw SQL so values like "towbook" match "Towbook"
   const udfFiltersParam = req.query.udfFilters;
   if (udfFiltersParam) {
     try {
       const udfFilters = JSON.parse(udfFiltersParam);
       for (const [key, val] of Object.entries(udfFilters)) {
         if (val === '' || val == null) continue;
+        if (!/^udf_\d+$/.test(key)) continue; // guard against injection
+        const pattern = `%${String(val).toLowerCase()}%`;
+        const hits = await prisma.$queryRaw`
+          SELECT id FROM contacts WHERE LOWER(udf_values->>${key}) LIKE ${pattern}
+        `;
         if (!where.AND) where.AND = [];
-        where.AND.push({ udfValues: { path: [key], string_contains: String(val) } });
+        where.AND.push({ id: { in: hits.map(r => r.id) } });
       }
     } catch { /* ignore malformed JSON */ }
   }
@@ -217,12 +245,25 @@ async function listContacts(req, res) {
     } else {
       orderBy = { lastActivityAt: 'desc' };
     }
-  } else if (sortBy?.startsWith('udf_') && sortBy.endsWith('_az')) {
-    const udfKey = sortBy.slice(0, -3);
-    orderBy = { udfValues: { path: [udfKey], sort: 'asc' } };
-  } else if (sortBy?.startsWith('udf_') && sortBy.endsWith('_za')) {
-    const udfKey = sortBy.slice(0, -3);
-    orderBy = { udfValues: { path: [udfKey], sort: 'desc' } };
+  } else if (sortBy?.startsWith('udf_') && (sortBy.endsWith('_az') || sortBy.endsWith('_za'))) {
+    // Prisma can't ORDER BY a JSON path — fetch all matching rows, sort in memory, then slice
+    const udfKey = sortBy.slice(0, -3); // e.g. "udf_11_az" → "udf_11"
+    const dir    = sortBy.endsWith('_az') ? 1 : -1;
+    const allRows = await prisma.contact.findMany({ where, orderBy: { lastActivityAt: 'desc' } });
+    allRows.sort((a, b) => {
+      const aVal = String(a.udfValues?.[udfKey] ?? '');
+      const bVal = String(b.udfValues?.[udfKey] ?? '');
+      return dir * aVal.localeCompare(bVal, undefined, { sensitivity: 'base' });
+    });
+    const totalCount = allRows.length;
+    const paginated  = allRows.slice(skip, skip + limit);
+    const actMap     = await fetchActivitiesBulk(paginated.map(c => c.id));
+    return res.json({
+      data:    paginated.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })),
+      total:   totalCount,
+      page,
+      hasMore: skip + paginated.length < totalCount,
+    });
   } else {
     orderBy = SORT_MAP[sortBy] || (status === STATUS.CANCELED ? { canceledAt: 'desc' } : { lastActivityAt: 'desc' });
   }
@@ -304,6 +345,7 @@ async function createContact(req, res) {
       accountSize: b.accountSize || '1-5',
       description: b.description || '',
       socialLinks: b.socialLinks || {},
+      udfValues: b.udfValues || {},
       tags: b.tags || [],
       notes: b.notes || '',
       ownedBy: b.ownedBy || '',
@@ -412,6 +454,7 @@ async function updateContact(req, res) {
       accountSize: b.accountSize ?? existing.accountSize,
       description: b.description !== undefined ? b.description : existing.description,
       socialLinks: b.socialLinks !== undefined ? b.socialLinks : existing.socialLinks,
+      udfValues: b.udfValues !== undefined ? b.udfValues : existing.udfValues,
       tags: b.tags ?? existing.tags,
       notes: b.notes ?? existing.notes,
       ownedBy: b.ownedBy ?? existing.ownedBy,
@@ -854,4 +897,22 @@ async function recalculateAllScores(req, res) {
   res.json({ updated });
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary, recalculateAllScores };
+async function getContactUdfs(req, res) {
+  const c = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { udfValues: true } });
+  if (!c) return res.status(404).json({ error: 'Contact not found' });
+  res.json({ data: c.udfValues ?? {} });
+}
+
+async function updateContactUdfs(req, res) {
+  const c = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { id: true, udfValues: true } });
+  if (!c) return res.status(404).json({ error: 'Contact not found' });
+  // Strip any non-UDF keys (e.g. clientId sent from client)
+  const values = Object.fromEntries(
+    Object.entries(req.body).filter(([k]) => /^udf_\d+$/.test(k))
+  );
+  const merged = { ...(c.udfValues ?? {}), ...values };
+  await prisma.contact.update({ where: { id: req.params.id }, data: { udfValues: merged } });
+  res.json({ data: merged });
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary, recalculateAllScores, getContactUdfs, updateContactUdfs };

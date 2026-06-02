@@ -60,4 +60,30 @@ async function deleteUdf(req, res) {
   res.json({ success: true });
 }
 
-export { listUdfs, createUdf, updateUdf, deleteUdf };
+async function listUdfValues(req, res) {
+  const cid = req.query.clientId;
+  const clientId = cid !== undefined ? (cid || null) : null;
+  const { fieldKey = '', search = '' } = req.query;
+
+  if (!/^udf_\d+$/.test(fieldKey)) {
+    return res.status(400).json({ error: 'Invalid fieldKey' });
+  }
+
+  const pattern = `%${search.toLowerCase()}%`;
+  let rows = [];
+  try {
+    if (clientId) {
+      rows = search
+        ? await prisma.$queryRaw`SELECT DISTINCT udf_values->>${fieldKey} AS value FROM contacts WHERE client_id = ${clientId} AND udf_values->>${fieldKey} IS NOT NULL AND udf_values->>${fieldKey} != '' AND LOWER(udf_values->>${fieldKey}) LIKE ${pattern} ORDER BY value LIMIT 50`
+        : await prisma.$queryRaw`SELECT DISTINCT udf_values->>${fieldKey} AS value FROM contacts WHERE client_id = ${clientId} AND udf_values->>${fieldKey} IS NOT NULL AND udf_values->>${fieldKey} != '' ORDER BY value LIMIT 50`;
+    } else {
+      rows = search
+        ? await prisma.$queryRaw`SELECT DISTINCT udf_values->>${fieldKey} AS value FROM contacts WHERE client_id IS NULL AND udf_values->>${fieldKey} IS NOT NULL AND udf_values->>${fieldKey} != '' AND LOWER(udf_values->>${fieldKey}) LIKE ${pattern} ORDER BY value LIMIT 50`
+        : await prisma.$queryRaw`SELECT DISTINCT udf_values->>${fieldKey} AS value FROM contacts WHERE client_id IS NULL AND udf_values->>${fieldKey} IS NOT NULL AND udf_values->>${fieldKey} != '' ORDER BY value LIMIT 50`;
+    }
+  } catch { /* silent */ }
+
+  res.json({ data: rows.map(r => r.value).filter(Boolean) });
+}
+
+export { listUdfs, createUdf, updateUdf, deleteUdf, listUdfValues };

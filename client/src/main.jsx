@@ -9,6 +9,7 @@ import { PoolProvider } from "./context/PoolContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
 import { ClientsProvider } from "./context/ClientsContext";
+import { UdfProvider } from "./context/UdfContext";
 import App from "./App";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -17,11 +18,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <ThemeProvider>
         <PoolProvider>
           <ClientsProvider>
-            <ToastProvider>
-              <ConfirmProvider>
-                <App />
-              </ConfirmProvider>
-            </ToastProvider>
+            <UdfProvider>
+              <ToastProvider>
+                <ConfirmProvider>
+                  <App />
+                </ConfirmProvider>
+              </ToastProvider>
+            </UdfProvider>
           </ClientsProvider>
         </PoolProvider>
       </ThemeProvider>
