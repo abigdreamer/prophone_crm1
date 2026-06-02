@@ -9,6 +9,7 @@ import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
+  inlineCss,
   injectUnsubUrl,
   buildEmailHeaders,
   buildUnsubUrl,
@@ -361,6 +362,8 @@ export const sendCampaign = async (req, res) => {
             ? substituteIntoHtml(tmpl.htmlOutput, vars)
             : renderTemplate(tmpl.body, vars);
 
+          html = inlineCss(html);
+
           if (trackingBase) {
             html = applyTracking(html, campaignId, r.id, trackingBase);
           }
@@ -571,6 +574,8 @@ export const sendToContacts = async (req, res) => {
             ? substituteIntoHtml(template.htmlOutput, vars)
             : renderTemplate(template.body, vars);
 
+          html = inlineCss(html);
+
           if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
 
           if (unsubUrl) html = injectUnsubUrl(html, unsubUrl);
@@ -736,6 +741,8 @@ export const resendCampaign = async (req, res) => {
           let html = tmpl.htmlOutput
             ? substituteIntoHtml(tmpl.htmlOutput, vars)
             : renderTemplate(tmpl.body, vars);
+
+          html = inlineCss(html);
 
           if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
 

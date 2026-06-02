@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Mail, FlaskConical, CheckCircle2,
   Loader2, Check, Search, MoreVertical, Megaphone, ChevronRight, Ban, RotateCcw, Copy,
-  Send, Eye, MousePointerClick, Share2,
+  Send, Eye, MousePointerClick, Share2, Pencil,
 } from "lucide-react";
 import ShareLinkModal from "../components/ui/ShareLinkModal";
 import { SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
@@ -13,7 +13,7 @@ import { usePool } from "../context/PoolContext";
 import { analytics } from "../services/analytics";
 import {
   getCampaigns, createCampaign, cancelCampaign, restoreCampaign,
-  duplicateCampaign, getPublishedTemplates, getActivePool, getClients,
+  duplicateCampaign, getPublishedTemplates, getActivePool, getClients, updateCampaign,
 } from "../services/api";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -31,18 +31,25 @@ function thisWeekCount(list) {
   return list.filter(c => new Date(c.createdAt) > cutoff).length;
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
+// ── Status helpers ────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }) {
+function getDisplayStatus(campaign) {
+  if (campaign.isCanceled || campaign.status === "paused" || campaign.status === "canceled") return "inactive";
+  if (campaign.status === "sending" || campaign.status === "sent") return "active";
+  return "pending"; // draft
+}
+
+function StatusBadge({ status, isCanceled }) {
   const T = useTheme();
+  const display = isCanceled ? "inactive" :
+    (status === "sending" || status === "sent") ? "active" :
+    (status === "paused" || status === "canceled") ? "inactive" : "pending";
   const map = {
-    draft:   { label: "Draft",    color: T.muted  },
-    sending: { label: "Sending",  color: T.amber  },
-    sent:    { label: "Sent",     color: T.green  },
-    paused:  { label: "Paused",   color: T.orange },
-    canceled:{ label: "Canceled", color: T.red    },
+    pending:  { label: "Pending",  color: T.muted  },
+    active:   { label: "Active",   color: status === "sending" ? T.amber : T.green },
+    inactive: { label: "Inactive", color: T.red    },
   };
-  const { label, color } = map[status] ?? { label: status, color: T.muted };
+  const { label, color } = map[display] ?? { label: display, color: T.muted };
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
@@ -71,30 +78,38 @@ function StatCell({ icon: Icon, value, color, T }) {
   );
 }
 
-function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicate, onShare }) {
+function CampaignRow({ campaign, isLast, onOpen, onEdit, onCancel, onRestore, onDuplicate, onShare }) {
   const T = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [hovered, setHovered]   = useState(false);
+  const [menuPos,  setMenuPos]  = useState({ top: 0, right: 0 });
+  const [hovered,  setHovered]  = useState(false);
   const menuRef = useRef(null);
+  const btnRef  = useRef(null);
 
   useEffect(() => {
     if (!menuOpen) return;
-    const h = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    const h = e => { if (menuRef.current && !menuRef.current.contains(e.target) && btnRef.current && !btnRef.current.contains(e.target)) setMenuOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
+  const openMenu = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    setMenuOpen(o => !o);
+  };
+
   const isSent          = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending");
-  const effectiveStatus = campaign.isCanceled ? "canceled" : campaign.status;
-  const isSending       = effectiveStatus === "sending";
+  const isSending       = !campaign.isCanceled && campaign.status === "sending";
+  const displayStatus   = getDisplayStatus(campaign);
 
   const statusBorder = {
-    sending:  T.amber,
-    sent:     T.green,
-    draft:    T.border,
-    paused:   T.orange,
-    canceled: T.red,
-  }[effectiveStatus] ?? T.border;
+    active:   campaign.status === "sending" ? T.amber : T.green,
+    pending:  T.border,
+    inactive: T.red,
+  }[displayStatus] ?? T.border;
 
   return (
     <div
@@ -175,7 +190,7 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
 
       {/* STATUS col */}
       <div>
-        <StatusBadge status={effectiveStatus} />
+        <StatusBadge status={campaign.status} isCanceled={campaign.isCanceled} />
       </div>
 
       {/* SENT col */}
@@ -188,9 +203,10 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
       <StatCell icon={MousePointerClick} value={isSent ? campaign.clickedCount : null} color="#a78bfa" T={T} />
 
       {/* ACTIONS col */}
-      <div ref={menuRef} style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
+      <div style={{ position: "relative", display: "flex", justifyContent: "center" }} onClick={e => e.stopPropagation()}>
         <button
-          onClick={() => setMenuOpen(o => !o)}
+          ref={btnRef}
+          onClick={openMenu}
           style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", background: menuOpen ? T.surface : "transparent", border: "1px solid " + (menuOpen ? T.border : "transparent"), borderRadius: 7, color: T.muted, cursor: "pointer", transition: "all 0.12s" }}
           onMouseEnter={e => { e.currentTarget.style.background = T.surface; e.currentTarget.style.borderColor = T.border; }}
           onMouseLeave={e => { if (!menuOpen) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; } }}
@@ -198,42 +214,25 @@ function CampaignRow({ campaign, isLast, onOpen, onCancel, onRestore, onDuplicat
           <MoreVertical size={14} />
         </button>
         {menuOpen && (
-          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 10, minWidth: 155, boxShadow: "0 12px 32px rgba(0,0,0,0.6)", padding: "4px 0" }}>
-            <button
-              onClick={() => { setMenuOpen(false); onDuplicate(campaign); }}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}
-              onMouseEnter={e => e.currentTarget.style.background = T.surface}
-              onMouseLeave={e => e.currentTarget.style.background = "none"}
-            >
-              <Copy size={12} /> Duplicate
-            </button>
-            <button
-              onClick={() => { setMenuOpen(false); onShare(campaign); }}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit", borderRadius: 6 }}
-              onMouseEnter={e => e.currentTarget.style.background = T.surface}
-              onMouseLeave={e => e.currentTarget.style.background = "none"}
-            >
-              <Share2 size={12} /> Share link
-            </button>
-            {campaign.isCanceled ? (
+          <div ref={menuRef} style={{ position: "fixed", top: menuPos.top, right: menuPos.right, zIndex: 9999, background: T.card, border: "1px solid " + T.border, borderRadius: 10, minWidth: 188, boxShadow: "0 12px 40px rgba(0,0,0,0.7)", padding: "4px 0" }}>
+            {[
+              { label: "Edit Campaign",      icon: <Pencil size={13} />,    onClick: () => { setMenuOpen(false); onEdit(campaign); } },
+              campaign.isCanceled
+                ? { label: "Restore Campaign", icon: <RotateCcw size={13} />, onClick: () => { setMenuOpen(false); onRestore(campaign); } }
+                : { label: "Cancel Campaign",  icon: <Ban size={13} />,       onClick: () => { setMenuOpen(false); onCancel(campaign); } },
+              { label: "Duplicate Campaign", icon: <Copy size={13} />,      onClick: () => { setMenuOpen(false); onDuplicate(campaign); } },
+              { label: "Share Link",         icon: <Share2 size={13} />,    onClick: () => { setMenuOpen(false); onShare(campaign); } },
+            ].map(item => (
               <button
-                onClick={() => { setMenuOpen(false); onRestore(campaign); }}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={e => e.currentTarget.style.background = T.green + "12"}
-                onMouseLeave={e => e.currentTarget.style.background = "none"}
+                key={item.label}
+                onClick={item.onClick}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", background: "none", border: "none", color: T.text, fontSize: 13, fontWeight: 400, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
+                onMouseEnter={e => { e.currentTarget.style.background = T.surface; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
               >
-                <RotateCcw size={12} /> Restore
+                {item.icon}{item.label}
               </button>
-            ) : (
-              <button
-                onClick={() => { setMenuOpen(false); onCancel(campaign); }}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: "none", border: "none", color: T.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={e => e.currentTarget.style.background = T.red + "12"}
-                onMouseLeave={e => e.currentTarget.style.background = "none"}
-              >
-                <Ban size={12} /> Cancel
-              </button>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -681,6 +680,162 @@ function NewCampaignModal({ onClose, onCreated }) {
   );
 }
 
+// ── Edit Campaign Modal ────────────────────────────────────────────────────────
+
+function EditCampaignModal({ campaign, onClose, onSaved }) {
+  const T = useTheme();
+  const [form, setForm] = useState({
+    name:        campaign.name        || "",
+    subject:     campaign.subject     || "",
+    subjectB:    campaign.subjectB    || "",
+    fromName:    campaign.fromName    || "",
+    fromEmail:   campaign.fromEmail   || "",
+    templateId:  campaign.templateId  || null,
+    templateIdB: campaign.templateIdB || null,
+  });
+  const [templates, setTemplates] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const isAB = campaign.type === "ab_test";
+
+  useEffect(() => {
+    getPublishedTemplates().then(setTemplates).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await updateCampaign(campaign.id, {
+        name:        form.name.trim(),
+        subject:     form.subject.trim(),
+        subjectB:    form.subjectB.trim(),
+        fromName:    form.fromName.trim(),
+        fromEmail:   form.fromEmail.trim(),
+        templateId:  form.templateId  || null,
+        templateIdB: form.templateIdB || null,
+      });
+      onSaved(updated);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const TemplatePicker = ({ selected, onSelect, accent, label }) => (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>{label}</div>
+      <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid " + T.border, borderRadius: 8, padding: 8 }}>
+        {templates.length === 0
+          ? Array.from({ length: 3 }).map((_, i) => <SkeletonBlock key={i} h={44} radius={6} style={{ marginBottom: 6 }} />)
+          : templates.map(t => {
+              const sel = selected === t.id;
+              return (
+                <div key={t.id} onClick={() => onSelect(t.id)} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 6,
+                  cursor: "pointer", marginBottom: 4,
+                  border: "1px solid " + (sel ? accent + "80" : T.border),
+                  background: sel ? accent + "10" : "transparent",
+                }}>
+                  <Mail size={12} color={sel ? accent : T.muted} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                    <div style={{ fontSize: 10, color: T.muted }}>{t.subject || "No subject"}</div>
+                  </div>
+                  {sel && <CheckCircle2 size={12} color={accent} />}
+                </div>
+              );
+            })
+        }
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        width: 520, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px 14px", borderBottom: "1px solid " + T.border }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.accent + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Pencil size={15} color={T.accent} />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Edit Campaign</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{campaign.name}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Campaign Name" required value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Campaign name" />
+
+          <TemplatePicker
+            label={isAB ? "Template A" : "Template"}
+            selected={form.templateId}
+            onSelect={id => {
+              const tpl = templates.find(t => t.id === id);
+              setForm(f => ({ ...f, templateId: id, subject: f.subject || tpl?.subject || "" }));
+            }}
+            accent={T.accent}
+          />
+
+          <Field label={isAB ? "Subject A" : "Subject Line"} value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} placeholder="Your email subject…" />
+
+          {isAB && (
+            <>
+              <TemplatePicker
+                label="Template B"
+                selected={form.templateIdB}
+                onSelect={id => {
+                  const tpl = templates.find(t => t.id === id);
+                  setForm(f => ({ ...f, templateIdB: id, subjectB: f.subjectB || tpl?.subject || "" }));
+                }}
+                accent={T.orange}
+              />
+              <Field label="Subject B" value={form.subjectB} onChange={v => setForm(f => ({ ...f, subjectB: v }))} placeholder="Subject for variant B…" />
+            </>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="From Name"  value={form.fromName}  onChange={v => setForm(f => ({ ...f, fromName: v }))}  placeholder="Company name" />
+            <Field label="From Email" type="email" value={form.fromEmail} onChange={v => setForm(f => ({ ...f, fromEmail: v }))} placeholder="sales@yourdomain.com" />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "14px 22px", borderTop: "1px solid " + T.border }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.name.trim()}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: form.name.trim() ? T.accent : T.border,
+              color: form.name.trim() ? "#fff" : T.muted,
+              fontSize: 13, fontWeight: 600,
+              cursor: saving || !form.name.trim() ? "default" : "pointer",
+              fontFamily: "inherit", opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Saving…</> : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Cancel / Restore Modals ────────────────────────────────────────────────────
 
 function CancelCampaignModal({ campaign, onClose, onConfirm, loading }) {
@@ -764,6 +919,7 @@ export default function CampaignsPage() {
   const [campaigns,    setCampaigns]    = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [showNew,      setShowNew]      = useState(false);
+  const [toEdit,       setToEdit]       = useState(null);
   const [toCancel,     setToCancel]     = useState(null);
   const [toRestore,    setToRestore]    = useState(null);
   const [acting,       setActing]       = useState(false);
@@ -817,8 +973,8 @@ export default function CampaignsPage() {
   }, [navigate]);
 
   const filtered = campaigns.filter(c => {
-    const effectiveStatus = c.isCanceled ? "canceled" : c.status;
-    const matchStatus = statusFilter === "all" || effectiveStatus === statusFilter;
+    const displayStatus = getDisplayStatus(c);
+    const matchStatus = statusFilter === "all" || displayStatus === statusFilter;
     const q = search.toLowerCase();
     const matchSearch = !q
       || c.name.toLowerCase().includes(q)
@@ -828,11 +984,9 @@ export default function CampaignsPage() {
   });
 
   const total    = campaigns.length;
-  const draft    = campaigns.filter(c => !c.isCanceled && c.status === "draft").length;
-  const active   = campaigns.filter(c => !c.isCanceled && c.status === "sending").length;
-  const sent     = campaigns.filter(c => !c.isCanceled && c.status === "sent").length;
-  const paused   = campaigns.filter(c => !c.isCanceled && c.status === "paused").length;
-  const canceled = campaigns.filter(c => c.isCanceled).length;
+  const pending  = campaigns.filter(c => getDisplayStatus(c) === "pending").length;
+  const active   = campaigns.filter(c => getDisplayStatus(c) === "active").length;
+  const inactive = campaigns.filter(c => getDisplayStatus(c) === "inactive").length;
   const newThisWeek = thisWeekCount(campaigns);
 
   return (
@@ -878,14 +1032,12 @@ export default function CampaignsPage() {
       </div>
 
       {/* ── Stats ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
         {[
-          { label: "Total",    value: total,    sub: "all time",          color: T.accent,  icon: Megaphone        },
-          { label: "Draft",    value: draft,    sub: "not sent yet",      color: T.muted,   icon: Mail             },
-          { label: "Sending",  value: active,   sub: "in progress",       color: T.amber,   icon: Loader2          },
-          { label: "Sent",     value: sent,     sub: "delivered",         color: T.green,   icon: CheckCircle2     },
-          { label: "Paused",   value: paused,   sub: "on hold",           color: T.orange,  icon: Eye              },
-          { label: "Canceled", value: canceled, sub: "archived",          color: T.red,     icon: Ban              },
+          { label: "Total",    value: total,    sub: "all campaigns",     color: T.accent,  icon: Megaphone    },
+          { label: "Pending",  value: pending,  sub: "not yet sent",      color: T.muted,   icon: Mail         },
+          { label: "Active",   value: active,   sub: "sent or sending",   color: T.green,   icon: CheckCircle2 },
+          { label: "Inactive", value: inactive, sub: "stopped or paused", color: T.red,     icon: Ban          },
         ].map(({ label, value, sub, color, icon: Icon }) => (
           <div key={label} style={{
             padding: "16px 18px",
@@ -925,10 +1077,10 @@ export default function CampaignsPage() {
           />
         </div>
         <div style={{ width: 1, height: 24, background: T.border }} />
-        {["all", "draft", "sending", "sent", "paused", "canceled"].map(s => {
+        {["all", "pending", "active", "inactive"].map(s => {
           const isActive = statusFilter === s;
-          const labelMap = { all: "All", draft: "Draft", sending: "Sending", sent: "Sent", paused: "Paused", canceled: "Canceled" };
-          const colorMap  = { sending: T.amber, sent: T.green, paused: T.orange, canceled: T.red, draft: T.muted, all: T.accent };
+          const labelMap = { all: "All", pending: "Pending", active: "Active", inactive: "Inactive" };
+          const colorMap  = { all: T.accent, pending: T.muted, active: T.green, inactive: T.red };
           const c = colorMap[s];
           return (
             <button key={s} onClick={() => setStatusFilter(s)} style={{
@@ -997,6 +1149,7 @@ export default function CampaignsPage() {
                 campaign={c}
                 isLast={idx === filtered.length - 1}
                 onOpen={() => navigate("/campaigns/" + c.id)}
+                onEdit={setToEdit}
                 onCancel={setToCancel}
                 onRestore={setToRestore}
                 onDuplicate={handleDuplicate}
@@ -1007,9 +1160,19 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {showNew    && <NewCampaignModal    onClose={() => setShowNew(false)}   onCreated={handleCreated} />}
-      {toCancel   && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
-      {toRestore  && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
+      {showNew  && <NewCampaignModal onClose={() => setShowNew(false)} onCreated={handleCreated} />}
+      {toEdit   && (
+        <EditCampaignModal
+          campaign={toEdit}
+          onClose={() => setToEdit(null)}
+          onSaved={updated => {
+            setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+            setToEdit(null);
+          }}
+        />
+      )}
+      {toCancel  && <CancelCampaignModal  campaign={toCancel}  onClose={() => setToCancel(null)}  onConfirm={handleCancel}  loading={acting} />}
+      {toRestore && <RestoreCampaignModal campaign={toRestore} onClose={() => setToRestore(null)} onConfirm={handleRestore} loading={acting} />}
       {shareTarget && (
         <ShareLinkModal
           title={`Share "${shareTarget.name}"`}
