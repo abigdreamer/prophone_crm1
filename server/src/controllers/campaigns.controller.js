@@ -288,13 +288,16 @@ export const sendCampaign = async (req, res) => {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
     }
 
+    // Reset contacts that were previously skipped so re-evaluation with current suppression rules applies
+    await repo.resetSkippedToPending(campaignId);
+
     // Load pending recipients — apply optional cap so large lists can be sent in batches over time
     const allRecipients = await repo.findPendingRecipientsForSend(campaignId, sendLimit || null);
     if (!allRecipients.length) return sendError(res, 'No pending recipients', 400);
 
     // Suppress contacts that have previously bounced or unsubscribed
     const contactIds = allRecipients.map(r => r.contactId).filter(Boolean);
-    const suppressedIds = await repo.findSuppressedContactIds(contactIds);
+    const suppressedIds = await repo.findSuppressedContactIds(contactIds, campaignId);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
 
     // Mark suppressed recipients so they don't stay as "pending"
@@ -525,7 +528,7 @@ export const sendToContacts = async (req, res) => {
 
     // Suppress previously bounced / unsubscribed contacts
     const dedupedIds = deduped.map(c => c.id);
-    const suppressedIds = await repo.findSuppressedContactIds(dedupedIds);
+    const suppressedIds = await repo.findSuppressedContactIds(dedupedIds, campaignId);
     const toSend = deduped.filter(c => !suppressedIds.has(c.id));
 
     if (!toSend.length) {
@@ -705,9 +708,10 @@ export const resendCampaign = async (req, res) => {
 
     await repo.updateCampaign(campaignId, { status: 'sending' });
 
+    await repo.resetSkippedToPending(campaignId);
     const allRecipients = await repo.findPendingRecipientsForSend(campaignId);
     const contactIds = allRecipients.map(r => r.contactId).filter(Boolean);
-    const suppressedIds = await repo.findSuppressedContactIds(contactIds);
+    const suppressedIds = await repo.findSuppressedContactIds(contactIds, campaignId);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
 
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
