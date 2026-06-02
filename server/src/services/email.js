@@ -145,8 +145,16 @@ export function buildEmailHeaders(unsubUrl, fromDomain) {
 
   return {
     'Message-ID': messageId,
-    'List-Unsubscribe': `<${unsubUrl}>`,
+
+    // Primary unsubscribe (RFC 8058 compliant)
+    'List-Unsubscribe': `<${unsubUrl}>, <mailto:unsubscribe@${domain}>`,
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+
+    // Bulk email classification signals
+    'Precedence': 'bulk',
+
+    // Gmail grouping / list identification
+    'List-ID': `Fina's Trattoria <news.${domain}>`,
   };
 }
 
