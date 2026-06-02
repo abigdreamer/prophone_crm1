@@ -12,7 +12,7 @@ import {
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 import { importHtml as processImport } from '../services/htmlImporter.js';
-import { injectUnsubscribeFooter } from '../services/email.js';
+import { injectUnsubscribeFooter, injectUnsubUrl } from '../services/email.js';
 
 // ── Guard: assert client exists ───────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export const createTemplate = async (req, res) => {
       subject,
       fromEmail:   resolvedFromEmail,
       body:        resolvedBody,
-      htmlOutput,
+      htmlOutput:  htmlOutput || '',
       trackedLinks: [],
       status,
     });
@@ -286,8 +286,10 @@ export const sendTestEmail = async (req, res) => {
       return sendError(res, 'Template has no HTML output. Open it in the builder and save it first.', 400);
     }
 
-    const rawHtml = template.htmlOutput.replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview');
-    const html = injectUnsubscribeFooter(rawHtml, '#', '');
+    const rawHtml = template.htmlOutput
+      .replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview')
+      .replace(/\{\{[^}]+\}\}/g, '');          // strip any remaining placeholders
+    const html = injectUnsubUrl(rawHtml, '#test-unsubscribe');
 
     let fromEmail = null;
     const clientDomain = await domainRepo.findFirstVerified(template.clientId ?? null);
