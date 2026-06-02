@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -127,6 +127,10 @@ function AppLayout({ currentUser, onSignOut }) {
   const [search, setSearch] = useState('');
   const searchRef = useRef(null);
   const toast = useAppToast();
+  const [editMode, setEditMode] = useState(false);
+
+  // Reset edit mode whenever the user navigates to a different contact
+  useEffect(() => { setEditMode(false); }, [selected?.id]); // eslint-disable-line
 
   // Debounce search so the API only fires 400 ms after the user stops typing
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -387,16 +391,16 @@ function AppLayout({ currentUser, onSignOut }) {
     setPool(p);
     setSelected(null);
     setCenterMode(null);
-    setContacts([]);
-  }, [setPool, setContacts]);
+    // useContacts clears contacts + sets loading atomically in its effect
+  }, [setPool]);
 
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool('client');
     setSelected(null);
     setCenterMode(null);
-    setContacts([]);
-  }, [setClientId, setPool, setContacts]);
+    // useContacts clears contacts + sets loading atomically in its effect
+  }, [setClientId, setPool]);
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
 
@@ -600,6 +604,8 @@ function AppLayout({ currentUser, onSignOut }) {
             clientId={clientId}
             onFormChange={setLiveFormData}
             onDirtyChange={v => { centerDirtyRef.current = v; }}
+            editMode={editMode}
+            onEditModeChange={setEditMode}
           />
         );
       }
@@ -840,6 +846,42 @@ function AppLayout({ currentUser, onSignOut }) {
               display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7,
               background: T.surface,
             }}>
+              {selected && (
+                <button
+                  onClick={() => setEditMode(v => !v)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 12px',
+                    background: editMode ? T.accent : 'transparent',
+                    border: '1px solid ' + (editMode ? T.accent : T.border),
+                    borderRadius: 20,
+                    color: editMode ? '#fff' : T.dim,
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'all 0.18s',
+                    boxShadow: editMode ? `0 2px 10px ${T.accent}44` : 'none',
+                    letterSpacing: '0.01em',
+                  }}
+                  onMouseEnter={e => {
+                    if (!editMode) {
+                      e.currentTarget.style.background = T.accent + '12';
+                      e.currentTarget.style.borderColor = T.accent + '70';
+                      e.currentTarget.style.color = T.accent;
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!editMode) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = T.border;
+                      e.currentTarget.style.color = T.dim;
+                    }
+                  }}
+                >
+                  {editMode
+                    ? <><Check size={12} strokeWidth={2.5} /> Done</>
+                    : <><PenLine size={12} strokeWidth={2} /> Edit Layout</>
+                  }
+                </button>
+              )}
               <button
                 onClick={() => { handleAddNew(); setMobileSidebarOpen(false); }}
                 style={{

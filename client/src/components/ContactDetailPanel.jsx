@@ -1,13 +1,17 @@
-import { useState, useEffect, useRef, forwardRef } from "react";
+import { useState, useEffect, useRef, forwardRef, createContext, useContext } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import { STAGE_DEF, ALL_STAGES } from "../data/stages";
-import { addActivity, getSettings } from "../services/api";
+import { addActivity, getSettings, saveSettings } from "../services/api";
 import { Spinner } from "./ui/Loader";
+import CustomFieldsSection from "./CustomFieldsSection";
 import {
-  User, TrendingUp, Building2, Wrench, Share2, FileText, Tag, ChevronDown,
+  User, TrendingUp, Building2, Wrench, Share2, FileText, Tag, ChevronDown, SlidersHorizontal,
 } from "lucide-react";
+
+// Context that passes edit-mode state down to F without prop-drilling
+const EditCtx = createContext(null);
 
 // ─── Stage helpers ────────────────────────────────────────────────────────────
 
@@ -70,6 +74,7 @@ function contactToForm(c) {
     ownedBy:               c.ownedBy               || "",
     tags:                  Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
     notes:                 c.notes                 || "",
+    udfValues:             c.udfValues             || {},
   };
 }
 
@@ -84,6 +89,7 @@ function emptyForm(currentUser) {
     socialLinks: {}, source: "", campaign: "",
     ownedBy: currentUser?.name || "",
     tags: "", notes: "",
+    udfValues: {},
   };
 }
 
@@ -120,6 +126,7 @@ function fieldNav(e) {
 export default function ContactDetailPanel({
   contact, onSave, onAction, currentUser, pool, clientId,
   onFormChange, onDirtyChange,
+  editMode = false, onEditModeChange,
 }) {
   const T     = useTheme();
   const toast = useAppToast();
@@ -127,7 +134,8 @@ export default function ContactDetailPanel({
 
   const [form, setForm]             = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
   const [saveStatus, setSaveStatus] = useState(null);
-  const [vis, setVis] = useState({});
+  const [vis, setVis]               = useState({});
+  const [sectionDragOverKey, setSectionDragOverKey] = useState(null);
 
   useEffect(() => {
     getSettings(clientId, "contact_fields")
@@ -139,14 +147,101 @@ export default function ContactDetailPanel({
       .catch(() => {});
   }, [clientId]);
 
-  const show = key => vis[key] !== false;
+  // In edit mode every field renders; visibility is communicated via styling only
+  const show = key => editMode ? true : vis[key] !== false;
+  const isFieldVisible  = key => vis[key] !== false;
 
-  const firstNameRef   = useRef(null);
-  const panelRef       = useRef(null);
-  const statusTimerRef = useRef(null);
-  const formRef        = useRef(form);
-  const dirtyRef       = useRef(false);
-  formRef.current      = form;
+  const saveVisTimer = useRef(null);
+
+  const toggleVis = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [key]: prev[key] !== false ? false : true };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => {
+        saveSettings(clientId, "contact_fields", next).catch(() => {});
+      }, 400);
+      return next;
+    });
+  };
+
+  const getFieldLabel  = (key) => vis[`label_${key}`] || null;
+  const saveFieldLabel = (key, newLabel) => {
+    const trimmed = newLabel.trim();
+    setVis(prev => {
+      const next = { ...prev };
+      if (trimmed) next[`label_${key}`] = trimmed;
+      else delete next[`label_${key}`];
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => {
+        saveSettings(clientId, "contact_fields", next).catch(() => {});
+      }, 400);
+      return next;
+    });
+  };
+
+  const SECTION_KEYS_LIST = ["contact_info", "pipeline", "company", "services", "social", "notes", "tags", "custom_fields"];
+  const rawSectionOrder   = Array.isArray(vis.section_order) ? vis.section_order : [];
+  const sectionOrder      = [
+    ...rawSectionOrder.filter(k => SECTION_KEYS_LIST.includes(k)),
+    ...SECTION_KEYS_LIST.filter(k => !rawSectionOrder.includes(k)),
+  ];
+
+  const isSectionCollapsed    = (key) => vis[`sec_col_${key}`] === true;
+  const toggleSectionCollapse = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [`sec_col_${key}`]: !prev[`sec_col_${key}`] };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+  const isSectionVisible  = (key) => vis[`sec_hid_${key}`] !== true;
+  const toggleSectionVis  = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [`sec_hid_${key}`]: !prev[`sec_hid_${key}`] };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+  const onSectionDragStart = (key) => { sectionDragIdxRef.current = key; };
+  const onSectionDragOver  = (e, key) => { e.preventDefault(); setSectionDragOverKey(key); };
+  const onSectionDragLeave = () => setSectionDragOverKey(null);
+  const onSectionDrop      = (e, key) => {
+    e.preventDefault();
+    setSectionDragOverKey(null);
+    const from = sectionDragIdxRef.current;
+    sectionDragIdxRef.current = null;
+    if (!from || from === key) return;
+    const order = [...sectionOrder];
+    const fi = order.indexOf(from);
+    const ti = order.indexOf(key);
+    if (fi < 0 || ti < 0) return;
+    order.splice(fi, 1);
+    order.splice(ti, 0, from);
+    setVis(prev => {
+      const next = { ...prev, section_order: order };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+
+  const editCtx = {
+    editMode, isFieldVisible, toggleVis, getFieldLabel, saveFieldLabel,
+    isSectionCollapsed, toggleSectionCollapse,
+    isSectionVisible, toggleSectionVis,
+    sectionOrder,
+    onSectionDragStart, onSectionDragOver, onSectionDragLeave, onSectionDrop, sectionDragOverKey,
+  };
+
+  const firstNameRef      = useRef(null);
+  const panelRef          = useRef(null);
+  const statusTimerRef    = useRef(null);
+  const formRef           = useRef(form);
+  const dirtyRef          = useRef(false);
+  const sectionDragIdxRef = useRef(null);
+  formRef.current         = form;
 
   const doSaveRef = useRef(null);
   doSaveRef.current = async () => {
@@ -167,7 +262,7 @@ export default function ContactDetailPanel({
     }
   };
 
-  useEffect(() => () => clearTimeout(statusTimerRef.current), []);
+  useEffect(() => () => { clearTimeout(statusTimerRef.current); clearTimeout(saveVisTimer.current); }, []);
 
   useEffect(() => {
     const handler = (e) => {
@@ -235,6 +330,12 @@ export default function ContactDetailPanel({
         return;
       }
       if (e.key !== "Escape") return;
+      if (editMode) {
+        e.stopImmediatePropagation();
+        onEditModeChange?.(false);
+        document.activeElement?.blur?.();
+        return;
+      }
       if (isNew) {
         e.stopImmediatePropagation();
         handleAddNew();
@@ -246,7 +347,7 @@ export default function ContactDetailPanel({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isNew]); // eslint-disable-line
+  }, [isNew, editMode]); // eslint-disable-line
 
   const set = (k, v) => {
     const next = { ...formRef.current, [k]: v };
@@ -259,6 +360,15 @@ export default function ContactDetailPanel({
 
   const setSocial = (k, v) => {
     const next = { ...formRef.current, socialLinks: { ...formRef.current.socialLinks, [k]: v } };
+    formRef.current = next;
+    dirtyRef.current = true;
+    setForm(next);
+    onFormChange?.(next);
+    onDirtyChange?.(true);
+  };
+
+  const setUdf = (sortKey, val) => {
+    const next = { ...formRef.current, udfValues: { ...formRef.current.udfValues, [sortKey]: val } };
     formRef.current = next;
     dirtyRef.current = true;
     setForm(next);
@@ -295,11 +405,12 @@ export default function ContactDetailPanel({
 
 
   return (
+    <EditCtx.Provider value={editCtx}>
     <div ref={panelRef} style={{ width: "100%", paddingBottom: 24 }}>
 
       {/* Save status bar */}
-      {(saveStatus || isNew) && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 8, minHeight: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {saveStatus === "saving" && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
               <Spinner size={10} color={T.muted} /> Saving…
@@ -311,69 +422,75 @@ export default function ContactDetailPanel({
           {isNew && !saveStatus && (
             <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
           )}
+          {editMode && !saveStatus && (
+            <span style={{ fontSize: 11, color: T.accent, fontStyle: "italic" }}>Press Esc to exit</span>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* sections — flex column so CSS order can resequence them */}
+      <div style={{ display: "flex", flexDirection: "column" }}>
 
       {/* ── CONTACT INFO ──────────────────────────────────────────────────────── */}
-      <Section icon={User} title="Contact Info" T={T}>
+      <Section icon={User} title="Contact Info" T={T} sectionKey="contact_info">
         <G cols="1fr 1fr 1fr 1fr">
-          {show("firstName") && <F label="First Name"><FInput inputRef={firstNameRef} value={form.firstName} onChange={v => set("firstName", v)} placeholder="First name" /></F>}
-          {show("lastName") && <F label="Last Name"><FInput value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last name" /></F>}
-          {show("title") && <F label="Title"><FInput value={form.title} onChange={v => set("title", v)} placeholder="Job title" /></F>}
-          {show("phone") && <F label="Phone"><FInput value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} /></F>}
+          {show("firstName") && <F label="First Name" fieldKey="firstName"><FInput inputRef={firstNameRef} value={form.firstName} onChange={v => set("firstName", v)} placeholder="First name" /></F>}
+          {show("lastName")  && <F label="Last Name"  fieldKey="lastName"><FInput value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last name" /></F>}
+          {show("title")     && <F label="Title"      fieldKey="title"><FInput value={form.title} onChange={v => set("title", v)} placeholder="Job title" /></F>}
+          {show("phone")     && <F label="Phone"      fieldKey="phone"><FInput value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} /></F>}
         </G>
         {(show("email") || show("website")) && (
           <G cols="1fr 1fr">
-            {show("email") && <F label="Email"><FInput value={form.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" /></F>}
-            {show("website") && <F label="Website"><FInput value={form.website} onChange={v => set("website", v)} placeholder="https://website.com" onBlur={() => { const v = (form.website||"").trim(); if(v && !/^https?:\/\//i.test(v)) set("website","https://"+v); }} /></F>}
+            {show("email")   && <F label="Email"   fieldKey="email"><FInput value={form.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" /></F>}
+            {show("website") && <F label="Website" fieldKey="website"><FInput value={form.website} onChange={v => set("website", v)} placeholder="https://website.com" onBlur={() => { const v = (form.website||"").trim(); if(v && !/^https?:\/\//i.test(v)) set("website","https://"+v); }} /></F>}
           </G>
         )}
-        {show("address") && (
+        {(show("address") || show("city") || show("state") || show("zip")) && (
           <G cols="2fr 1fr 1fr 1fr" mb={0}>
-            <F label="Address"><FInput value={form.address} onChange={v => set("address", v)} placeholder="Street address" /></F>
-            <F label="City"><FInput value={form.city} onChange={v => set("city", v)} placeholder="City" /></F>
-            <F label="State"><FInput value={form.state} onChange={v => set("state", v)} placeholder="State" /></F>
-            <F label="Zip"><FInput value={form.zip} onChange={v => set("zip", v)} placeholder="Zip" /></F>
+            {show("address") && <F label="Address" fieldKey="address"><FInput value={form.address} onChange={v => set("address", v)} placeholder="Street address" /></F>}
+            {show("city")    && <F label="City"    fieldKey="city"><FInput value={form.city} onChange={v => set("city", v)} placeholder="City" /></F>}
+            {show("state")   && <F label="State"   fieldKey="state"><FInput value={form.state} onChange={v => set("state", v)} placeholder="State" /></F>}
+            {show("zip")     && <F label="Zip"     fieldKey="zip"><FInput value={form.zip} onChange={v => set("zip", v)} placeholder="Zip" /></F>}
           </G>
         )}
       </Section>
 
       {/* ── PIPELINE ──────────────────────────────────────────────────────────── */}
       {(show("lifecycleStage") || show("leadScore")) && (
-        <Section icon={TrendingUp} title="Pipeline" T={T}>
+        <Section icon={TrendingUp} title="Pipeline" T={T} sectionKey="pipeline">
           <G cols="1fr 1fr" mb={0}>
             {show("lifecycleStage") && (
-              <F label="Lead Stage">
+              <F label="Lead Stage" fieldKey="lifecycleStage">
                 <InlineStageSelect
                   value={form.lifecycleStage}
                   onChange={(newStage) => set("lifecycleStage", newStage)}
                 />
               </F>
             )}
-            {show("leadScore") && <F label="Lead Score"><FInput value={form.leadScore} onChange={v => set("leadScore", v)} placeholder="0" onKeyDown={numKey} /></F>}
+            {show("leadScore") && <F label="Lead Score" fieldKey="leadScore"><FInput value={form.leadScore} onChange={v => set("leadScore", v)} placeholder="0" onKeyDown={numKey} /></F>}
           </G>
         </Section>
       )}
 
       {/* ── COMPANY & ACCOUNT ─────────────────────────────────────────────────── */}
       {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue") || show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
-        <Section icon={Building2} title="Company & Account" T={T}>
+        <Section icon={Building2} title="Company & Account" T={T} sectionKey="company">
           {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue")) && (
             <G cols="2fr 1fr 1fr 1fr 1fr">
-              {show("company") && <F label="Company"><FInput value={form.company} onChange={v => set("company", v)} placeholder="Company name" /></F>}
-              {show("accountSize") && <F label="Account Size"><FInput value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="e.g. 1-5" /></F>}
-              {show("trucks") && <F label="Trucks"><FInput value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} /></F>}
-              {show("estAnnualRevenue") && <F label="Est. Revenue"><FInput value={form.estAnnualRevenue} onChange={v => set("estAnnualRevenue", v)} placeholder="$0" /></F>}
-              {show("contractValue") && <F label="Contract ($)"><FInput value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("company")        && <F label="Company"      fieldKey="company"><FInput value={form.company} onChange={v => set("company", v)} placeholder="Company name" /></F>}
+              {show("accountSize")   && <F label="Account Size"  fieldKey="accountSize"><FInput value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="e.g. 1-5" /></F>}
+              {show("trucks")        && <F label="Trucks"        fieldKey="trucks"><FInput value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("estAnnualRevenue") && <F label="Est. Revenue" fieldKey="estAnnualRevenue"><FInput value={form.estAnnualRevenue} onChange={v => set("estAnnualRevenue", v)} placeholder="$0" /></F>}
+              {show("contractValue") && <F label="Contract ($)"  fieldKey="contractValue"><FInput value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} /></F>}
             </G>
           )}
           {(show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
             <G cols="1fr 1fr 1fr" mb={0}>
-              {show("yearsInBusiness") && <F label="Years in Business"><FInput value={form.yearsInBusiness} onChange={v => set("yearsInBusiness", v)} placeholder="0" onKeyDown={numKey} /></F>}
-              {show("serviceAreaMiles") && <F label="Service Area (mi)"><FInput value={form.serviceAreaMiles} onChange={v => set("serviceAreaMiles", v)} placeholder="0" onKeyDown={numKey} /></F>}
-              {show("dispatcherSoftware") && <F label="Dispatcher Software"><FInput value={form.dispatcherSoftware} onChange={v => set("dispatcherSoftware", v)} placeholder="e.g. Omadi" /></F>}
-              {show("source") && <F label="Source"><FInput value={form.source} onChange={v => set("source", v)} placeholder="e.g. Cold Call" /></F>}
-              {show("campaign") && <F label="Campaign"><FInput value={form.campaign} onChange={v => set("campaign", v)} placeholder="Campaign name" /></F>}
+              {show("yearsInBusiness")    && <F label="Years in Business"    fieldKey="yearsInBusiness"><FInput value={form.yearsInBusiness} onChange={v => set("yearsInBusiness", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("serviceAreaMiles")  && <F label="Service Area (mi)"    fieldKey="serviceAreaMiles"><FInput value={form.serviceAreaMiles} onChange={v => set("serviceAreaMiles", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("dispatcherSoftware") && <F label="Dispatcher Software" fieldKey="dispatcherSoftware"><FInput value={form.dispatcherSoftware} onChange={v => set("dispatcherSoftware", v)} placeholder="e.g. Omadi" /></F>}
+              {show("source")   && <F label="Source"   fieldKey="source"><FInput value={form.source} onChange={v => set("source", v)} placeholder="e.g. Cold Call" /></F>}
+              {show("campaign") && <F label="Campaign" fieldKey="campaign"><FInput value={form.campaign} onChange={v => set("campaign", v)} placeholder="Campaign name" /></F>}
             </G>
           )}
         </Section>
@@ -381,16 +498,16 @@ export default function ContactDetailPanel({
 
       {/* ── SERVICES & OPERATIONS ─────────────────────────────────────────────── */}
       {(show("servicesOffered") || show("motorClubAffiliations") || show("painPoints")) && (
-        <Section icon={Wrench} title="Services & Operations" T={T}>
+        <Section icon={Wrench} title="Services & Operations" T={T} sectionKey="services">
           {(show("servicesOffered") || show("motorClubAffiliations")) && (
             <G cols="1fr 1fr">
-              {show("servicesOffered") && <F label="Services Offered"><FTextarea value={form.servicesOffered} onChange={v => set("servicesOffered", v)} placeholder="Heavy Duty, Semi Recovery, Accident…" rows={2} /></F>}
-              {show("motorClubAffiliations") && <F label="Motor Club Affiliations"><FTextarea value={form.motorClubAffiliations} onChange={v => set("motorClubAffiliations", v)} placeholder="State Farm, NSD…" rows={2} /></F>}
+              {show("servicesOffered")       && <F label="Services Offered"        fieldKey="servicesOffered"><FTextarea value={form.servicesOffered} onChange={v => set("servicesOffered", v)} placeholder="Heavy Duty, Semi Recovery, Accident…" rows={2} /></F>}
+              {show("motorClubAffiliations") && <F label="Motor Club Affiliations" fieldKey="motorClubAffiliations"><FTextarea value={form.motorClubAffiliations} onChange={v => set("motorClubAffiliations", v)} placeholder="State Farm, NSD…" rows={2} /></F>}
             </G>
           )}
           {show("painPoints") && (
             <G cols="1fr" mb={0}>
-              <F label="Pain Points"><FTextarea value={form.painPoints} onChange={v => set("painPoints", v)} placeholder="Key pain points or challenges…" rows={2} /></F>
+              <F label="Pain Points" fieldKey="painPoints"><FTextarea value={form.painPoints} onChange={v => set("painPoints", v)} placeholder="Key pain points or challenges…" rows={2} /></F>
             </G>
           )}
         </Section>
@@ -412,10 +529,10 @@ export default function ContactDetailPanel({
         if (ALL_SOCIAL.length === 0) return null;
 
         return (
-          <Section icon={Share2} title="Social Links" T={T}>
+          <Section icon={Share2} title="Social Links" T={T} sectionKey="social">
             <G cols="1fr 1fr 1fr 1fr" mb={0}>
-              {ALL_SOCIAL.map(({ key, label, ph }) => (
-                <F key={key} label={label}>
+              {ALL_SOCIAL.map(({ key, label, ph, vis: vk }) => (
+                <F key={key} label={label} fieldKey={vk}>
                   <FInput value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={ph} />
                 </F>
               ))}
@@ -426,9 +543,9 @@ export default function ContactDetailPanel({
 
       {/* ── NOTES ─────────────────────────────────────────────────────────────── */}
       {show("notes") && (
-        <Section icon={FileText} title="Notes" T={T}>
+        <Section icon={FileText} title="Notes" T={T} sectionKey="notes">
           <G cols="1fr" mb={0}>
-            <F label="Notes">
+            <F label="Notes" fieldKey="notes">
               <FTextarea value={form.notes} onChange={v => set("notes", v)} placeholder="Add notes about this contact…" rows={3} />
             </F>
           </G>
@@ -437,9 +554,9 @@ export default function ContactDetailPanel({
 
       {/* ── TAGS ──────────────────────────────────────────────────────────────── */}
       {show("tags") && (
-        <Section icon={Tag} title="Tags" T={T} last>
+        <Section icon={Tag} title="Tags" T={T} sectionKey="tags">
           <G cols="1fr" mb={parsedTags.length > 0 ? 10 : 0}>
-            <F label="Tags">
+            <F label="Tags" fieldKey="tags">
               <FInput value={form.tags} onChange={v => set("tags", v)} placeholder="tag1, tag2, tag3  (comma-separated)" />
             </F>
           </G>
@@ -457,9 +574,25 @@ export default function ContactDetailPanel({
         </Section>
       )}
 
+      {/* ── CUSTOM FIELDS ─────────────────────────────────────────────────────── */}
+      <Section icon={SlidersHorizontal} title="Custom Fields" T={T} sectionKey="custom_fields">
+        <CustomFieldsSection
+          clientId={clientId}
+          contactId={contact?.id}
+          udfValues={form.udfValues || {}}
+          onValueChange={setUdf}
+          toast={toast}
+          editMode={editMode}
+          noWrapper
+        />
+      </Section>
+
+      </div>{/* end sections flex container */}
+
       {/* ── Cancellation info ─────────────────────────────────────────────────── */}
       {contact?.isCanceled && (
         <div style={{
+          marginTop: 12,
           display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
           background: T.red + "08", border: "1px solid " + T.red + "30",
           borderRadius: 6, marginTop: 4, overflow: "hidden",
@@ -478,6 +611,7 @@ export default function ContactDetailPanel({
       )}
 
     </div>
+    </EditCtx.Provider>
   );
 }
 
@@ -493,17 +627,66 @@ function G({ cols, children, gap = "10px 14px", mb = 12 }) {
 
 // ─── Section card ─────────────────────────────────────────────────────────────
 
-function Section({ icon: Icon, title, children, T, last = false }) {
+function Section({ icon: Icon, title, children, T, sectionKey }) {
+  const ctx = useContext(EditCtx);
+  const em  = ctx?.editMode ?? false;
+
+  const isCollapsed = sectionKey ? (ctx?.isSectionCollapsed?.(sectionKey) ?? false) : false;
+  const isVisible   = sectionKey ? (ctx?.isSectionVisible?.(sectionKey)   ?? true)  : true;
+  const isDragOver  = !!(sectionKey && ctx?.sectionDragOverKey === sectionKey);
+  const order       = sectionKey && ctx?.sectionOrder ? ctx.sectionOrder.indexOf(sectionKey) : undefined;
+
+  if (!em && sectionKey && !isVisible) return null;
+
   return (
-    <div style={{
-      background: T.card,
-      borderRadius: 8,
-      padding: "14px 16px",
-      marginBottom: last ? 0 : 12,
-    }}>
-      {/* Header */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 10, borderBottom: "1.5px solid " + T.border }}>
+    <div
+      onDragOver={em && sectionKey ? (e) => ctx.onSectionDragOver(e, sectionKey) : undefined}
+      onDragLeave={em && sectionKey ? ctx.onSectionDragLeave : undefined}
+      onDrop={em && sectionKey ? (e) => ctx.onSectionDrop(e, sectionKey) : undefined}
+      style={{
+        background: T.card,
+        borderRadius: 8,
+        padding: "14px 16px",
+        marginBottom: 12,
+        order: order !== undefined && order >= 0 ? order : undefined,
+        opacity: em && sectionKey && !isVisible ? 0.45 : 1,
+        outline: isDragOver ? `2px solid ${T.accent}60` : "none",
+        outlineOffset: -2,
+        transition: "opacity 0.2s",
+      }}
+    >
+      <div style={{ marginBottom: isCollapsed ? 0 : 14 }}>
+        <div
+          onClick={() => sectionKey && ctx?.toggleSectionCollapse?.(sectionKey)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            paddingBottom: isCollapsed ? 0 : 10,
+            borderBottom: isCollapsed ? "none" : "1.5px solid " + T.border,
+            cursor: sectionKey ? "pointer" : "default",
+            userSelect: "none",
+          }}
+        >
+          {em && sectionKey && (
+            <span
+              draggable
+              onDragStart={e => { e.stopPropagation(); ctx.onSectionDragStart?.(sectionKey); }}
+              onClick={e => e.stopPropagation()}
+              title="Drag to reorder"
+              style={{ color: T.muted, fontSize: 16, lineHeight: 1, cursor: "grab", flexShrink: 0, userSelect: "none" }}
+            >
+              ⠿
+            </span>
+          )}
+          {em && sectionKey && (
+            <input
+              type="checkbox"
+              checked={isVisible}
+              onChange={() => ctx.toggleSectionVis?.(sectionKey)}
+              onClick={e => e.stopPropagation()}
+              title={isVisible ? "Hide section" : "Show section"}
+              style={{ width: 12, height: 12, cursor: "pointer", accentColor: T.accent, flexShrink: 0, margin: 0 }}
+            />
+          )}
           <div style={{
             width: 26, height: 26, borderRadius: 6, flexShrink: 0,
             background: T.accent + "1a",
@@ -511,26 +694,103 @@ function Section({ icon: Icon, title, children, T, last = false }) {
           }}>
             <Icon size={13} color={T.accent} strokeWidth={2.2} />
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: "0.01em" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: "0.01em", flex: 1 }}>
             {title}
           </span>
+          {sectionKey && (
+            <ChevronDown
+              size={14}
+              color={T.muted}
+              style={{
+                flexShrink: 0,
+                transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+              }}
+            />
+          )}
         </div>
       </div>
-      {children}
+      {!isCollapsed && children}
     </div>
   );
 }
 
 // ─── Field wrapper ────────────────────────────────────────────────────────────
 
-function F({ label, children }) {
-  const T = useTheme();
+function F({ label, children, fieldKey }) {
+  const T   = useTheme();
+  const ctx = useContext(EditCtx);
+
+  const em      = ctx?.editMode ?? false;
+  const visible = !fieldKey || (ctx?.isFieldVisible(fieldKey) ?? true);
+
+  const [editingLabel, setEditingLabel] = useState(false);
+  const [labelDraft,   setLabelDraft]   = useState("");
+
+  // Resolved display label (may have been renamed)
+  const displayLabel = fieldKey ? (ctx?.getFieldLabel(fieldKey) || label) : label;
+
+  function startLabelEdit() {
+    setLabelDraft(displayLabel || "");
+    setEditingLabel(true);
+  }
+  function commitLabelEdit() {
+    ctx?.saveFieldLabel(fieldKey, labelDraft);
+    setEditingLabel(false);
+  }
+  function cancelLabelEdit() {
+    setEditingLabel(false);
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 5,
+      opacity: em && !visible ? 0.38 : 1,
+      transition: "opacity 0.2s",
+    }}>
       {label && (
-        <label style={{ fontSize: 11, fontWeight: 600, color: T.muted, letterSpacing: "0.02em" }}>
-          {label}
-        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          {em && fieldKey && (
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={() => ctx.toggleVis(fieldKey)}
+              title={visible ? "Hide this field" : "Show this field"}
+              style={{ width: 12, height: 12, cursor: "pointer", accentColor: T.accent, flexShrink: 0, margin: 0 }}
+            />
+          )}
+          {em && fieldKey && editingLabel ? (
+            <input
+              autoFocus
+              value={labelDraft}
+              onChange={e => setLabelDraft(e.target.value)}
+              onBlur={commitLabelEdit}
+              onKeyDown={e => {
+                if (e.key === "Enter")  { e.preventDefault(); commitLabelEdit(); }
+                if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+              }}
+              style={{
+                fontSize: 11, fontWeight: 600, color: T.accent,
+                background: T.bg, border: "1px solid " + T.accent,
+                borderRadius: 3, padding: "1px 5px", outline: "none",
+                fontFamily: "inherit", letterSpacing: "0.02em",
+              }}
+            />
+          ) : (
+            <label
+              onClick={em && fieldKey ? startLabelEdit : undefined}
+              title={em && fieldKey ? "Click to rename" : undefined}
+              style={{
+                fontSize: 11, fontWeight: 600, color: T.muted,
+                letterSpacing: "0.02em",
+                cursor: em && fieldKey ? "text" : "default",
+                userSelect: "none",
+              }}
+            >
+              {displayLabel}
+            </label>
+          )}
+        </div>
       )}
       {children}
     </div>

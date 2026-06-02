@@ -1,18 +1,16 @@
 import { useSearchParams } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
-import { LayoutGrid, FolderOpen, Users, ChevronRight, Sliders } from "lucide-react";
+import { FolderOpen, Users, ChevronRight } from "lucide-react";
 
 const ITEMS = [
-  { id: "contact_fields",  label: "Contact Fields",  Icon: LayoutGrid },
-  { id: "custom_fields",   label: "Custom Fields",   Icon: Sliders    },
-  { id: "clients",         label: "Clients",         Icon: FolderOpen },
-  { id: "user",            label: "Users",            Icon: Users      },
+  { id: "clients", label: "Clients", Icon: FolderOpen },
+  { id: "user",    label: "Users",   Icon: Users      },
 ];
 
 export default function SettingsSubNav() {
   const T = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "contact_fields";
+  const activeTab = searchParams.get("tab") || "clients";
 
   return (
     <div style={{
