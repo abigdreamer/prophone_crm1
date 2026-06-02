@@ -190,10 +190,21 @@ function blockToHtml(block) {
 
 // Appends a preview unsubscribe footer to HTML for display in iframes.
 // Uses a click-disabled "#" href — real URLs are injected server-side on actual sends.
+// Matches the exact compact footer that the server's injectUnsubscribeTemplate appends.
+const SYSTEM_FOOTER_PREVIEW_RE = /<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:20px 24px 24px;border-top:1px solid #e5e7eb;"><p[^>]*>You are receiving this email as part of our outreach\.<br><a[^>]*>Unsubscribe<\/a><\/p><\/td><\/tr><\/table>/g;
+
 function withPreviewUnsub(html) {
   if (!html) return html;
+  // Replace send-time placeholders so preview shows a real-looking URL
+  let sanitized = html
+    .replace(/\{\{contact_id\}\}/g, 'preview')
+    .replace(/\{\{token\}\}/g, 'preview');
+  // Strip any system-injected footer — if the template has its own Unsubscribe
+  // link the footer is redundant; if it doesn't, we add our own preview stub below.
+  sanitized = sanitized.replace(SYSTEM_FOOTER_PREVIEW_RE, '');
+  if (/unsubscribe/i.test(sanitized)) return sanitized;
   const footer = `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:20px 24px 24px;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">You are receiving this email as part of our outreach.<br><a href="#" onclick="return false" style="color:#9ca3af;text-decoration:underline;">Unsubscribe</a></p></td></tr></table>`;
-  return html.includes('</body>') ? html.replace('</body>', footer + '</body>') : html + footer;
+  return sanitized.includes('</body>') ? sanitized.replace('</body>', footer + '</body>') : sanitized + footer;
 }
 
 function bodyToHtml(body) {
@@ -1392,20 +1403,30 @@ function InlinePreview({ body, name, onClose }) {
 }
 
 // ─── Mode chooser ────────────────────────────────────────────────────────────
-function ChooseModeModal({ onChoose, onCancel }) {
+function ChooseModeModal({ onChoose, onCancel, loading }) {
   const C = useContext(CCtx);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 800, fontFamily: "inherit" }}>
-      <div style={{ background: C.surface, borderRadius: 20, padding: "40px 36px 32px", maxWidth: 520, width: "90%", boxShadow: C.shadowLg, border: `1px solid ${C.border}` }}>
+      <div style={{ position: "relative", background: C.surface, borderRadius: 20, padding: "40px 36px 36px", maxWidth: 520, width: "90%", boxShadow: C.shadowLg, border: `1px solid ${C.border}` }}>
+        {/* X close button */}
+        <button
+          onClick={onCancel}
+          style={{ position: "absolute", top: 14, right: 14, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.muted }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.border; e.currentTarget.style.color = C.text; }}
+          onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.muted; }}
+        >
+          <X size={15} />
+        </button>
         <div style={{ textAlign: "center", marginBottom: 30 }}>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>Choose how to create</h2>
           <p style={{ margin: "8px 0 0", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>Start with the visual builder or write / import HTML directly</p>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <button
-            onClick={() => onChoose("visual")}
-            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; }}
+            onClick={() => !loading && onChoose("visual")}
+            disabled={loading}
+            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s", opacity: loading ? 0.6 : 1 }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.borderColor = C.accent; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
           >
             <div style={{ width: 64, height: 64, borderRadius: 18, background: C.accentLo, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1417,9 +1438,10 @@ function ChooseModeModal({ onChoose, onCancel }) {
             </div>
           </button>
           <button
-            onClick={() => onChoose("html")}
-            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; }}
+            onClick={() => !loading && onChoose("html")}
+            disabled={loading}
+            style={{ background: C.bg, border: `2px solid ${C.border}`, borderRadius: 16, padding: "28px 20px 24px", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center", transition: "border-color 0.15s", opacity: loading ? 0.6 : 1 }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.borderColor = C.accent; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
           >
             <div style={{ width: 64, height: 64, borderRadius: 18, background: "#1a2236", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1431,9 +1453,9 @@ function ChooseModeModal({ onChoose, onCancel }) {
             </div>
           </button>
         </div>
-        {onCancel && (
-          <div style={{ textAlign: "center", marginTop: 22 }}>
-            <button onClick={onCancel} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+        {loading && (
+          <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: C.muted, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Creating draft…
           </div>
         )}
       </div>
@@ -1608,32 +1630,35 @@ function HtmlEditorContent({ htmlCode, onHtmlChange, subject, onSubjectChange, f
 }
 
 // ─── Email builder view ───────────────────────────────────────────────────────
-function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
+function EmailBuilder({ templateId, onBack, onSaved }) {
   const C = useContext(CCtx);
-  const [name,       setName]       = useState("Untitled Template");
+  const [name,       setName]       = useState("Untitled");
   const [subject,    setSubject]    = useState("");
   const [blocks,     setBlocks]     = useState(DEFAULT_BLOCKS);
   const [settings,   setSettings]   = useState({ backgroundColor: "#f4f4f4", containerBg: "#ffffff", containerWidth: 600 });
   const [from,       setFrom]       = useState("");
   const [selectedId, setSelectedId] = useState(null);
-  const [saving,  setSaving]  = useState(false);
-  const [tid,     setTid]     = useState(templateId || null);
+  const [saving,     setSaving]     = useState(false);
+  const [autoSaved,  setAutoSaved]  = useState(false);
+  const [tid,        setTid]        = useState(templateId || null);
   const toast = useAppToast();
   const [loading,    setLoading]    = useState(!!templateId);
   const [domains,    setDomains]    = useState([]);
   const [fromOpen,   setFromOpen]   = useState(false);
   const [dragIdx,    setDragIdx]    = useState(null);
   const [dropIdx,    setDropIdx]    = useState(null);
-  const [editingName,   setEditingName]   = useState(false);
-  const [previewMode,   setPreviewMode]   = useState(false);
-  const [previewDevice, setPreviewDevice] = useState("desktop");
-  const [sidebarTab,    setSidebarTab]    = useState("blocks");
-  const [blockSearch,   setBlockSearch]   = useState("");
-  const [settingsTab,   setSettingsTab]   = useState("style");
+  const [editingName,    setEditingName]    = useState(false);
+  const [previewDevice,  setPreviewDevice]  = useState("desktop");
+  const [sidebarTab,     setSidebarTab]     = useState("blocks");
+  const [blockSearch,    setBlockSearch]    = useState("");
+  const [settingsTab,    setSettingsTab]    = useState("style");
   const [blockEditorTab, setBlockEditorTab] = useState("content");
-  const fromRef      = useRef(null);
-  const canvasRef    = useRef(null);
-  const savedScroll  = useRef(null);
+  const fromRef       = useRef(null);
+  const canvasRef     = useRef(null);
+  const savedScroll   = useRef(null);
+  const autoSaveTimer = useRef(null);
+  const didLoadRef    = useRef(false);
+  const tidRef        = useRef(tid);
 
   const selectedBlock = blocks.find(b => b.id === selectedId) || null;
 
@@ -1647,20 +1672,28 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
     }
   });
 
+  useEffect(() => { tidRef.current = tid; }, [tid]);
+
   useEffect(() => {
     if (templateId) {
       setLoading(true);
       store.getTemplateById(templateId).then(t => {
-        setName(t.name || "Untitled Template");
+        setName(t.name || "Untitled");
         setSubject(t.subject || "");
         const body = t.body || {};
         setBlocks(body.blocks?.length ? body.blocks : [...DEFAULT_BLOCKS]);
         setSettings({ backgroundColor: body.backgroundColor || "#f4f4f4", containerBg: body.containerBg || "#ffffff", containerWidth: body.containerWidth || 600 });
         setFrom(body.from || "");
         setTid(templateId);
-      }).catch(() => {}).finally(() => setLoading(false));
+      }).catch(() => {}).finally(() => {
+        setLoading(false);
+        // Allow auto-save to fire after initial data is loaded
+        setTimeout(() => { didLoadRef.current = true; }, 300);
+      });
+    } else {
+      didLoadRef.current = true;
     }
-  }, [templateId]);
+  }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     store.getDomains().then(d => {
@@ -1673,16 +1706,6 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
         }
       }
     }).catch(() => {});
-  }, []);
-
-  // Auto-create a draft on mount for new templates so they always have an ID
-  // (enables share links and prevents accidental loss on tab close)
-  useEffect(() => {
-    if (templateId) return;
-    const defaultBody = { version: 1, backgroundColor: "#f4f4f4", containerBg: "#ffffff", containerWidth: 600, blocks: DEFAULT_BLOCKS };
-    store.createTemplate({ name: "Untitled Template", subject: "", body: defaultBody, htmlOutput: bodyToHtml(defaultBody), status: "draft" })
-      .then(created => setTid(created.id))
-      .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1692,6 +1715,22 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
+
+  // Auto-save: debounce 2s after any content change
+  useEffect(() => {
+    if (!didLoadRef.current || !tidRef.current) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      const body = buildBody();
+      const htmlOutput = bodyToHtml(body);
+      try {
+        await store.updateTemplate(tidRef.current, { name, subject, body, htmlOutput });
+        setAutoSaved(true);
+        setTimeout(() => setAutoSaved(false), 2000);
+      } catch { /* silent */ }
+    }, 2000);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [blocks, name, subject, from, settings.backgroundColor, settings.containerBg, settings.containerWidth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function buildBody() {
     return { version: 1, ...settings, from, blocks };
@@ -1829,31 +1868,10 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Switch to HTML mode */}
-        {onSwitchToHtml && (
-          <button onClick={async () => {
-            let id = tid;
-            if (!id) id = await handleSave({ status: "draft" });
-            if (id) onSwitchToHtml(id);
-          }}
-            style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
-            onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
-            <Code2 size={12} /> HTML
-          </button>
+        {/* Auto-save indicator */}
+        {autoSaved && (
+          <span style={{ fontSize: 11, color: C.green, display: "flex", alignItems: "center", gap: 4, opacity: 0.85 }}>✓ Saved</span>
         )}
-
-        {/* Edit / Preview toggle */}
-        <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
-          <button onClick={() => setPreviewMode(false)}
-            style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: !previewMode ? C.accent : "transparent", color: !previewMode ? "#fff" : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
-            <Pencil size={10} /> Edit
-          </button>
-          <button onClick={() => setPreviewMode(true)}
-            style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: previewMode ? C.accent : "transparent", color: previewMode ? "#fff" : C.muted, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
-            <Eye size={10} /> Preview
-          </button>
-        </div>
 
         {/* Device toggle */}
         <div style={{ display: "flex", background: C.bg, borderRadius: 8, padding: 3, border: `1px solid ${C.border}`, gap: 2 }}>
@@ -1865,13 +1883,9 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
           ))}
         </div>
 
-        <button onClick={() => handleSave({ status: "draft" })} disabled={saving}
-          style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "6px 14px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: saving ? 0.7 : 1 }}>
-          Save draft
-        </button>
         <button onClick={() => handleSave({ status: "published" })} disabled={saving}
           style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "6px 18px", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(99,102,241,0.28)", opacity: saving ? 0.7 : 1 }}>
-          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Saving…</> : <><Send size={13} /> Publish</>}
+          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Publishing…</> : <><Send size={13} /> Publish</>}
         </button>
       </div>
 
@@ -2036,31 +2050,10 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
           )}
         </div>
 
-        {/* Center: Canvas — edit or preview */}
-        {previewMode ? (
-          <div style={{ flex: 1, overflowY: "auto", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 20px" }}>
-            <div style={{ width: previewDevice === "mobile" ? 390 : settings.containerWidth, maxWidth: "100%", background: settings.containerBg, borderRadius: 8, overflow: "hidden", boxShadow: "0 4px 28px rgba(0,0,0,0.4)", flexShrink: 0 }}>
-              {blocks.length === 0 ? (
-                <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No blocks added yet. Switch to Edit to add content.</div>
-              ) : (
-                blocks.map(block => <PreviewBlock key={block.id} block={block} />)
-              )}
-              {/* Unsubscribe footer — always appended to real sends */}
-              <div style={{ padding: "16px 24px 20px", borderTop: "1px solid #e5e7eb", textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", lineHeight: 1.6, fontFamily: "Arial, Helvetica, sans-serif" }}>
-                  You are receiving this email as part of our outreach.<br />
-                  <a href="#" style={{ color: "#9ca3af", textDecoration: "underline" }} onClick={e => e.preventDefault()}>Unsubscribe</a>
-                </p>
-              </div>
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 14 }}>
-              {previewDevice === "mobile" ? "390px · mobile preview" : `${settings.containerWidth}px · desktop preview`}
-            </div>
-          </div>
-        ) : (
+        {/* Center: Canvas */}
         <div ref={canvasRef} style={{ flex: 1, overflowY: "auto", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center" }}
           onClick={() => setSelectedId(null)}>
-          <div style={{ width: Math.min(settings.containerWidth + 80, 800), maxWidth: "100%", padding: "24px 40px" }}>
+          <div style={{ width: previewDevice === "mobile" ? Math.min(430, 800) : Math.min(settings.containerWidth + 80, 800), maxWidth: "100%", padding: "24px 40px", transition: "width 0.2s" }}>
 
             {/* FROM / SUBJECT row */}
             <div ref={fromRef} style={{ background: C.surface, borderRadius: "12px 12px 0 0", border: `1px solid ${C.border}`, borderBottom: "none", position: "relative" }}>
@@ -2135,13 +2128,6 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
                   />
                 ))
               )}
-              {/* Unsubscribe footer — auto-appended on every real send */}
-              <div style={{ padding: "14px 24px 18px", borderTop: `1px solid #e5e7eb`, textAlign: "center", background: settings.containerBg }}>
-                <p style={{ margin: 0, fontSize: 11, color: "#9ca3af", lineHeight: 1.6, fontFamily: "Arial, Helvetica, sans-serif" }}>
-                  You are receiving this email as part of our outreach.&nbsp;
-                  <span style={{ color: "#9ca3af", textDecoration: "underline" }}>Unsubscribe</span>
-                </p>
-              </div>
             </div>
 
             <div style={{ textAlign: "center", fontSize: 11, color: C.muted, marginTop: 12 }}>
@@ -2149,7 +2135,6 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
             </div>
           </div>
         </div>
-        )}
 
         {/* Right: Settings panel */}
         <div style={{ width: 256, background: C.surface, borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
@@ -2232,13 +2217,14 @@ function EmailBuilder({ templateId, onBack, onSaved, onSwitchToHtml }) {
 }
 
 // ─── HTML email builder ───────────────────────────────────────────────────────
-function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
+function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
   const C = useContext(CCtx);
-  const [name,          setName]          = useState("Untitled Template");
+  const [name,          setName]          = useState("Untitled");
   const [subject,       setSubject]       = useState("");
   const [htmlCode,      setHtmlCode]      = useState("");
   const [from,          setFrom]          = useState("");
   const [saving,        setSaving]        = useState(false);
+  const [autoSaved,     setAutoSaved]     = useState(false);
   const [loading,       setLoading]       = useState(!!templateId);
   const [tid,           setTid]           = useState(templateId || null);
   const [domains,       setDomains]       = useState([]);
@@ -2248,25 +2234,35 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
   const [fromOpen,      setFromOpen]      = useState(false);
   const [importing,     setImporting]     = useState(false);
   const [validation,    setValidation]    = useState(null);
-  const fromRef   = useRef(null);
-  const tagsRef   = useRef(null);
-  const editorRef = useRef(null);
-  const fileRef   = useRef(null);
-  const toast     = useAppToast();
+  const fromRef       = useRef(null);
+  const tagsRef       = useRef(null);
+  const editorRef     = useRef(null);
+  const fileRef       = useRef(null);
+  const autoSaveTimer = useRef(null);
+  const didLoadRef    = useRef(false);
+  const tidRef        = useRef(tid);
+  const toast         = useAppToast();
+
+  useEffect(() => { tidRef.current = tid; }, [tid]);
 
   useEffect(() => {
     if (templateId) {
       setLoading(true);
       store.getTemplateById(templateId).then(t => {
-        setName(t.name || "Untitled Template");
+        setName(t.name || "Untitled");
         setSubject(t.subject || "");
         const body = t.body || {};
         setHtmlCode(body.htmlCode || t.htmlOutput || "");
         setFrom(body.from || "");
         setTid(templateId);
-      }).catch(() => {}).finally(() => setLoading(false));
+      }).catch(() => {}).finally(() => {
+        setLoading(false);
+        setTimeout(() => { didLoadRef.current = true; }, 300);
+      });
+    } else {
+      didLoadRef.current = true;
     }
-  }, [templateId]);
+  }, [templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     store.getDomains().then(d => {
@@ -2279,7 +2275,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
         }
       }
     }).catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function h(e) {
@@ -2289,6 +2285,24 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // Auto-save: debounce 2s after any content change
+  useEffect(() => {
+    if (!didLoadRef.current || !tidRef.current) return;
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        await store.updateTemplate(tidRef.current, {
+          name, subject,
+          body: { editorMode: "html", htmlCode, from },
+          htmlOutput: htmlCode,
+        });
+        setAutoSaved(true);
+        setTimeout(() => setAutoSaved(false), 2000);
+      } catch { /* silent */ }
+    }, 2000);
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [htmlCode, name, subject, from]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave(extra = {}) {
     if (extra.status === "published" && domains.length === 0) {
@@ -2412,18 +2426,9 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Switch to Visual */}
-        {onSwitchToVisual && (
-          <button onClick={async () => {
-            let id = tid;
-            if (!id) id = await handleSave({ status: "draft" });
-            if (id) onSwitchToVisual(id);
-          }}
-            style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 500, color: C.muted, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}
-            onMouseEnter={e => { e.currentTarget.style.color = C.text; e.currentTarget.style.borderColor = C.accent + "60"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = C.muted; e.currentTarget.style.borderColor = C.border; }}>
-            <LayoutGrid size={12} /> Visual
-          </button>
+        {/* Auto-save indicator */}
+        {autoSaved && (
+          <span style={{ fontSize: 11, color: C.green, display: "flex", alignItems: "center", gap: 4, opacity: 0.85 }}>✓ Saved</span>
         )}
 
         {/* Device toggle */}
@@ -2436,13 +2441,9 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved, onSwitchToVisual }) {
           ))}
         </div>
 
-        <button onClick={() => handleSave({ status: "draft" })} disabled={saving}
-          style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 9, padding: "6px 14px", fontSize: 13, fontWeight: 600, color: C.sub, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: saving ? 0.7 : 1 }}>
-          Save draft
-        </button>
         <button onClick={() => handleSave({ status: "published" })} disabled={saving}
           style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "6px 18px", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(99,102,241,0.28)", opacity: saving ? 0.7 : 1 }}>
-          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Saving…</> : <><Send size={13} /> Publish</>}
+          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Publishing…</> : <><Send size={13} /> Publish</>}
         </button>
       </div>
 
@@ -2872,7 +2873,7 @@ function TemplateList({ onOpenBuilder }) {
       {shareTarget && (
         <ShareLinkModal
           title={`Share "${shareTarget.name}"`}
-          url={`${window.location.origin}/templates?open=${shareTarget.id}`}
+          url={`${window.location.origin}/templates?open=${shareTarget.id}&mode=${shareTarget.body?.editorMode || 'visual'}`}
           onClose={() => setShareTarget(null)}
         />
       )}
@@ -2886,28 +2887,57 @@ export default function TemplatesPage({ onEditingChange }) {
   const C = makeC(T);
   const [searchParams, setSearchParams] = useSearchParams();
   // view: "list" | "choose" | "builder-visual" | "builder-html"
-  const [view,      setView]      = useState("list");
-  const [editingId, setEditingId] = useState(null);
+  const [view,          setView]          = useState("list");
+  const [editingId,     setEditingId]     = useState(null);
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  const toast = useAppToast();
 
   const enterBuilder = (id, mode) => {
     setEditingId(id || null);
     setView(mode === "html" ? "builder-html" : "builder-visual");
+    if (id) setSearchParams({ id, mode: mode || "visual" }, { replace: true });
     onEditingChange?.(true);
   };
 
-  // Open a template directly when navigated to via a share link (?open=id)
+  // Handle ?open=id (share links) and ?id=uuid (direct editor links)
   useEffect(() => {
-    const openId = searchParams.get("open");
+    const openId  = searchParams.get("open");
+    const editId  = searchParams.get("id");
+    const editMode = searchParams.get("mode") || "visual";
     if (openId) {
-      enterBuilder(openId, "visual");
-      setSearchParams({}, { replace: true });
+      enterBuilder(openId, editMode);
+    } else if (editId) {
+      enterBuilder(editId, editMode);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const exitBuilder = () => {
     setView("list");
+    setSearchParams({}, { replace: true });
     onEditingChange?.(false);
   };
+
+  // Create a draft record immediately when the user picks a mode, then enter the builder
+  async function handleChooseMode(mode) {
+    setCreatingDraft(true);
+    try {
+      const defaultBody = {
+        version: 1, backgroundColor: "#f4f4f4", containerBg: "#ffffff",
+        containerWidth: 600, editorMode: mode,
+        blocks: mode === "visual" ? DEFAULT_BLOCKS : [],
+      };
+      const htmlOutput = mode === "visual" ? bodyToHtml(defaultBody) : "";
+      const created = await store.createTemplate({
+        name: "Untitled", subject: "", body: defaultBody, htmlOutput, status: "draft",
+      });
+      enterBuilder(created.id, mode);
+      setView(mode === "html" ? "builder-html" : "builder-visual");
+    } catch {
+      toast.error("Failed to create template. Please try again.");
+    } finally {
+      setCreatingDraft(false);
+    }
+  }
 
   if (view === "builder-visual") {
     return (
@@ -2916,7 +2946,6 @@ export default function TemplatesPage({ onEditingChange }) {
           templateId={editingId}
           onBack={exitBuilder}
           onSaved={(status) => { if (status === "published") exitBuilder(); }}
-          onSwitchToHtml={id => enterBuilder(id, "html")}
         />
       </CCtx.Provider>
     );
@@ -2929,7 +2958,6 @@ export default function TemplatesPage({ onEditingChange }) {
           templateId={editingId}
           onBack={exitBuilder}
           onSaved={(status) => { if (status === "published") exitBuilder(); }}
-          onSwitchToVisual={id => enterBuilder(id, "visual")}
         />
       </CCtx.Provider>
     );
@@ -2942,14 +2970,14 @@ export default function TemplatesPage({ onEditingChange }) {
           if (id) {
             enterBuilder(id, editorMode);
           } else {
-            setEditingId(null);
             setView("choose");
           }
         }}
       />
       {view === "choose" && (
         <ChooseModeModal
-          onChoose={m => enterBuilder(null, m)}
+          loading={creatingDraft}
+          onChoose={handleChooseMode}
           onCancel={() => setView("list")}
         />
       )}

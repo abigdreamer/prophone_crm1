@@ -9,9 +9,10 @@ import { sendBatchEmails } from '../services/resendService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
-  injectUnsubscribeFooter,
+  injectUnsubUrl,
   buildEmailHeaders,
   buildUnsubUrl,
+  generateUnsubToken,
 } from '../services/email.js';
 import * as XLSX from 'xlsx';
 import PDFDocument from 'pdfkit';
@@ -338,12 +339,18 @@ export const sendCampaign = async (req, res) => {
           const subj  = (isB && campaign.subjectB) ? campaign.subjectB
                         : (campaign.subject || tmpl.subject || tmpl.name);
 
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+
           const vars = {
-            firstName: r.contact.firstName || '',
-            lastName:  r.contact.lastName  || '',
-            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
-            email:     r.contact.email     || '',
-            company:   r.contact.company   || '',
+            firstName:  r.contact.firstName || '',
+            lastName:   r.contact.lastName  || '',
+            fullName:   `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:      r.contact.email     || '',
+            company:    r.contact.company   || '',
+            contact_id: r.id,
+            token:      (unsubSecret && r.id) ? generateUnsubToken(r.id, unsubSecret) : '',
           };
 
           // Substitute variables in subject line
@@ -358,11 +365,7 @@ export const sendCampaign = async (req, res) => {
             html = applyTracking(html, campaignId, r.id, trackingBase);
           }
 
-          // Unsubscribe URL (per-recipient HMAC token — requires secret)
-          const unsubUrl = (trackingBase && unsubSecret)
-            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
-            : null;
-          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+          if (unsubUrl) html = injectUnsubUrl(html, unsubUrl);
 
           const text    = htmlToPlainText(html);
           const fromDomain = fromEmail.split('@')[1] || 'mail';
@@ -550,12 +553,18 @@ export const sendToContacts = async (req, res) => {
       const emails = batch
         .filter(r => r.contact?.email?.includes('@'))
         .map(r => {
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+
           const vars = {
-            firstName: r.contact.firstName || '',
-            lastName:  r.contact.lastName  || '',
-            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
-            email:     r.contact.email     || '',
-            company:   r.contact.company   || '',
+            firstName:  r.contact.firstName || '',
+            lastName:   r.contact.lastName  || '',
+            fullName:   `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:      r.contact.email     || '',
+            company:    r.contact.company   || '',
+            contact_id: r.id,
+            token:      (unsubSecret && r.id) ? generateUnsubToken(r.id, unsubSecret) : '',
           };
 
           let html = template.htmlOutput
@@ -564,10 +573,7 @@ export const sendToContacts = async (req, res) => {
 
           if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
 
-          const unsubUrl = (trackingBase && unsubSecret)
-            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
-            : null;
-          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+          if (unsubUrl) html = injectUnsubUrl(html, unsubUrl);
 
           const text    = htmlToPlainText(html);
           const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
@@ -713,12 +719,18 @@ export const resendCampaign = async (req, res) => {
           const subj = (isB && campaign.subjectB) ? campaign.subjectB
                        : (campaign.subject || tmpl.subject || tmpl.name);
 
+          const unsubUrl = (trackingBase && unsubSecret)
+            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
+            : null;
+
           const vars = {
-            firstName: r.contact.firstName || '',
-            lastName:  r.contact.lastName  || '',
-            fullName:  `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
-            email:     r.contact.email     || '',
-            company:   r.contact.company   || '',
+            firstName:  r.contact.firstName || '',
+            lastName:   r.contact.lastName  || '',
+            fullName:   `${r.contact.firstName || ''} ${r.contact.lastName || ''}`.trim(),
+            email:      r.contact.email     || '',
+            company:    r.contact.company   || '',
+            contact_id: r.id,
+            token:      (unsubSecret && r.id) ? generateUnsubToken(r.id, unsubSecret) : '',
           };
 
           let html = tmpl.htmlOutput
@@ -727,10 +739,7 @@ export const resendCampaign = async (req, res) => {
 
           if (trackingBase) html = applyTracking(html, campaignId, r.id, trackingBase);
 
-          const unsubUrl = (trackingBase && unsubSecret)
-            ? buildUnsubUrl(trackingBase, r.id, unsubSecret)
-            : null;
-          if (unsubUrl) html = injectUnsubscribeFooter(html, unsubUrl);
+          if (unsubUrl) html = injectUnsubUrl(html, unsubUrl);
 
           const text    = htmlToPlainText(html);
           const headers = unsubUrl ? buildEmailHeaders(unsubUrl) : undefined;
