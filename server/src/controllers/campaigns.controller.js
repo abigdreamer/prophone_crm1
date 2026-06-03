@@ -166,7 +166,7 @@ export const restoreCampaign = async (req, res) => {
 
 export const listRecipients = async (req, res) => {
   try {
-    const { status, event, variant, search, page = '1', limit = '50' } = req.query;
+    const { status, event, variant, search, queueRunId, page = '1', limit = '50' } = req.query;
     const take = Math.min(parseInt(limit, 10) || 50, 200);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
 
@@ -175,6 +175,7 @@ export const listRecipients = async (req, res) => {
       event,
       abVariant: variant,
       search,
+      queueRunId,
       skip,
       limit: take,
     });
@@ -882,16 +883,29 @@ export const duplicateCampaign = async (req, res) => {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const exportCampaign = async (req, res) => {
-  const { format = 'excel', sheets = '' } = req.query;
+  const { format = 'excel', sheets = '', day } = req.query;
   const campaignId = req.params.id;
 
   try {
     const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
+    // If day filter requested, resolve the queueRunId for that day number
+    let dayFilter = null;
+    if (day) {
+      const dayNum = parseInt(day, 10);
+      const run = await prisma.campaignQueueRun.findFirst({
+        where: { queue: { campaignId }, dayNumber: dayNum },
+      });
+      if (run) dayFilter = { queueRunId: run.id, dayNumber: dayNum };
+    }
+
     const [eventStats, recipientsResult] = await Promise.all([
       repo.getStatisticsFromEvents(campaignId),
-      format === 'pdf' ? Promise.resolve({ rows: [] }) : repo.findRecipients(campaignId, { limit: 10000 }),
+      format === 'pdf' ? Promise.resolve({ rows: [] }) : repo.findRecipients(campaignId, {
+        limit: 10000,
+        ...(dayFilter ? { queueRunId: dayFilter.queueRunId } : {}),
+      }),
     ]);
     const allRecipients = recipientsResult.rows;
 
@@ -910,7 +924,7 @@ export const exportCampaign = async (req, res) => {
       bounceRate:  +((bounced / base) * 100).toFixed(1),
     };
 
-    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_');
+    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_') + (dayFilter ? `_day${dayFilter.dayNumber}` : '');
 
     // ── PDF ──────────────────────────────────────────────────────────────────
     if (format === 'pdf') {
@@ -1056,7 +1070,7 @@ export const exportCampaign = async (req, res) => {
     });
 
     const SHEET_DEFS = {
-      all:          { label: 'All Recipients', filter: () => true },
+      all:          { label: dayFilter ? `Day ${dayFilter.dayNumber}` : 'All Recipients', filter: () => true },
       sent:         { label: 'Sent',           filter: r => r.status === 'sent' },
       delivered:    { label: 'Delivered',      filter: r => r.status === 'delivered' },
       opened:       { label: 'Opened',         filter: r => r.status === 'opened' },
