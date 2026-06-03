@@ -12,7 +12,14 @@ export function UdfProvider({ children }) {
   const refreshUdfs = useCallback(async () => {
     try {
       const res = await getUdfs();
-      setUdfs(res.data || []);
+      const raw = res.data || [];
+      // Deduplicate by sortKey — keeps lowest-displayOrder copy if DB has duplicates
+      const seen = new Set();
+      setUdfs(raw.filter(u => {
+        if (seen.has(u.sortKey)) return false;
+        seen.add(u.sortKey);
+        return true;
+      }));
     } catch { /* silent */ }
   }, []);
 

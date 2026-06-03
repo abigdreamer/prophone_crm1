@@ -14,18 +14,22 @@ export default function CustomFieldsSection({ clientId, contactId, udfValues, on
   const [fieldStatus, setFieldStatus] = useState({}); // { [sortKey]: 'saving'|'saved'|null }
   const fieldStatusTimers             = useRef({});
   const dragIdx                       = useRef(null);
+  const seedingRef                    = useRef(false);
 
-  // Seed defaults only after context confirms UDFs are loaded and empty
+  // Seed defaults only after context confirms UDFs are loaded and empty.
+  // seedingRef prevents a race where udfsLoaded flips true→false→true while the
+  // first seed is still in flight, which was causing duplicate UDF rows.
   useEffect(() => {
-    if (!udfsLoaded || udfs.length > 0) return;
+    if (!udfsLoaded || udfs.length > 0 || seedingRef.current) return;
+    seedingRef.current = true;
     async function seed() {
       const defaults = ["Usrdefine1", "Usrdefine2", "Usrdefine3", "Usrdefine4", "Usrdefine5"];
       for (const [i, label] of defaults.entries()) {
-        await createUdf({ label, type: "TEXT", displayOrder: i });
+        await createUdf({ label, type: "TEXT", displayOrder: i, isActive: false });
       }
-      refreshUdfs();
+      await refreshUdfs();
     }
-    seed().catch(() => {});
+    seed().catch(() => {}).finally(() => { seedingRef.current = false; });
   }, [udfsLoaded]); // eslint-disable-line
 
   useEffect(() => {
@@ -74,7 +78,7 @@ export default function CustomFieldsSection({ clientId, contactId, udfValues, on
   async function handleAdd() {
     try {
       const label = "Usrdefine" + (udfs.length + 1);
-      const res = await createUdf({ label, type: "TEXT", displayOrder: udfs.length });
+      const res = await createUdf({ label, type: "TEXT", displayOrder: udfs.length, isActive: false });
       const newUdf = res.data;
       setUdfs(prev => [...prev, newUdf]);
       // Auto-focus the new label for immediate rename
