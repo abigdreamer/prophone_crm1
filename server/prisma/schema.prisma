@@ -49,6 +49,10 @@ model Client {
   templateLinks  TemplateLink[]
   redditMonitors RedditMonitor[]
   redditPosts    RedditPost[]
+  portalUsers    ClientUser[]
+  userDefinedFields   UserDefinedField[]
+  customSortOptions   CustomSortOption[]
+  customFilterOptions CustomFilterOption[]
 
   @@map("clients")
 }
@@ -102,6 +106,7 @@ model Contact {
   tags           String[]  @default([])
   description    String    @default("")
   socialLinks    Json      @default("{}") @map("social_links")
+  udfValues      Json      @default("{}") @map("udf_values")
   notes          String    @default("")
   ownedBy        String    @default("") @map("owned_by")
   addedBy        String    @default("") @map("added_by")
@@ -119,6 +124,63 @@ model Contact {
   campaignRecipients CampaignRecipient[]
 
   @@map("contacts")
+}
+
+// ─── User Defined Fields ──────────────────────────────────────────────────────
+
+model UserDefinedField {
+  id           String   @id @default(uuid())
+  clientId     String?  @map("client_id")
+  label        String
+  type         String   @default("TEXT")
+  options      Json     @default("[]")
+  sortKey      String   @unique          @map("sort_key")
+  isActive     Boolean  @default(true)   @map("is_active")
+  displayOrder Int      @default(0)      @map("display_order")
+  createdAt    DateTime @default(now())  @map("created_at")
+  updatedAt    DateTime @updatedAt       @map("updated_at")
+
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@index([clientId])
+  @@map("user_defined_fields")
+}
+
+// ─── Custom Sort / Filter Options ────────────────────────────────────────────
+
+model CustomSortOption {
+  id           String   @id @default(uuid())
+  clientId     String?  @map("client_id")
+  label        String
+  sortValue    String   @default("") @map("sort_value")
+  contactField String   @default("") @map("contact_field")
+  direction    String   @default("asc")
+  isBuiltIn    Boolean  @default(false) @map("is_built_in")
+  isActive     Boolean  @default(true)  @map("is_active")
+  displayOrder Int      @default(0)     @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@index([clientId])
+  @@map("custom_sort_options")
+}
+
+model CustomFilterOption {
+  id           String   @id @default(uuid())
+  clientId     String?  @map("client_id")
+  label        String
+  contactField String   @map("contact_field")
+  filterType   String   @default("TEXT") @map("filter_type")
+  options      Json     @default("[]")
+  isBuiltIn    Boolean  @default(false) @map("is_built_in")
+  isActive     Boolean  @default(true)  @map("is_active")
+  displayOrder Int      @default(0)     @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  @@index([clientId])
+  @@map("custom_filter_options")
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -269,6 +331,7 @@ model CampaignRecipient {
   status     String    @default("pending")
   messageId  String?   @map("message_id")
   sendId     String?   @map("send_id")
+  sendLabel  String    @default("") @map("send_label")
   sentAt     DateTime? @map("sent_at")
   openedAt   DateTime? @map("opened_at")
   clickedAt  DateTime? @map("clicked_at")

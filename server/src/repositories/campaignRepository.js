@@ -180,6 +180,15 @@ export async function assignVariants(campaignId) {
 
 // ── Send helpers ──────────────────────────────────────────────────────────────
 
+// Reset skipped recipients back to pending so the send can re-evaluate them with
+// current suppression rules. Contacts with no email will be skipped again immediately.
+export async function resetSkippedToPending(campaignId) {
+  return prisma.campaignRecipient.updateMany({
+    where: { campaignId, status: 'skipped' },
+    data:  { status: 'pending' },
+  });
+}
+
 export async function findPendingRecipientsForSend(campaignId, limit = null) {
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
@@ -192,11 +201,11 @@ export async function findPendingRecipientsForSend(campaignId, limit = null) {
   });
 }
 
-export async function markRecipientSent(id, messageId, campaignId = null) {
+export async function markRecipientSent(id, messageId, campaignId = null, sendLabel = '') {
   const sendId = randomUUID();
   const result = await prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sendId, sentAt: new Date() },
+    data:  { status: 'sent', messageId: messageId || null, sendId, sendLabel: sendLabel || '', sentAt: new Date() },
   });
   if (campaignId) logEvent(id, campaignId, 'sent', null, sendId).catch(() => {});
   return result;
@@ -477,23 +486,27 @@ export async function findPendingRecipientsForContacts(campaignId, contactIds) {
   });
 }
 
-export async function findSuppressedContactIds(contactIds) {
-  // Check campaign_recipients for bounced/unsubscribed status
-  const recipientRows = await prisma.campaignRecipient.findMany({
-    where:  { contactId: { in: contactIds }, status: { in: ['bounced', 'unsubscribed'] } },
+export async function findSuppressedContactIds(contactIds, campaignId) {
+  // Global: respect explicit opt-outs across all campaigns
+  const unsubRows = await prisma.campaignRecipient.findMany({
+    where:  { contactId: { in: contactIds }, status: 'unsubscribed' },
     select: { contactId: true },
     distinct: ['contactId'],
   });
 
-  // Also check contacts table for globally unsubscribed contacts
-  const unsubRows = await prisma.contact.findMany({
-    where:  { id: { in: contactIds }, isUnsubscribed: true },
-    select: { id: true },
+  // Per-campaign: skip contacts that already bounced in THIS specific campaign
+  const bounceQuery = { contactId: { in: contactIds }, status: 'bounced' };
+  if (campaignId) bounceQuery.campaignId = campaignId;
+  const bounceRows = await prisma.campaignRecipient.findMany({
+    where:  bounceQuery,
+    select: { contactId: true },
+    distinct: ['contactId'],
   });
 
-  const set = new Set(recipientRows.map(r => r.contactId));
-  unsubRows.forEach(r => set.add(r.id));
-  return set;
+  return new Set([
+    ...unsubRows.map(r => r.contactId),
+    ...bounceRows.map(r => r.contactId),
+  ]);
 }
 
 /**

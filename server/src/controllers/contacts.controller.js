@@ -68,6 +68,7 @@ function formatContact(c) {
     accountSize: c.accountSize,
     description: c.description,
     socialLinks: c.socialLinks ?? {},
+    udfValues: c.udfValues ?? {},
     tags: c.tags,
     notes: c.notes,
     ownedBy: c.ownedBy,
@@ -110,12 +111,156 @@ async function listContacts(req, res) {
     }
   }
 
-  const contacts = await prisma.contact.findMany({
-    where,
-    orderBy: status === STATUS.CANCELED
-      ? { canceledAt: 'desc' }
-      : { lastActivityAt: 'desc' },
-  });
+  // Full-text search — fields included are configurable via searchMethods param
+  const search = req.query.search?.trim();
+  if (search) {
+    let sm = {};
+    try { sm = req.query.searchMethods ? JSON.parse(req.query.searchMethods) : {}; } catch { /* ignore */ }
+
+    const searchOr = [
+      ...(sm.firstName !== false ? [{ firstName: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.lastName  !== false ? [{ lastName:  { contains: search, mode: 'insensitive' } }] : []),
+      // Legacy: if old settings saved "name: true" instead of firstName/lastName, honour it
+      ...(sm.name === true && sm.firstName === undefined && sm.lastName === undefined ? [{ firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.email   !== false ? [{ email:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.company !== false ? [{ company: { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.phone   !== false ? [{ phone:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.city    !== false ? [{ city:    { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.state   !== false ? [{ state:   { contains: search, mode: 'insensitive' } }] : []),
+      ...(sm.address !== false ? [{ address: { contains: search, mode: 'insensitive' } }] : []),
+    ];
+
+    if (sm.udfs !== false) {
+      try {
+        const udfMatches = await prisma.$queryRaw`
+          SELECT id FROM contacts
+          WHERE LOWER(udf_values::text) LIKE ${`%${search.toLowerCase()}%`}
+        `;
+        if (udfMatches.length > 0) {
+          searchOr.push({ id: { in: udfMatches.map(r => r.id) } });
+        }
+      } catch { /* silent — UDF search degrades gracefully */ }
+    }
+
+    if (searchOr.length > 0) where.OR = searchOr;
+  }
+
+  // Lifecycle stage filter (comma-separated list)
+  const stagesParam = req.query.stages;
+  if (stagesParam) {
+    const stageList = stagesParam.split(',').filter(Boolean);
+    if (stageList.length > 0) where.lifecycleStage = { in: stageList };
+  }
+
+  // Lead score range
+  const scoreMin = parseInt(req.query.scoreMin);
+  const scoreMax = parseInt(req.query.scoreMax);
+  if (!isNaN(scoreMin) && scoreMin > 0)   where.leadScore = { ...where.leadScore, gte: scoreMin };
+  if (!isNaN(scoreMax) && scoreMax < 100) where.leadScore = { ...where.leadScore, lte: scoreMax };
+
+  // UDF text filters — case-insensitive via raw SQL so values like "towbook" match "Towbook"
+  const udfFiltersParam = req.query.udfFilters;
+  if (udfFiltersParam) {
+    try {
+      const udfFilters = JSON.parse(udfFiltersParam);
+      for (const [key, val] of Object.entries(udfFilters)) {
+        if (val === '' || val == null) continue;
+        if (!/^udf_\d+$/.test(key)) continue; // guard against injection
+        const pattern = `%${String(val).toLowerCase()}%`;
+        const hits = await prisma.$queryRaw`
+          SELECT id FROM contacts WHERE LOWER(udf_values->>${key}) LIKE ${pattern}
+        `;
+        if (!where.AND) where.AND = [];
+        where.AND.push({ id: { in: hits.map(r => r.id) } });
+      }
+    } catch { /* ignore malformed JSON */ }
+  }
+
+  // Custom contact-field filters (admin-defined via CustomFilterOption)
+  const customFiltersParam = req.query.customFilters;
+  if (customFiltersParam) {
+    try {
+      const customFilters = JSON.parse(customFiltersParam);
+      const ALLOWED = new Set([
+        'email', 'phone', 'title', 'source', 'campaign', 'state', 'zip',
+        'ownedBy', 'addedBy', 'accountSize', 'dispatcherSoftware',
+        'trucks', 'contractValue', 'yearsInBusiness', 'serviceAreaMiles', 'leadScore',
+      ]);
+      for (const [field, val] of Object.entries(customFilters)) {
+        if (!ALLOWED.has(field) || val === '' || val == null) continue;
+        if (typeof val === 'object' && !Array.isArray(val)) {
+          // Number range: { min, max }
+          const range = {};
+          if (val.min !== '' && val.min != null) range.gte = Number(val.min);
+          if (val.max !== '' && val.max != null) range.lte = Number(val.max);
+          if (Object.keys(range).length) where[field] = range;
+        } else {
+          where[field] = { contains: String(val), mode: 'insensitive' };
+        }
+      }
+    } catch { /* ignore malformed JSON */ }
+  }
+
+  // Sort — central config; UDF and custom sorts detected by prefix
+  const SORT_MAP = {
+    recent:       { lastActivityAt: 'desc' },
+    old:          { lastActivityAt: 'asc'  },
+    score_desc:   { leadScore: 'desc' },
+    score_asc:    { leadScore: 'asc'  },
+    name_az:      { firstName: 'asc'  },
+    name_za:      { firstName: 'desc' },
+    company_az:   { company: 'asc'   },
+    company_za:   { company: 'desc'  },
+    lastname_az:  [{ lastName: 'asc'  }, { firstName: 'asc'  }],
+    lastname_za:  [{ lastName: 'desc' }, { firstName: 'desc' }],
+    firstname_az: [{ firstName: 'asc'  }, { lastName: 'asc'  }],
+    firstname_za: [{ firstName: 'desc' }, { lastName: 'desc' }],
+    city_az:      [{ city: 'asc'  }, { state: 'asc'  }],
+    city_za:      [{ city: 'desc' }, { state: 'desc' }],
+  };
+  const CUSTOM_SORT_ALLOWED = new Set([
+    'email', 'phone', 'title', 'source', 'campaign', 'state', 'zip',
+    'ownedBy', 'addedBy', 'accountSize', 'dispatcherSoftware',
+    'trucks', 'contractValue', 'yearsInBusiness', 'serviceAreaMiles', 'leadScore',
+    'createdAt', 'lastActivityAt',
+  ]);
+  const sortBy = req.query.sortBy;
+  let orderBy;
+  if (sortBy?.startsWith('csort:')) {
+    // format: csort:{field}:{dir}
+    const [, field, dir] = sortBy.split(':');
+    if (CUSTOM_SORT_ALLOWED.has(field) && ['asc', 'desc'].includes(dir)) {
+      orderBy = { [field]: dir };
+    } else {
+      orderBy = { lastActivityAt: 'desc' };
+    }
+  } else if (sortBy?.startsWith('udf_') && (sortBy.endsWith('_az') || sortBy.endsWith('_za'))) {
+    // Prisma can't ORDER BY a JSON path — fetch all matching rows, sort in memory, then slice
+    const udfKey = sortBy.slice(0, -3); // e.g. "udf_11_az" → "udf_11"
+    const dir    = sortBy.endsWith('_az') ? 1 : -1;
+    const allRows = await prisma.contact.findMany({ where, orderBy: { lastActivityAt: 'desc' } });
+    allRows.sort((a, b) => {
+      const aVal = String(a.udfValues?.[udfKey] ?? '');
+      const bVal = String(b.udfValues?.[udfKey] ?? '');
+      return dir * aVal.localeCompare(bVal, undefined, { sensitivity: 'base' });
+    });
+    const totalCount = allRows.length;
+    const paginated  = allRows.slice(skip, skip + limit);
+    const actMap     = await fetchActivitiesBulk(paginated.map(c => c.id));
+    return res.json({
+      data:    paginated.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })),
+      total:   totalCount,
+      page,
+      hasMore: skip + paginated.length < totalCount,
+    });
+  } else {
+    orderBy = SORT_MAP[sortBy] || (status === STATUS.CANCELED ? { canceledAt: 'desc' } : { lastActivityAt: 'desc' });
+  }
+
+  const [contacts, total] = await Promise.all([
+    prisma.contact.findMany({ where, orderBy, skip, take: limit }),
+    prisma.contact.count({ where }),
+  ]);
 
   const actMap = await fetchActivitiesBulk(contacts.map(c => c.id));
   res.json(contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })));
@@ -158,6 +303,7 @@ async function createContact(req, res) {
       accountSize: b.accountSize || '1-5',
       description: b.description || '',
       socialLinks: b.socialLinks || {},
+      udfValues: b.udfValues || {},
       tags: b.tags || [],
       notes: b.notes || '',
       ownedBy: b.ownedBy || '',
@@ -239,6 +385,7 @@ async function updateContact(req, res) {
       accountSize: b.accountSize ?? existing.accountSize,
       description: b.description !== undefined ? b.description : existing.description,
       socialLinks: b.socialLinks !== undefined ? b.socialLinks : existing.socialLinks,
+      udfValues: b.udfValues !== undefined ? b.udfValues : existing.udfValues,
       tags: b.tags ?? existing.tags,
       notes: b.notes ?? existing.notes,
       ownedBy: b.ownedBy ?? existing.ownedBy,
@@ -583,4 +730,61 @@ async function getDashboardSummary(req, res) {
   res.json({ counts, recentContacts });
 }
 
-export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary };
+// ── Bulk score recalculation ──────────────────────────────────────────────────
+// Recalculates leadScore for every contact using the current formula and
+// saves the result. Run once after any formula change to fix stale scores.
+async function recalculateAllScores(req, res) {
+  const CHUNK = 500;
+  let updated = 0;
+  let cursor = undefined;
+
+  for (;;) {
+    const batch = await prisma.contact.findMany({
+      take: CHUNK,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        firstName: true, lastName: true, email: true, phone: true,
+        company: true, source: true, title: true, website: true, address: true,
+        lifecycleStage: true, status: true, isCanceled: true, lastActivityAt: true,
+      },
+    });
+
+    if (!batch.length) break;
+
+    await Promise.all(
+      batch.map(c =>
+        prisma.contact.update({
+          where: { id: c.id },
+          data:  { leadScore: calculateLeadScore(c) },
+        })
+      )
+    );
+
+    updated += batch.length;
+    cursor = batch[batch.length - 1].id;
+  }
+
+  res.json({ updated });
+}
+
+async function getContactUdfs(req, res) {
+  const c = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { udfValues: true } });
+  if (!c) return res.status(404).json({ error: 'Contact not found' });
+  res.json({ data: c.udfValues ?? {} });
+}
+
+async function updateContactUdfs(req, res) {
+  const c = await prisma.contact.findUnique({ where: { id: req.params.id }, select: { id: true, udfValues: true } });
+  if (!c) return res.status(404).json({ error: 'Contact not found' });
+  // Strip any non-UDF keys (e.g. clientId sent from client)
+  const values = Object.fromEntries(
+    Object.entries(req.body).filter(([k]) => /^udf_\d+$/.test(k))
+  );
+  const merged = { ...(c.udfValues ?? {}), ...values };
+  await prisma.contact.update({ where: { id: req.params.id }, data: { udfValues: merged } });
+  res.json({ data: merged });
+}
+
+export { listContacts, getContact, createContact, updateContact, deleteContact, getContactCounts, importContacts, listCanceledContacts, cancelContact, restoreContact, getContactClientActivities, getDashboardSummary, recalculateAllScores, getContactUdfs, updateContactUdfs };

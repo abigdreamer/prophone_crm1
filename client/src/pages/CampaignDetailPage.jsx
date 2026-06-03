@@ -5,13 +5,13 @@ import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, Plus, Loader2, ChevronRight, CheckCircle2,
-  Search, Trash2, Activity, X, Clock, Pencil, MoreVertical, Ban, RotateCcw, Copy, Eye, Download,
+  Search, Trash2, Activity, X, Clock, Pencil, Ban, RotateCcw, Download,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
-  cancelCampaign, restoreCampaign, duplicateCampaign,
+  cancelCampaign, restoreCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
   exportCampaignBlob,
 } from "../services/api";
@@ -37,14 +37,10 @@ function fmtRelTime(ts) {
 
 function StatusBadge({ status }) {
   const T = useTheme();
-  const map = {
-    draft:    { label: "Draft",    color: T.muted  },
-    sending:  { label: "Sending",  color: T.amber  },
-    sent:     { label: "Sent",     color: T.green  },
-    paused:   { label: "Paused",   color: T.orange },
-    canceled: { label: "Canceled", color: T.red    },
-  };
-  const { label, color } = map[status] ?? { label: status, color: T.muted };
+  const isActive = status === "sending" || status === "sent";
+  const isInactive = status === "paused" || status === "canceled";
+  const label = isActive ? "Active" : isInactive ? "Inactive" : "Pending";
+  const color = status === "sending" ? T.amber : isActive ? T.green : isInactive ? T.red : T.muted;
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
@@ -73,53 +69,6 @@ function RecipientStatusBadge({ status }) {
       color, background: color + "15",
       borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
     }}>{label}</span>
-  );
-}
-
-// ── Big stat card ─────────────────────────────────────────────────────────────
-
-function BigStat({ icon: Icon, label, value, color, onClick, active }) {
-  const T = useTheme();
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        flex: "1 1 100px",
-        background: active ? color + "15" : T.card,
-        border: "1px solid " + (active ? color + "60" : T.border),
-        borderRadius: 10, padding: "14px 16px",
-        cursor: onClick ? "pointer" : "default",
-        transition: "border-color 0.12s, background 0.12s",
-      }}
-      onMouseEnter={e => onClick && !active && (e.currentTarget.style.borderColor = color + "50")}
-      onMouseLeave={e => onClick && !active && (e.currentTarget.style.borderColor = T.border)}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-        <Icon size={13} color={color} />
-        <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: active ? color : T.text, lineHeight: 1 }}>
-        {value ?? 0}
-      </div>
-    </div>
-  );
-}
-
-// ── Compact rate item ─────────────────────────────────────────────────────────
-
-function RateItem({ label, value, color }) {
-  const T = useTheme();
-  return (
-    <div style={{
-      flex: 1, padding: "12px 16px",
-      borderRight: "1px solid " + T.border,
-      display: "flex", flexDirection: "column", gap: 3,
-    }}>
-      <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>{label}</span>
-      <span style={{ fontSize: 18, fontWeight: 800, color: value > 0 ? color : T.dim }}>
-        {value}%
-      </span>
-    </div>
   );
 }
 
@@ -332,7 +281,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
   if (loading) return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <tbody>
-        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={6} />)}
+        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={7} />)}
       </tbody>
     </table>
   );
@@ -389,6 +338,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
             {isAbTest && <th style={{ ...thStyle, textAlign: "center" }}>Variant</th>}
             <th style={thStyle}>Status</th>
             <th style={thStyle}>Stage</th>
+            <th style={thStyle}>Batch</th>
           </tr>
         </thead>
         <tbody>
@@ -452,6 +402,16 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.contact?.lifecycleStage
                     ? <StagePill stage={r.contact.lifecycleStage} />
+                    : <span style={{ fontSize: 11, color: T.muted }}>—</span>
+                  }
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  {r.sendLabel
+                    ? <span style={{
+                        fontSize: 11, fontWeight: 600, color: T.accent,
+                        background: T.accent + "18", borderRadius: 10,
+                        padding: "2px 9px", whiteSpace: "nowrap",
+                      }}>{r.sendLabel}</span>
                     : <span style={{ fontSize: 11, color: T.muted }}>—</span>
                   }
                 </td>
@@ -1186,8 +1146,37 @@ function ResendModal({ campaign, onClose, onConfirm, loading }) {
 
 // ── Send Confirm Modal ────────────────────────────────────────────────────────
 
+const SEND_LIMIT_PRESETS = [
+  { label: "500",   value: 500 },
+  { label: "1,000", value: 1000 },
+  { label: "2,000", value: 2000 },
+];
+
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   const T = useTheme();
+  const [batchLabel,  setBatchLabel]  = useState("");
+  const [limitMode,   setLimitMode]   = useState("all");   // "all" | "preset" | "custom"
+  const [presetVal,   setPresetVal]   = useState(500);
+  const [customVal,   setCustomVal]   = useState("");
+
+  const total = campaign.recipientsCount || 0;
+
+  const resolvedLimit = limitMode === "all"
+    ? null
+    : limitMode === "preset"
+      ? presetVal
+      : (parseInt(customVal, 10) || null);
+
+  const sendCount = resolvedLimit ? Math.min(resolvedLimit, total) : total;
+
+  const btnStyle = (active) => ({
+    padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+    cursor: "pointer", fontFamily: "inherit", transition: "all 0.12s",
+    border: active ? "1.5px solid " + T.accent : "1px solid " + T.border,
+    background: active ? T.accent + "18" : "transparent",
+    color: active ? T.accent : T.muted,
+  });
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
@@ -1195,41 +1184,120 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 12,
-        padding: 28, width: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+        padding: 28, width: 460, boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
       }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, marginBottom: 24 }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{
-            width: 52, height: 52, borderRadius: "50%", background: T.green + "18",
-            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 42, height: 42, borderRadius: "50%", background: T.accent + "18",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}>
-            <Send size={22} color={T.green} />
+            <Send size={18} color={T.accent} />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 6 }}>
-              Send campaign?
-            </div>
-            <div style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
-              This will send "<strong style={{ color: T.text }}>{campaign.name}</strong>" to{" "}
-              <strong style={{ color: T.text }}>{campaign.recipientsCount}</strong> recipient
-              {campaign.recipientsCount !== 1 ? "s" : ""}. This action cannot be undone.
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Send campaign?</div>
+            <div style={{ fontSize: 12, color: T.muted }}>"{campaign.name}"</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+
+        {/* How many to send */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 8 }}>
+            How many to send
+            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400 }}>
+              ({total.toLocaleString()} pending)
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <button style={btnStyle(limitMode === "all")} onClick={() => setLimitMode("all")}>
+              All {total.toLocaleString()}
+            </button>
+            {SEND_LIMIT_PRESETS.filter(p => p.value < total).map(p => (
+              <button
+                key={p.value}
+                style={btnStyle(limitMode === "preset" && presetVal === p.value)}
+                onClick={() => { setLimitMode("preset"); setPresetVal(p.value); }}
+              >
+                First {p.label}
+              </button>
+            ))}
+            <button style={btnStyle(limitMode === "custom")} onClick={() => setLimitMode("custom")}>
+              Custom
+            </button>
+          </div>
+
+          {limitMode === "custom" && (
+            <input
+              type="number"
+              min={1}
+              max={total}
+              value={customVal}
+              onChange={e => setCustomVal(e.target.value)}
+              placeholder={`Enter number (max ${total})`}
+              style={{
+                marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 7,
+                border: "1px solid " + T.border, background: T.surface, color: T.text,
+                fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", outline: "none",
+              }}
+              onFocus={e => e.target.style.borderColor = T.accent}
+              onBlur={e => e.target.style.borderColor = T.border}
+            />
+          )}
+
+          {resolvedLimit && resolvedLimit < total && (
+            <div style={{
+              marginTop: 8, fontSize: 12, color: T.muted,
+              background: T.surface, borderRadius: 6, padding: "6px 10px",
+            }}>
+              Will send to <strong style={{ color: T.text }}>{sendCount.toLocaleString()}</strong> of{" "}
+              {total.toLocaleString()} — remaining <strong style={{ color: T.text }}>
+                {(total - sendCount).toLocaleString()}
+              </strong> stay pending for next send.
+            </div>
+          )}
+        </div>
+
+        {/* Batch label */}
+        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 6 }}>
+          Batch label <span style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={batchLabel}
+          onChange={e => setBatchLabel(e.target.value)}
+          placeholder="e.g. Wave 1, June promo, Hot leads..."
+          maxLength={120}
+          style={{
+            width: "100%", padding: "8px 10px", borderRadius: 7,
+            border: "1px solid " + T.border, background: T.surface, color: T.text,
+            fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 20,
+            outline: "none",
+          }}
+          onFocus={e => e.target.style.borderColor = T.accent}
+          onBlur={e => e.target.style.borderColor = T.border}
+        />
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{
-            padding: "9px 20px", borderRadius: 7, border: "1px solid " + T.border,
+            padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border,
             background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
           }}>Cancel</button>
-          <button onClick={onConfirm} disabled={loading} style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "9px 22px", borderRadius: 7, border: "none",
-            background: T.green, color: "#fff", fontSize: 13, fontWeight: 600,
-            cursor: loading ? "default" : "pointer", fontFamily: "inherit",
-            opacity: loading ? 0.7 : 1,
-          }}>
+          <button
+            onClick={() => onConfirm(batchLabel.trim(), resolvedLimit)}
+            disabled={loading || (limitMode === "custom" && !parseInt(customVal, 10))}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: T.accent, color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: (loading || (limitMode === "custom" && !parseInt(customVal, 10))) ? "default" : "pointer",
+              fontFamily: "inherit",
+              opacity: (loading || (limitMode === "custom" && !parseInt(customVal, 10))) ? 0.5 : 1,
+            }}
+          >
             {loading
               ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Sending…</>
-              : <><Send size={13} /> Send Now</>
+              : <><Send size={13} /> Send {sendCount < total ? sendCount.toLocaleString() : "All"}</>
             }
           </button>
         </div>
@@ -1373,7 +1441,6 @@ export default function CampaignDetailPage() {
   const [showEditModal,     setShowEditModal]     = useState(false);
   const [showCancelModal,   setShowCancelModal]   = useState(false);
   const [showRestoreModal,  setShowRestoreModal]  = useState(false);
-  const [menuOpen,          setMenuOpen]          = useState(false);
   const [cancelActing,      setCancelActing]      = useState(false);
   const [sending,           setSending]           = useState(false);
   const [statusFilter,      setStatusFilter]      = useState("all");
@@ -1427,10 +1494,10 @@ export default function CampaignDetailPage() {
     }
   }, [selectedRecipient]);
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (batchLabel = "", limit = null) => {
     setSending(true);
     try {
-      const updated = await sendCampaign(id);
+      const updated = await sendCampaign(id, { label: batchLabel, limit });
       setCampaign(updated);
       analytics.campaignLaunched({
         clientId:       updated.clientId,
@@ -1563,82 +1630,6 @@ export default function CampaignDetailPage() {
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>{campaign.name}</span>
-          <div style={{ position: "relative" }}>
-            <button
-              onClick={() => setMenuOpen(o => !o)}
-              title="Actions"
-              style={{
-                display: "flex", alignItems: "center",
-                padding: "4px 8px", borderRadius: 6, border: "1px solid " + T.border,
-                background: menuOpen ? T.surface : "transparent", color: T.muted,
-                fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <MoreVertical size={14} />
-            </button>
-            {menuOpen && (
-              <>
-                <div
-                  style={{ position: "fixed", inset: 0, zIndex: 200 }}
-                  onClick={() => setMenuOpen(false)}
-                />
-                <div style={{
-                  position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 201,
-                  background: T.card, border: "1px solid " + T.border, borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.5)", minWidth: 160, overflow: "hidden",
-                }}>
-                  <button
-                    onClick={() => { setMenuOpen(false); setShowEditModal(true); }}
-                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
-                    onMouseEnter={e => e.currentTarget.style.background = T.surface}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  >
-                    <Pencil size={13} /> Edit Campaign
-                  </button>
-                  <button
-                    onClick={async () => { setMenuOpen(false); try { const copy = await duplicateCampaign(id); navigate("/campaigns/" + copy.id); } catch(e) { console.error(e); } }}
-                    style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", border: "none", background: "transparent", color: T.dim, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}
-                    onMouseEnter={e => e.currentTarget.style.background = T.surface}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  >
-                    <Copy size={13} /> Duplicate
-                  </button>
-                  {campaign.isCanceled ? (
-                    <button
-                      onClick={() => { setMenuOpen(false); setShowRestoreModal(true); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, width: "100%",
-                        padding: "10px 14px", border: "none", background: "transparent",
-                        color: T.green, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = T.surface}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      <RotateCcw size={13} /> Restore Campaign
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => { setMenuOpen(false); setShowCancelModal(true); }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, width: "100%",
-                        padding: "10px 14px", border: "none", background: "transparent",
-                        color: T.red, fontSize: 13, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = T.surface}
-                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    >
-                      <Ban size={13} /> Cancel Campaign
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-          {campaign.subject && (
-            <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
-              · Subject: {campaign.subject}
-            </span>
-          )}
           <StatusBadge status={campaign.status} />
           {isAbTest && (
             <span style={{
@@ -1742,60 +1733,104 @@ export default function CampaignDetailPage() {
         </div>
       </div>
 
-      {/* ── Stats row 1 — big numbers ── */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <BigStat icon={Users}             label="Recipients"
-          value={campaign.recipientsCount}
-          color={T.dim}
-          active={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")} />
-        <BigStat icon={Send}              label="Sent"
-          value={totals.sent ?? campaign.sentCount}
-          color={T.blue}
-          active={statusFilter === "sent"}
-          onClick={() => setStatusFilter(f => f === "sent" ? "all" : "sent")} />
-        <BigStat icon={Activity}          label="Delivered"
-          value={totals.delivered ?? campaign.deliveredCount}
-          color={T.teal}
-          active={statusFilter === "delivered"}
-          onClick={() => setStatusFilter(f => f === "delivered" ? "all" : "delivered")} />
-        <BigStat icon={Mail}              label="Opened"
-          value={totals.opened ?? campaign.openedCount}
-          color={T.green}
-          active={statusFilter === "opened"}
-          onClick={() => setStatusFilter(f => f === "opened" ? "all" : "opened")} />
-        <BigStat icon={MousePointerClick} label="Clicked"
-          value={totals.clicked ?? campaign.clickedCount}
-          color={T.accent}
-          active={statusFilter === "clicked"}
-          onClick={() => setStatusFilter(f => f === "clicked" ? "all" : "clicked")} />
-        <BigStat icon={AlertCircle}       label="Bounced"
-          value={totals.bounced ?? campaign.bouncedCount}
-          color={T.red}
-          active={statusFilter === "bounced"}
-          onClick={() => setStatusFilter(f => f === "bounced" ? "all" : "bounced")} />
-        <BigStat icon={UserMinus}         label="Unsubscribed"
-          value={totals.unsubscribed ?? campaign.unsubscribedCount}
-          color={T.orange}
-          active={statusFilter === "unsubscribed"}
-          onClick={() => setStatusFilter(f => f === "unsubscribed" ? "all" : "unsubscribed")} />
-      </div>
-
-      {/* ── Stats row 2 — rates ── */}
-      <div style={{
-        display: "flex", marginBottom: 16,
-        background: T.card, border: "1px solid " + T.border, borderRadius: 10, overflow: "hidden",
-      }}>
-        <RateItem label="Open Rate"     value={rates.openRate        ?? 0} color={T.green}  />
-        <RateItem label="Click Rate"    value={rates.clickRate       ?? 0} color={T.accent} />
-        <RateItem label="Bounce Rate"   value={rates.bounceRate      ?? 0} color={T.red}    />
-        <RateItem label="Delivery Rate" value={rates.deliveryRate    ?? 0} color={T.teal}   />
-        <div style={{ flex: 1, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={{ fontSize: 10, color: T.muted, letterSpacing: "0.03em" }}>Unsub Rate</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: (rates.unsubscribeRate ?? 0) > 0 ? T.orange : T.dim }}>
-            {rates.unsubscribeRate ?? 0}%
-          </span>
-        </div>
+      {/* ── Campaign Summary Cards ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {[
+          {
+            key:   "all",
+            icon:  <Users size={14} />,
+            label: "Recipients",
+            value: campaign.recipientsCount ?? 0,
+            rate:  null,
+            rateLabel: "contacts targeted",
+            color: T.accent,
+          },
+          {
+            key:   "sent",
+            icon:  <Send size={14} />,
+            label: "Sent",
+            value: totals.sent ?? campaign.sentCount ?? 0,
+            rate:  null,
+            rateLabel: "emails sent",
+            color: T.blue,
+          },
+          {
+            key:   "delivered",
+            icon:  <CheckCircle2 size={14} />,
+            label: "Delivered",
+            value: totals.delivered ?? campaign.deliveredCount ?? 0,
+            rate:  rates.deliveryRate ?? 0,
+            rateLabel: "delivery rate",
+            color: T.teal,
+          },
+          {
+            key:   "opened",
+            icon:  <Mail size={14} />,
+            label: "Opened",
+            value: totals.opened ?? campaign.openedCount ?? 0,
+            rate:  rates.openRate ?? 0,
+            rateLabel: "open rate",
+            color: T.green,
+          },
+          {
+            key:   "clicked",
+            icon:  <MousePointerClick size={14} />,
+            label: "Clicked",
+            value: totals.clicked ?? campaign.clickedCount ?? 0,
+            rate:  rates.clickRate ?? 0,
+            rateLabel: "click rate",
+            color: T.accent,
+          },
+          {
+            key:   "bounced",
+            icon:  <AlertCircle size={14} />,
+            label: "Bounced",
+            value: totals.bounced ?? campaign.bouncedCount ?? 0,
+            rate:  rates.bounceRate ?? 0,
+            rateLabel: "bounce rate",
+            color: T.red,
+          },
+          {
+            key:   "unsubscribed",
+            icon:  <UserMinus size={14} />,
+            label: "Unsubscribed",
+            value: totals.unsubscribed ?? campaign.unsubscribedCount ?? 0,
+            rate:  rates.unsubscribeRate ?? 0,
+            rateLabel: "unsub rate",
+            color: T.orange,
+          },
+        ].map(({ key, icon, label, value, rate, rateLabel, color }) => {
+          const isActive = statusFilter === key;
+          return (
+            <div
+              key={key}
+              onClick={() => setStatusFilter(f => f === key ? (key === "all" ? "all" : "all") : key)}
+              style={{
+                flex: "1 1 120px",
+                background: isActive ? color + "14" : T.card,
+                border: "1px solid " + (isActive ? color + "55" : T.border),
+                borderRadius: 12,
+                padding: "16px 18px",
+                cursor: "pointer",
+                transition: "border-color 0.12s, background 0.12s",
+              }}
+              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor = color + "40"; e.currentTarget.style.background = T.surface; } }}
+              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.card; } }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, color: isActive ? color : T.muted }}>
+                {icon}
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</span>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: isActive ? color : T.text, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 8 }}>
+                {value}
+              </div>
+              <div style={{ fontSize: 11, color: T.muted }}>
+                {rate !== null ? <span style={{ fontWeight: 700, color: value > 0 ? color : T.muted }}>{rate}%</span> : null}
+                {rate !== null ? " " : ""}{rateLabel}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* ── Main content area (recipients + optional activity panel) ── */}
@@ -1839,7 +1874,7 @@ export default function CampaignDetailPage() {
                   paddingLeft: 28, paddingRight: 10, paddingTop: 7, paddingBottom: 7,
                   borderRadius: 7, border: "1px solid " + T.border,
                   background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit",
-                  outline: "none", width: 180,
+                  outline: "none", width: 300,
                 }}
                 onFocus={e => e.target.style.borderColor = T.accent}
                 onBlur={e => e.target.style.borderColor = T.border}

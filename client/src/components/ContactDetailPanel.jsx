@@ -1,18 +1,32 @@
-import { useState, useEffect, useRef, forwardRef, useCallback, createContext, useContext } from "react";
-import Btn from "./ui/Btn";
+import { useState, useEffect, useRef, forwardRef, createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import { STAGE_DEF, ALL_STAGES } from "../data/stages";
-import fmt from "../utils/format";
-import * as db from "../services/api";
+import { addActivity, getSettings, saveSettings } from "../services/api";
 import { Spinner } from "./ui/Loader";
-import { Mail, Phone, Globe, MapPin, Building2, Users, Layers, Megaphone, Truck, DollarSign } from "lucide-react";
+import CustomFieldsSection from "./CustomFieldsSection";
+import {
+  User, TrendingUp, Building2, Wrench, Share2, FileText, Tag, ChevronDown, SlidersHorizontal,
+} from "lucide-react";
 
-const ACTION_CFG = {
-  CREATE: { label: "Created", color: "#22c55e", icon: "✦" },
-  UPDATE: { label: "Updated", color: "#6366f1", icon: "✎" },
-  CANCEL: { label: "Canceled", color: "#ef4444", icon: "✕" },
-  RESTORE: { label: "Restored", color: "#22c55e", icon: "↩" },
+// Context that passes edit-mode state down to F without prop-drilling
+const EditCtx = createContext(null);
+
+// ─── Stage helpers ────────────────────────────────────────────────────────────
+
+const STAGE_TYPE_MAP = {
+  new:            "Prospect",
+  contacted:      "Lead",
+  engaged:        "Lead",
+  demo_scheduled: "Warm Lead",
+  demo_done:      "Warm Lead",
+  proposal_sent:  "Hot Lead",
+  negotiating:    "Hot Lead",
+  customer:       "Customer",
+  not_qualified:  "Lost",
+  lost:           "Lost",
+  churned:        "Lost",
 };
 
 const SOCIAL_FIELDS = [
@@ -30,31 +44,55 @@ const SOCIAL_FIELDS = [
 let _secDragIdx = null;   // index into visibleContainers being dragged
 let _fieldDrag  = null;   // { field, fromContainerId }
 
-const FIELD_DEFS = {
-  firstName:     { key: "firstName",     label: "First Name",     placeholder: "Add first name" },
-  lastName:      { key: "lastName",      label: "Last Name",      placeholder: "Add last name" },
-  title:         { key: "title",         label: "Job Title",      placeholder: "Add job title" },
-  email:         { key: "email",         label: "Email",          placeholder: "Add email address",      type: "email",  colorKey: "accent", icon: Mail },
-  phone:         { key: "phone",         label: "Phone",          placeholder: "Add phone number",       type: "tel",    phoneKey: true,     icon: Phone },
-  website:       { key: "website",       label: "Website",        placeholder: "Add website URL",                        colorKey: "blue",   icon: Globe, autoHttps: true },
-  address:       { key: "address",       label: "Address",        placeholder: "Add address",                                                icon: MapPin },
-  company:       { key: "company",       label: "Company",        placeholder: "Add company name",                                           icon: Building2 },
-  accountSize:   { key: "accountSize",   label: "Account Size",   placeholder: "e.g. 50 employees",                                          icon: Users },
-  source:        { key: "source",        label: "Source",         placeholder: "e.g. LinkedIn, referral",                                    icon: Layers },
-  campaign:      { key: "campaign",      label: "Campaign",       placeholder: "Add campaign name",                                          icon: Megaphone },
-  trucks:        { key: "trucks",        label: "# of Trucks",   placeholder: "0",                      type: "number", numKey: true,         icon: Truck },
-  contractValue: { key: "contractValue", label: "Contract ($)",  placeholder: "0",                      type: "number", numKey: true,         icon: DollarSign },
-};
+function contactToForm(c) {
+  return {
+    firstName:             c.firstName             || "",
+    lastName:              c.lastName              || "",
+    title:                 c.title                 || "",
+    phone:                 c.phone                 || "",
+    email:                 c.email                 || "",
+    website:               c.website               || "",
+    address:               c.address               || "",
+    city:                  c.city                  || "",
+    state:                 c.state                 || "",
+    zip:                   c.zip                   || "",
+    lifecycleStage:        c.lifecycleStage        || "new",
+    leadScore:             c.leadScore != null ? String(c.leadScore) : "0",
+    company:               c.company               || "",
+    accountSize:           c.accountSize           || "",
+    trucks:                c.trucks != null ? String(c.trucks) : "",
+    estAnnualRevenue:      c.estAnnualRevenue       || "",
+    contractValue:         c.contractValue != null ? String(c.contractValue) : "",
+    yearsInBusiness:       c.yearsInBusiness != null ? String(c.yearsInBusiness) : "",
+    serviceAreaMiles:      c.serviceAreaMiles != null ? String(c.serviceAreaMiles) : "",
+    dispatcherSoftware:    c.dispatcherSoftware    || "",
+    servicesOffered:       c.servicesOffered       || "",
+    motorClubAffiliations: c.motorClubAffiliations || "",
+    painPoints:            c.painPoints            || "",
+    socialLinks:           c.socialLinks           || {},
+    source:                c.source                || "",
+    campaign:              c.campaign              || "",
+    ownedBy:               c.ownedBy               || "",
+    tags:                  Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
+    notes:                 c.notes                 || "",
+    udfValues:             c.udfValues             || {},
+  };
+}
 
-const DEFAULT_CONTAINERS = [
-  { id: "pipeline",  title: "Pipeline Management",   type: "pipeline", width: "full", fieldColumns: 2, collapsible: false, collapsed: false, visible: true,  fields: [] },
-  { id: "name_role", title: "Name & Role",           type: "fields",   width: "full", fieldColumns: 3, collapsible: false, collapsed: false, visible: true,  fields: ["firstName", "lastName", "title"] },
-  { id: "contact",   title: "Contact Info",          type: "fields",   width: "half", fieldColumns: 1, collapsible: false, collapsed: false, visible: true,  fields: ["email", "phone", "website", "address"] },
-  { id: "company",   title: "Company & Acquisition", type: "fields",   width: "half", fieldColumns: 1, collapsible: false, collapsed: false, visible: true,  fields: ["company", "accountSize", "source", "campaign", "trucks", "contractValue"] },
-  { id: "notes",     title: "Notes",                 type: "notes",    width: "full", fieldColumns: 1, collapsible: true,  collapsed: false, visible: true,  fields: [] },
-  { id: "social",    title: "Social Media",          type: "social",   width: "full", fieldColumns: 2, collapsible: true,  collapsed: false, visible: true,  fields: [] },
-  { id: "tags",      title: "Tags",                  type: "tags",     width: "full", fieldColumns: 1, collapsible: true,  collapsed: false, visible: true,  fields: [] },
-];
+function emptyForm(currentUser) {
+  return {
+    firstName: "", lastName: "", title: "", phone: "",
+    email: "", website: "", address: "", city: "", state: "", zip: "",
+    lifecycleStage: "new", leadScore: "0",
+    company: "", accountSize: "", trucks: "", estAnnualRevenue: "", contractValue: "",
+    yearsInBusiness: "", serviceAreaMiles: "", dispatcherSoftware: "",
+    servicesOffered: "", motorClubAffiliations: "", painPoints: "",
+    socialLinks: {}, source: "", campaign: "",
+    ownedBy: currentUser?.name || "",
+    tags: "", notes: "",
+    udfValues: {},
+  };
+}
 
 const SectionDragCtx = createContext(null);
 
@@ -163,35 +201,122 @@ function emptyForm(currentUser) {
 export default function ContactDetailPanel({
   contact, onSave, onAction, currentUser, pool, clientId,
   onFormChange, onDirtyChange,
+  editMode = false, onEditModeChange,
 }) {
   const T = useTheme();
   const toast = useAppToast();
   const isNew = !contact;
 
-  const [form, setForm]               = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
-  const [saveStatus, setSaveStatus]   = useState(null);
-  const [auditLog, setAuditLog]       = useState([]);
-  const [fieldVis, setFieldVis]       = useState(DEFAULT_FIELD_SETTINGS);
-  const [noteClicked, setNoteClicked] = useState(false);
-  const [editMode, setEditMode]       = useState(true);
-  const [containers, setContainers]   = useState(DEFAULT_CONTAINERS);
-  const [layoutMode, setLayoutMode]   = useState(false);
-  const [secOver, setSecOver]         = useState(null);
-  const [addingContainer, setAddingContainer] = useState(false);
-  const [newContTitle, setNewContTitle]       = useState("");
-  const [newContType, setNewContType]         = useState("fields");
-  const secDragging = useRef(null);
+  const [form, setForm]             = useState(() => isNew ? emptyForm(currentUser) : contactToForm(contact));
+  const [saveStatus, setSaveStatus] = useState(null);
+  const [vis, setVis]               = useState({});
+  const [sectionDragOverKey, setSectionDragOverKey] = useState(null);
 
-  const firstNameRef    = useRef(null);
-  const panelRef        = useRef(null);
-  const statusTimerRef  = useRef(null);
-  const formRef         = useRef(form);
-  const dirtyRef        = useRef(false);
-  const editModeRef     = useRef(editMode);
-  const layoutModeRef   = useRef(layoutMode);
-  formRef.current      = form;
-  editModeRef.current  = editMode;
-  layoutModeRef.current = layoutMode;
+  useEffect(() => {
+    getSettings(clientId, "contact_fields")
+      .then(res => {
+        if (res?.config && Object.keys(res.config).length > 0) {
+          setVis(res.config);
+        }
+      })
+      .catch(() => {});
+  }, [clientId]);
+
+  // In edit mode every field renders; visibility is communicated via styling only
+  const show = key => editMode ? true : vis[key] !== false;
+  const isFieldVisible  = key => vis[key] !== false;
+
+  const saveVisTimer = useRef(null);
+
+  const toggleVis = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [key]: prev[key] !== false ? false : true };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => {
+        saveSettings(clientId, "contact_fields", next).catch(() => {});
+      }, 400);
+      return next;
+    });
+  };
+
+  const getFieldLabel  = (key) => vis[`label_${key}`] || null;
+  const saveFieldLabel = (key, newLabel) => {
+    const trimmed = newLabel.trim();
+    setVis(prev => {
+      const next = { ...prev };
+      if (trimmed) next[`label_${key}`] = trimmed;
+      else delete next[`label_${key}`];
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => {
+        saveSettings(clientId, "contact_fields", next).catch(() => {});
+      }, 400);
+      return next;
+    });
+  };
+
+  const SECTION_KEYS_LIST = ["contact_info", "pipeline", "company", "services", "social", "notes", "tags", "custom_fields"];
+  const rawSectionOrder   = Array.isArray(vis.section_order) ? vis.section_order : [];
+  const sectionOrder      = [
+    ...rawSectionOrder.filter(k => SECTION_KEYS_LIST.includes(k)),
+    ...SECTION_KEYS_LIST.filter(k => !rawSectionOrder.includes(k)),
+  ];
+
+  const isSectionCollapsed    = (key) => vis[`sec_col_${key}`] === true;
+  const toggleSectionCollapse = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [`sec_col_${key}`]: !prev[`sec_col_${key}`] };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+  const isSectionVisible  = (key) => vis[`sec_hid_${key}`] !== true;
+  const toggleSectionVis  = (key) => {
+    setVis(prev => {
+      const next = { ...prev, [`sec_hid_${key}`]: !prev[`sec_hid_${key}`] };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+  const onSectionDragStart = (key) => { sectionDragIdxRef.current = key; };
+  const onSectionDragOver  = (e, key) => { e.preventDefault(); setSectionDragOverKey(key); };
+  const onSectionDragLeave = () => setSectionDragOverKey(null);
+  const onSectionDrop      = (e, key) => {
+    e.preventDefault();
+    setSectionDragOverKey(null);
+    const from = sectionDragIdxRef.current;
+    sectionDragIdxRef.current = null;
+    if (!from || from === key) return;
+    const order = [...sectionOrder];
+    const fi = order.indexOf(from);
+    const ti = order.indexOf(key);
+    if (fi < 0 || ti < 0) return;
+    order.splice(fi, 1);
+    order.splice(ti, 0, from);
+    setVis(prev => {
+      const next = { ...prev, section_order: order };
+      clearTimeout(saveVisTimer.current);
+      saveVisTimer.current = setTimeout(() => saveSettings(clientId, "contact_fields", next).catch(() => {}), 400);
+      return next;
+    });
+  };
+
+  const editCtx = {
+    editMode, isFieldVisible, toggleVis, getFieldLabel, saveFieldLabel,
+    isSectionCollapsed, toggleSectionCollapse,
+    isSectionVisible, toggleSectionVis,
+    sectionOrder,
+    onSectionDragStart, onSectionDragOver, onSectionDragLeave, onSectionDrop, sectionDragOverKey,
+  };
+
+  const firstNameRef      = useRef(null);
+  const panelRef          = useRef(null);
+  const statusTimerRef    = useRef(null);
+  const formRef           = useRef(form);
+  const dirtyRef          = useRef(false);
+  const sectionDragIdxRef = useRef(null);
+  formRef.current         = form;
 
   // ── Auto-save ─────────────────────────────────────────────────────────────
   const doSaveRef = useRef(null);
@@ -213,7 +338,17 @@ export default function ContactDetailPanel({
     }
   };
 
-  useEffect(() => () => { clearTimeout(statusTimerRef.current); }, []);
+  useEffect(() => () => { clearTimeout(statusTimerRef.current); clearTimeout(saveVisTimer.current); }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!panelRef.current?.contains(e.target) && !panelRef.current?.contains(e.relatedTarget)) {
+        if (dirtyRef.current) doSaveRef.current?.();
+      }
+    };
+    document.addEventListener("focusout", handler);
+    return () => document.removeEventListener("focusout", handler);
+  }, []);
 
   // ── Reset on contact change ────────────────────────────────────────────────
   useEffect(() => {
@@ -330,6 +465,12 @@ export default function ContactDetailPanel({
         return;
       }
       if (e.key !== "Escape") return;
+      if (editMode) {
+        e.stopImmediatePropagation();
+        onEditModeChange?.(false);
+        document.activeElement?.blur?.();
+        return;
+      }
       if (isNew) {
         e.stopImmediatePropagation();
         handleAddNew();
@@ -345,7 +486,7 @@ export default function ContactDetailPanel({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isNew]); // eslint-disable-line
+  }, [isNew, editMode]); // eslint-disable-line
 
   const set = (k, v) => {
     const next = { ...formRef.current, [k]: v };
@@ -365,28 +506,14 @@ export default function ContactDetailPanel({
     onDirtyChange?.(true);
   };
 
-  function buildPayload(f) {
-    const fd = f || formRef.current;
-    const tagsArr = fd.tags ? fd.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-    return {
-      ...(contact || {}), ...fd,
-      id: contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
-      pool: contact?.pool || pool,
-      clientId: contact?.clientId || clientId,
-      tags: tagsArr,
-      trucks: parseInt(fd.trucks) || 0,
-      contractValue: parseInt(fd.contractValue) || 0,
-      leadScore: contact?.leadScore || 10,
-      emailsSent: contact?.emailsSent || 0,
-      emailsOpened: contact?.emailsOpened || 0,
-      emailsClicked: contact?.emailsClicked || 0,
-      callsMade: contact?.callsMade || 0,
-      callsAnswered: contact?.callsAnswered || 0,
-      lastActivityAt: new Date().toISOString(),
-      addedBy: contact?.addedBy || currentUser?.name || "Unknown",
-      createdAt: contact?.createdAt || new Date().toISOString(),
-    };
-  }
+  const setUdf = (sortKey, val) => {
+    const next = { ...formRef.current, udfValues: { ...formRef.current.udfValues, [sortKey]: val } };
+    formRef.current = next;
+    dirtyRef.current = true;
+    setForm(next);
+    onFormChange?.(next);
+    onDirtyChange?.(true);
+  };
 
   async function handleAddNew() {
     setSaveStatus("saving");
@@ -429,273 +556,198 @@ export default function ContactDetailPanel({
   const rows              = groupContainers(visibleContainers);
 
   return (
-    <div ref={panelRef} style={{ maxWidth: 820, margin: "0 auto", paddingBottom: 32 }}>
+    <EditCtx.Provider value={editCtx}>
+    <div ref={panelRef} style={{ width: "100%", paddingBottom: 24 }}>
 
-      {/* ── Profile card ─────────────────────────────────────────────── */}
-      <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 14, marginBottom: 16, overflow: "hidden" }}>
-
-        {/* Banner */}
-        <div style={{ height: 88, position: "relative", background: `linear-gradient(135deg, ${avatarColor}35 0%, ${avatarColor}12 50%, transparent 100%)` }}>
-          <div style={{ position: "absolute", top: 12, right: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            {saveStatus === "saving" && (
-              <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
-                <Spinner size={10} color={T.muted} /> Saving…
-              </span>
-            )}
-            {saveStatus === "saved" && <span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>✓ Saved</span>}
-            {isNew && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
-            {!isNew && !layoutMode && !editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Enter to edit</span>}
-            {!isNew && !layoutMode && editMode && saveStatus === null && <span style={{ fontSize: 10, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>}
-            {!isNew && layoutMode && <span style={{ fontSize: 10, color: T.accent, fontStyle: "italic", fontWeight: 600 }}>Press Esc to exit layout</span>}
-            {!isNew && (
-              <button
-                onClick={() => setLayoutMode(lm => !lm)}
-                title={layoutMode ? "Exit layout mode" : "Customize layout"}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 26, height: 26, borderRadius: 6,
-                  border: "1px solid " + (layoutMode ? T.accent + "60" : T.border + "80"),
-                  background: layoutMode ? T.accent + "20" : T.card + "cc",
-                  color: layoutMode ? T.accent : T.muted,
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-                  <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Profile body */}
-        <div style={{ padding: "0 24px 22px" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginTop: -36 }}>
-
-            {/* Avatar */}
-            <div style={{
-              width: 72, height: 72, borderRadius: "50%", flexShrink: 0,
-              background: `linear-gradient(135deg, ${avatarColor}30, ${avatarColor}18)`,
-              border: "3px solid " + T.card,
-              boxShadow: `0 0 0 2px ${avatarColor}55, 0 4px 16px ${avatarColor}20`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 22, fontWeight: 800, color: avatarColor,
-            }}>
-              {avatarLetter}
-            </div>
-
-            {/* Name area */}
-            <div style={{ flex: 1, minWidth: 0, paddingBottom: 6 }}>
-              {(editMode || isNew) ? (
-                <>
-                  {/* First + Last side by side — transparent, underline only, same size as view hero */}
-                  <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
-                    {[
-                      { key: "firstName", ref: firstNameRef, placeholder: "First name" },
-                      { key: "lastName",  ref: null,         placeholder: "Last name"  },
-                    ].map(({ key, ref, placeholder }) => (
-                      <input
-                        key={key}
-                        ref={ref || undefined}
-                        data-field-nav
-                        value={form[key] || ""}
-                        onChange={e => set(key, e.target.value)}
-                        onKeyDown={fieldNav}
-                        placeholder={placeholder}
-                        style={{
-                          flex: 1, minWidth: 0,
-                          background: "transparent", border: "none", borderRadius: 0,
-                          borderBottom: "2px solid " + T.border + "55",
-                          padding: "0 0 5px",
-                          color: T.text, fontSize: 22, fontWeight: 800,
-                          fontFamily: "inherit", outline: "none",
-                          letterSpacing: "-0.02em", lineHeight: 1.2,
-                          transition: "border-color 0.15s",
-                        }}
-                        onFocus={e => e.target.style.borderBottomColor = T.accent}
-                        onBlur={e => e.target.style.borderBottomColor = T.border + "55"}
-                      />
-                    ))}
-                  </div>
-                  {/* Job title — lighter, subtitle style */}
-                  <input
-                    data-field-nav
-                    value={form.title || ""}
-                    onChange={e => set("title", e.target.value)}
-                    onKeyDown={fieldNav}
-                    placeholder="Job title"
-                    style={{
-                      width: "100%", boxSizing: "border-box",
-                      background: "transparent", border: "none", borderRadius: 0,
-                      borderBottom: "1px solid " + T.border + "35",
-                      padding: "0 0 4px",
-                      color: form.title ? T.dim : T.muted,
-                      fontSize: 13, fontWeight: 400,
-                      fontFamily: "inherit", outline: "none",
-                      transition: "border-color 0.15s, color 0.15s",
-                    }}
-                    onFocus={e => { e.target.style.borderBottomColor = T.accent; e.target.style.color = T.text; }}
-                    onBlur={e => { e.target.style.borderBottomColor = T.border + "35"; e.target.style.color = form.title ? T.dim : T.muted; }}
-                  />
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: heroEmpty ? T.muted : T.text, fontStyle: heroEmpty ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 4, letterSpacing: "-0.02em" }}>
-                    {heroEmpty ? "No name" : heroName}
-                  </div>
-                  {(form.title || form.company) && (
-                    <div style={{ fontSize: 13, color: T.muted, fontWeight: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {[form.title, form.company].filter(Boolean).join(" · ")}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+      {/* Save status bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 8, minHeight: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {saveStatus === "saving" && (
+            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
+              <Spinner size={10} color={T.muted} /> Saving…
+            </span>
+          )}
+          {saveStatus === "saved" && (
+            <span style={{ fontSize: 11, color: T.green, fontWeight: 700 }}>✓ Saved</span>
+          )}
+          {isNew && !saveStatus && (
+            <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>Press Esc to save</span>
+          )}
+          {editMode && !saveStatus && (
+            <span style={{ fontSize: 11, color: T.accent, fontStyle: "italic" }}>Press Esc to exit</span>
+          )}
         </div>
       </div>
 
+      {/* sections — flex column so CSS order can resequence them */}
+      <div style={{ display: "flex", flexDirection: "column" }}>
 
-      {/* ── Layout mode: hidden containers panel ─────────────────────── */}
-      {layoutMode && hiddenContainers.length > 0 && (
-        <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "12px 16px", marginBottom: 12 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-            Hidden Containers
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {hiddenContainers.map(c => (
-              <button
-                key={c.id}
-                onClick={() => updateContainer(c.id, { visible: true })}
-                style={{
-                  padding: "5px 14px", borderRadius: 20, border: "1px solid " + T.border,
-                  background: T.surface, color: T.dim, cursor: "pointer",
-                  fontSize: 11, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5,
-                }}
-              >
-                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> {c.title}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* ── CONTACT INFO ──────────────────────────────────────────────────────── */}
+      <Section icon={User} title="Contact Info" T={T} sectionKey="contact_info">
+        <G cols="1fr 1fr 1fr 1fr">
+          {show("firstName") && <F label="First Name" fieldKey="firstName"><FInput inputRef={firstNameRef} value={form.firstName} onChange={v => set("firstName", v)} placeholder="First name" /></F>}
+          {show("lastName")  && <F label="Last Name"  fieldKey="lastName"><FInput value={form.lastName} onChange={v => set("lastName", v)} placeholder="Last name" /></F>}
+          {show("title")     && <F label="Title"      fieldKey="title"><FInput value={form.title} onChange={v => set("title", v)} placeholder="Job title" /></F>}
+          {show("phone")     && <F label="Phone"      fieldKey="phone"><FInput value={form.phone} onChange={v => set("phone", v)} placeholder="(555) 000-0000" onKeyDown={phoneKey} /></F>}
+        </G>
+        {(show("email") || show("website")) && (
+          <G cols="1fr 1fr">
+            {show("email")   && <F label="Email"   fieldKey="email"><FInput value={form.email} onChange={v => set("email", v)} placeholder="email@example.com" type="email" /></F>}
+            {show("website") && <F label="Website" fieldKey="website"><FInput value={form.website} onChange={v => set("website", v)} placeholder="https://website.com" onBlur={() => { const v = (form.website||"").trim(); if(v && !/^https?:\/\//i.test(v)) set("website","https://"+v); }} /></F>}
+          </G>
+        )}
+        {(show("address") || show("city") || show("state") || show("zip")) && (
+          <G cols="2fr 1fr 1fr 1fr" mb={0}>
+            {show("address") && <F label="Address" fieldKey="address"><FInput value={form.address} onChange={v => set("address", v)} placeholder="Street address" /></F>}
+            {show("city")    && <F label="City"    fieldKey="city"><FInput value={form.city} onChange={v => set("city", v)} placeholder="City" /></F>}
+            {show("state")   && <F label="State"   fieldKey="state"><FInput value={form.state} onChange={v => set("state", v)} placeholder="State" /></F>}
+            {show("zip")     && <F label="Zip"     fieldKey="zip"><FInput value={form.zip} onChange={v => set("zip", v)} placeholder="Zip" /></F>}
+          </G>
+        )}
+      </Section>
+
+      {/* ── PIPELINE ──────────────────────────────────────────────────────────── */}
+      {(show("lifecycleStage") || show("leadScore")) && (
+        <Section icon={TrendingUp} title="Pipeline" T={T} sectionKey="pipeline">
+          <G cols="1fr 1fr" mb={0}>
+            {show("lifecycleStage") && (
+              <F label="Lead Stage" fieldKey="lifecycleStage">
+                <InlineStageSelect
+                  value={form.lifecycleStage}
+                  onChange={(newStage) => set("lifecycleStage", newStage)}
+                />
+              </F>
+            )}
+            {show("leadScore") && <F label="Lead Score" fieldKey="leadScore"><FInput value={form.leadScore} onChange={v => set("leadScore", v)} placeholder="0" onKeyDown={numKey} /></F>}
+          </G>
+        </Section>
       )}
 
-      {/* ── Container rows — one card per row ───────────────────────── */}
-      {rows.map((row, rowIdx) => (
-        <div
-          key={rowIdx}
-          style={{
-            background: T.card,
-            border: "1px solid " + (layoutMode ? T.accent + "45" : T.border),
-            borderRadius: 14, overflow: "hidden", marginBottom: 12,
-            boxShadow: layoutMode ? "0 0 0 2px " + T.accent + "12" : "none",
-          }}
-        >
-          <div style={{ display: "grid", gridTemplateColumns: row.map(() => "1fr").join(" ") }}>
-            {row.map((container, colIdx) => {
-              const visIdx = visibleContainers.indexOf(container);
-              return (
-                <div
-                  key={container.id}
-                  style={{ borderLeft: colIdx > 0 ? "1px solid " + T.border + "60" : "none", minWidth: 0 }}
-                >
-                    <DraggableBlock
-                      index={visIdx}
-                      secDragging={secDragging}
-                      secOver={secOver}
-                      setSecOver={setSecOver}
-                      onDrop={handleSecDrop}
-                    >
-                      <ContainerBlock
-                        container={container}
-                        layoutMode={layoutMode}
-                        editMode={editMode}
-                        form={form}
-                        set={set}
-                        setSocial={setSocial}
-                        show={show}
-                        numKey={numKey}
-                        phoneKey={phoneKey}
-                        enabledSocials={enabledSocials}
-                        noteClicked={noteClicked}
-                        setNoteClicked={setNoteClicked}
-                        parsedTags={parsedTags}
-                        firstNameRef={firstNameRef}
-                        onUpdate={(patch) => updateContainer(container.id, patch)}
-                        onHide={() => updateContainer(container.id, { visible: false })}
-                        onFieldReorder={(next, crossMeta) => {
-                          setContainers(prev => {
-                            const updated = prev.map(c => {
-                              if (c.id === container.id) return { ...c, fields: next.map(f => f.key) };
-                              if (crossMeta && c.id === crossMeta.fromContainerId)
-                                return { ...c, fields: c.fields.filter(k => k !== crossMeta.removedKey) };
-                              return c;
-                            });
-                            saveLayout(updated);
-                            return updated;
-                          });
-                        }}
-                      />
-                    </DraggableBlock>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      {/* ── COMPANY & ACCOUNT ─────────────────────────────────────────────────── */}
+      {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue") || show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
+        <Section icon={Building2} title="Company & Account" T={T} sectionKey="company">
+          {(show("company") || show("accountSize") || show("trucks") || show("estAnnualRevenue") || show("contractValue")) && (
+            <G cols="2fr 1fr 1fr 1fr 1fr">
+              {show("company")        && <F label="Company"      fieldKey="company"><FInput value={form.company} onChange={v => set("company", v)} placeholder="Company name" /></F>}
+              {show("accountSize")   && <F label="Account Size"  fieldKey="accountSize"><FInput value={form.accountSize} onChange={v => set("accountSize", v)} placeholder="e.g. 1-5" /></F>}
+              {show("trucks")        && <F label="Trucks"        fieldKey="trucks"><FInput value={form.trucks} onChange={v => set("trucks", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("estAnnualRevenue") && <F label="Est. Revenue" fieldKey="estAnnualRevenue"><FInput value={form.estAnnualRevenue} onChange={v => set("estAnnualRevenue", v)} placeholder="$0" /></F>}
+              {show("contractValue") && <F label="Contract ($)"  fieldKey="contractValue"><FInput value={form.contractValue} onChange={v => set("contractValue", v)} placeholder="0" onKeyDown={numKey} /></F>}
+            </G>
+          )}
+          {(show("yearsInBusiness") || show("serviceAreaMiles") || show("dispatcherSoftware") || show("source") || show("campaign")) && (
+            <G cols="1fr 1fr 1fr" mb={0}>
+              {show("yearsInBusiness")    && <F label="Years in Business"    fieldKey="yearsInBusiness"><FInput value={form.yearsInBusiness} onChange={v => set("yearsInBusiness", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("serviceAreaMiles")  && <F label="Service Area (mi)"    fieldKey="serviceAreaMiles"><FInput value={form.serviceAreaMiles} onChange={v => set("serviceAreaMiles", v)} placeholder="0" onKeyDown={numKey} /></F>}
+              {show("dispatcherSoftware") && <F label="Dispatcher Software" fieldKey="dispatcherSoftware"><FInput value={form.dispatcherSoftware} onChange={v => set("dispatcherSoftware", v)} placeholder="e.g. Omadi" /></F>}
+              {show("source")   && <F label="Source"   fieldKey="source"><FInput value={form.source} onChange={v => set("source", v)} placeholder="e.g. Cold Call" /></F>}
+              {show("campaign") && <F label="Campaign" fieldKey="campaign"><FInput value={form.campaign} onChange={v => set("campaign", v)} placeholder="Campaign name" /></F>}
+            </G>
+          )}
+        </Section>
+      )}
 
-      {/* ── Layout mode: add container ────────────────────────────────── */}
-      {layoutMode && (
-        <div style={{ marginBottom: 12 }}>
-          {!addingContainer ? (
-            <button
-              onClick={() => setAddingContainer(true)}
-              style={{
-                width: "100%", padding: "10px 16px", border: "2px dashed " + T.border,
-                borderRadius: 8, background: "transparent", color: T.muted,
-                cursor: "pointer", fontSize: 12, fontFamily: "inherit",
-              }}
-            >
-              + Add Container
-            </button>
-          ) : (
-            <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "14px 16px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>New Container</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  autoFocus
-                  value={newContTitle}
-                  onChange={e => setNewContTitle(e.target.value)}
-                  placeholder="Container title..."
-                  onKeyDown={e => {
-                    if (e.key === "Enter") addContainer();
-                    if (e.key === "Escape") { setAddingContainer(false); setNewContTitle(""); }
-                  }}
-                  style={{ flex: 1, background: T.surface, border: "1px solid " + T.border, borderRadius: 6, padding: "7px 11px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit" }}
-                />
-                <select
-                  value={newContType}
-                  onChange={e => setNewContType(e.target.value)}
-                  style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 6, padding: "7px 11px", color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit", cursor: "pointer" }}
-                >
-                  <option value="fields">Fields</option>
-                  <option value="notes">Notes</option>
-                  <option value="custom">Custom</option>
-                </select>
-                <button onClick={addContainer} style={{ padding: "7px 16px", borderRadius: 6, border: "none", background: T.accent, color: "#fff", cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>Add</button>
-                <button onClick={() => { setAddingContainer(false); setNewContTitle(""); }} style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid " + T.border, background: T.surface, color: T.dim, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>Cancel</button>
-              </div>
+      {/* ── SERVICES & OPERATIONS ─────────────────────────────────────────────── */}
+      {(show("servicesOffered") || show("motorClubAffiliations") || show("painPoints")) && (
+        <Section icon={Wrench} title="Services & Operations" T={T} sectionKey="services">
+          {(show("servicesOffered") || show("motorClubAffiliations")) && (
+            <G cols="1fr 1fr">
+              {show("servicesOffered")       && <F label="Services Offered"        fieldKey="servicesOffered"><FTextarea value={form.servicesOffered} onChange={v => set("servicesOffered", v)} placeholder="Heavy Duty, Semi Recovery, Accident…" rows={2} /></F>}
+              {show("motorClubAffiliations") && <F label="Motor Club Affiliations" fieldKey="motorClubAffiliations"><FTextarea value={form.motorClubAffiliations} onChange={v => set("motorClubAffiliations", v)} placeholder="State Farm, NSD…" rows={2} /></F>}
+            </G>
+          )}
+          {show("painPoints") && (
+            <G cols="1fr" mb={0}>
+              <F label="Pain Points" fieldKey="painPoints"><FTextarea value={form.painPoints} onChange={v => set("painPoints", v)} placeholder="Key pain points or challenges…" rows={2} /></F>
+            </G>
+          )}
+        </Section>
+      )}
+
+      {/* ── SOCIAL LINKS ──────────────────────────────────────────────────────── */}
+      {(() => {
+        const ALL_SOCIAL = [
+          { key: "facebook",  vis: "social_facebook",  label: "Facebook",    ph: "facebook.com/…"    },
+          { key: "instagram", vis: "social_instagram", label: "Instagram",   ph: "instagram.com/…"   },
+          { key: "linkedin",  vis: "social_linkedin",  label: "LinkedIn",    ph: "linkedin.com/in/…" },
+          { key: "twitter",   vis: "social_twitter",   label: "Twitter / X", ph: "x.com/…"           },
+          { key: "youtube",   vis: "social_youtube",   label: "YouTube",     ph: "youtube.com/…"     },
+          { key: "yelp",      vis: "social_yelp",      label: "Yelp",        ph: "yelp.com/biz/…"    },
+          { key: "pinterest", vis: "social_pinterest", label: "Pinterest",   ph: "pinterest.com/…"   },
+          { key: "tiktok",    vis: "social_tiktok",    label: "TikTok",      ph: "tiktok.com/@…"     },
+        ].filter(s => show(s.vis));
+
+        if (ALL_SOCIAL.length === 0) return null;
+
+        return (
+          <Section icon={Share2} title="Social Links" T={T} sectionKey="social">
+            <G cols="1fr 1fr 1fr 1fr" mb={0}>
+              {ALL_SOCIAL.map(({ key, label, ph, vis: vk }) => (
+                <F key={key} label={label} fieldKey={vk}>
+                  <FInput value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={ph} />
+                </F>
+              ))}
+            </G>
+          </Section>
+        );
+      })()}
+
+      {/* ── NOTES ─────────────────────────────────────────────────────────────── */}
+      {show("notes") && (
+        <Section icon={FileText} title="Notes" T={T} sectionKey="notes">
+          <G cols="1fr" mb={0}>
+            <F label="Notes" fieldKey="notes">
+              <FTextarea value={form.notes} onChange={v => set("notes", v)} placeholder="Add notes about this contact…" rows={3} />
+            </F>
+          </G>
+        </Section>
+      )}
+
+      {/* ── TAGS ──────────────────────────────────────────────────────────────── */}
+      {show("tags") && (
+        <Section icon={Tag} title="Tags" T={T} sectionKey="tags">
+          <G cols="1fr" mb={parsedTags.length > 0 ? 10 : 0}>
+            <F label="Tags" fieldKey="tags">
+              <FInput value={form.tags} onChange={v => set("tags", v)} placeholder="tag1, tag2, tag3  (comma-separated)" />
+            </F>
+          </G>
+          {parsedTags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {parsedTags.map(tag => (
+                <span key={tag} style={{
+                  padding: "3px 10px", borderRadius: 20, fontSize: 11,
+                  background: T.accent + "18", color: T.accent,
+                  border: "1px solid " + T.accent + "35", fontWeight: 600,
+                }}>{tag}</span>
+              ))}
             </div>
           )}
-        </div>
+        </Section>
       )}
 
+      {/* ── CUSTOM FIELDS ─────────────────────────────────────────────────────── */}
+      <Section icon={SlidersHorizontal} title="Custom Fields" T={T} sectionKey="custom_fields">
+        <CustomFieldsSection
+          clientId={clientId}
+          contactId={contact?.id}
+          udfValues={form.udfValues || {}}
+          onValueChange={setUdf}
+          toast={toast}
+          editMode={editMode}
+          noWrapper
+        />
+      </Section>
 
-      {/* ── Cancellation info ─────────────────────────────────────────── */}
+      </div>{/* end sections flex container */}
+
+      {/* ── Cancellation info ─────────────────────────────────────────────────── */}
       {contact?.isCanceled && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, background: T.red + "08", border: "1px solid " + T.red + "30", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+        <div style={{
+          marginTop: 12,
+          display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+          background: T.red + "08", border: "1px solid " + T.red + "30",
+          borderRadius: 6, marginTop: 4, overflow: "hidden",
+        }}>
           {[
             ["Canceled By", contact.canceledBy || "—"],
             ["Canceled At", fmt.date(contact.canceledAt)],
@@ -709,6 +761,7 @@ export default function ContactDetailPanel({
         </div>
       )}
     </div>
+    </EditCtx.Provider>
   );
 }
 
@@ -1063,176 +1116,91 @@ function ContainerBlock({
     }
   }
 
-  return (
-    <div style={{
-      outline: layoutMode ? "1px dashed " + T.accent + "35" : "none",
-      outlineOffset: -2,
-    }}>
-      {header}
-      {body}
-    </div>
-  );
-}
+function Section({ icon: Icon, title, children, T, sectionKey }) {
+  const ctx = useContext(EditCtx);
+  const em  = ctx?.editMode ?? false;
 
-// ══════════════════════════════════════════════════════════════════════════════
-// DraggableFieldList
-// ══════════════════════════════════════════════════════════════════════════════
+  const isCollapsed = sectionKey ? (ctx?.isSectionCollapsed?.(sectionKey) ?? false) : false;
+  const isVisible   = sectionKey ? (ctx?.isSectionVisible?.(sectionKey)   ?? true)  : true;
+  const isDragOver  = !!(sectionKey && ctx?.sectionDragOverKey === sectionKey);
+  const order       = sectionKey && ctx?.sectionOrder ? ctx.sectionOrder.indexOf(sectionKey) : undefined;
 
-function DraggableFieldList({ containerId, fields, columns = 1, editMode, layoutMode, form, set, show, numKey, phoneKey, onReorder, firstFieldRef }) {
-  const T = useTheme();
-  const dragIdx = useRef(null);
-  const [dragOver, setDragOver] = useState(null);
-
-  const visible = fields.filter(f => show(f.key));
+  if (!em && sectionKey && !isVisible) return null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: columns > 1 ? "0 16px" : "0" }}>
-      {visible.map((field, i) => {
-        const color   = field.colorKey ? T[field.colorKey] : (field.color || undefined);
-        const isAbove = dragOver === i && dragIdx.current !== null && dragIdx.current > i;
-        const isBelow = dragOver === i && dragIdx.current !== null && dragIdx.current < i;
-
-        return (
-          <div
-            key={field.key}
-            draggable={layoutMode}
-            onDragStart={e => {
-              if (_secDragIdx !== null) return;
-              dragIdx.current = i;
-              _fieldDrag = { field, fromContainerId: containerId };
-              e.dataTransfer.effectAllowed = "move";
-              e.stopPropagation();
-            }}
-            onDragOver={e => {
-              if (_secDragIdx !== null) return;
-              e.preventDefault(); e.stopPropagation();
-              e.dataTransfer.dropEffect = "move";
-              if (dragOver !== i) setDragOver(i);
-            }}
-            onDragLeave={e => {
-              if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(null);
-            }}
-            onDrop={e => {
-              if (_secDragIdx !== null) return;
-              e.preventDefault(); e.stopPropagation();
-              setDragOver(null);
-
-              // Cross-container drop
-              if (_fieldDrag && _fieldDrag.fromContainerId !== containerId) {
-                const dropped = _fieldDrag.field;
-                const fromId  = _fieldDrag.fromContainerId;
-                _fieldDrag = null; dragIdx.current = null;
-                const next = [...visible];
-                next.splice(i, 0, dropped);
-                const hidden = fields.filter(f => !visible.some(v => v.key === f.key));
-                onReorder([...next, ...hidden], { fromContainerId: fromId, removedKey: dropped.key });
-                return;
-              }
-
-              // Same-container reorder
-              const src = dragIdx.current;
-              if (src !== null && src !== i) {
-                const next = [...visible];
-                const [moved] = next.splice(src, 1);
-                next.splice(i, 0, moved);
-                const hidden = fields.filter(f => !visible.some(v => v.key === f.key));
-                onReorder([...next, ...hidden]);
-              }
-              dragIdx.current = null; _fieldDrag = null;
-            }}
-            onDragEnd={() => { setDragOver(null); dragIdx.current = null; _fieldDrag = null; }}
-            style={{
-              display: "flex", alignItems: "flex-start", gap: layoutMode ? 6 : 0,
-              borderTop:    isAbove ? `2px solid ${T.accent}` : "2px solid transparent",
-              borderBottom: isBelow ? `2px solid ${T.accent}` : "2px solid transparent",
-              transition: "border-color 0.08s",
-            }}
-          >
-            {layoutMode && (
-              <div style={{ flexShrink: 0, paddingTop: 14, cursor: "grab", color: T.muted, fontSize: 13, userSelect: "none", lineHeight: 1, opacity: 0.5 }}>
-                ⠿
-              </div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {editMode ? (
-                <InlineInput
-                  inputRef={i === 0 && firstFieldRef ? firstFieldRef : undefined}
-                  label={field.label}
-                  type={field.type}
-                  value={form[field.key]}
-                  onChange={v => set(field.key, v)}
-                  placeholder={field.placeholder}
-                  color={color}
-                  icon={field.icon}
-                  onKeyDown={field.numKey ? numKey : field.phoneKey ? phoneKey : undefined}
-                  onBlur={field.autoHttps ? () => {
-                    const v = (form[field.key] || "").trim();
-                    if (v && !/^https?:\/\//i.test(v)) set(field.key, "https://" + v);
-                  } : undefined}
-                />
-              ) : (
-                <ViewRow label={field.label} value={form[field.key]} color={color} icon={field.icon} />
-              )}
-            </div>
+    <div
+      onDragOver={em && sectionKey ? (e) => ctx.onSectionDragOver(e, sectionKey) : undefined}
+      onDragLeave={em && sectionKey ? ctx.onSectionDragLeave : undefined}
+      onDrop={em && sectionKey ? (e) => ctx.onSectionDrop(e, sectionKey) : undefined}
+      style={{
+        background: T.card,
+        borderRadius: 8,
+        padding: "14px 16px",
+        marginBottom: 12,
+        order: order !== undefined && order >= 0 ? order : undefined,
+        opacity: em && sectionKey && !isVisible ? 0.45 : 1,
+        outline: isDragOver ? `2px solid ${T.accent}60` : "none",
+        outlineOffset: -2,
+        transition: "opacity 0.2s",
+      }}
+    >
+      <div style={{ marginBottom: isCollapsed ? 0 : 14 }}>
+        <div
+          onClick={() => sectionKey && ctx?.toggleSectionCollapse?.(sectionKey)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            paddingBottom: isCollapsed ? 0 : 10,
+            borderBottom: isCollapsed ? "none" : "1.5px solid " + T.border,
+            cursor: sectionKey ? "pointer" : "default",
+            userSelect: "none",
+          }}
+        >
+          {em && sectionKey && (
+            <span
+              draggable
+              onDragStart={e => { e.stopPropagation(); ctx.onSectionDragStart?.(sectionKey); }}
+              onClick={e => e.stopPropagation()}
+              title="Drag to reorder"
+              style={{ color: T.muted, fontSize: 16, lineHeight: 1, cursor: "grab", flexShrink: 0, userSelect: "none" }}
+            >
+              ⠿
+            </span>
+          )}
+          {em && sectionKey && (
+            <input
+              type="checkbox"
+              checked={isVisible}
+              onChange={() => ctx.toggleSectionVis?.(sectionKey)}
+              onClick={e => e.stopPropagation()}
+              title={isVisible ? "Hide section" : "Show section"}
+              style={{ width: 12, height: 12, cursor: "pointer", accentColor: T.accent, flexShrink: 0, margin: 0 }}
+            />
+          )}
+          <div style={{
+            width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+            background: T.accent + "1a",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Icon size={13} color={T.accent} strokeWidth={2.2} />
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// DraggableBlock — wraps a container with section-level DnD
-// ══════════════════════════════════════════════════════════════════════════════
-
-function DraggableBlock({ index, secDragging, secOver, setSecOver, onDrop, children }) {
-  const T = useTheme();
-  const isAbove = secOver === index && secDragging.current !== null && secDragging.current > index;
-  const isBelow = secOver === index && secDragging.current !== null && secDragging.current < index;
-
-  const gripCtx = {
-    onDragStart: e => {
-      _secDragIdx = index;
-      secDragging.current = index;
-      e.dataTransfer.effectAllowed = "move";
-    },
-    onDragEnd: () => {
-      _secDragIdx = null;
-      secDragging.current = null;
-      setSecOver(null);
-    },
-  };
-
-  return (
-    <SectionDragCtx.Provider value={gripCtx}>
-      <div
-        onDragOver={e => {
-          if (_secDragIdx === null || _secDragIdx === index) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          if (secOver !== index) setSecOver(index);
-        }}
-        onDragLeave={e => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setSecOver(null);
-        }}
-        onDrop={e => {
-          if (_secDragIdx === null || _secDragIdx === index) return;
-          e.preventDefault();
-          const src = _secDragIdx;
-          _secDragIdx = null;
-          secDragging.current = null;
-          onDrop(src, index);
-          setSecOver(null);
-        }}
-        style={{
-          borderTop:    isAbove ? `3px solid ${T.accent}` : "3px solid transparent",
-          borderBottom: isBelow ? `3px solid ${T.accent}` : "3px solid transparent",
-          transition: "border-color 0.1s",
-        }}
-      >
-        {children}
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text, letterSpacing: "0.01em", flex: 1 }}>
+            {title}
+          </span>
+          {sectionKey && (
+            <ChevronDown
+              size={14}
+              color={T.muted}
+              style={{
+                flexShrink: 0,
+                transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+              }}
+            />
+          )}
+        </div>
       </div>
-    </SectionDragCtx.Provider>
+      {!isCollapsed && children}
+    </div>
   );
 }
 
@@ -1240,7 +1208,156 @@ function DraggableBlock({ index, secDragging, secOver, setSecOver, onDrop, child
 // Primitive sub-components
 // ══════════════════════════════════════════════════════════════════════════════
 
-function CustomSelect({ label, value, options, onChange, getColor, style: outerStyle }) {
+function F({ label, children, fieldKey }) {
+  const T   = useTheme();
+  const ctx = useContext(EditCtx);
+
+  const em      = ctx?.editMode ?? false;
+  const visible = !fieldKey || (ctx?.isFieldVisible(fieldKey) ?? true);
+
+  const [editingLabel, setEditingLabel] = useState(false);
+  const [labelDraft,   setLabelDraft]   = useState("");
+
+  // Resolved display label (may have been renamed)
+  const displayLabel = fieldKey ? (ctx?.getFieldLabel(fieldKey) || label) : label;
+
+  function startLabelEdit() {
+    setLabelDraft(displayLabel || "");
+    setEditingLabel(true);
+  }
+  function commitLabelEdit() {
+    ctx?.saveFieldLabel(fieldKey, labelDraft);
+    setEditingLabel(false);
+  }
+  function cancelLabelEdit() {
+    setEditingLabel(false);
+  }
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 5,
+      opacity: em && !visible ? 0.38 : 1,
+      transition: "opacity 0.2s",
+    }}>
+      {label && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          {em && fieldKey && (
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={() => ctx.toggleVis(fieldKey)}
+              title={visible ? "Hide this field" : "Show this field"}
+              style={{ width: 12, height: 12, cursor: "pointer", accentColor: T.accent, flexShrink: 0, margin: 0 }}
+            />
+          )}
+          {em && fieldKey && editingLabel ? (
+            <input
+              autoFocus
+              value={labelDraft}
+              onChange={e => setLabelDraft(e.target.value)}
+              onBlur={commitLabelEdit}
+              onKeyDown={e => {
+                if (e.key === "Enter")  { e.preventDefault(); commitLabelEdit(); }
+                if (e.key === "Escape") { e.preventDefault(); cancelLabelEdit(); }
+              }}
+              style={{
+                fontSize: 11, fontWeight: 600, color: T.accent,
+                background: T.bg, border: "1px solid " + T.accent,
+                borderRadius: 3, padding: "1px 5px", outline: "none",
+                fontFamily: "inherit", letterSpacing: "0.02em",
+              }}
+            />
+          ) : (
+            <label
+              onClick={em && fieldKey ? startLabelEdit : undefined}
+              title={em && fieldKey ? "Click to rename" : undefined}
+              style={{
+                fontSize: 11, fontWeight: 600, color: T.muted,
+                letterSpacing: "0.02em",
+                cursor: em && fieldKey ? "text" : "default",
+                userSelect: "none",
+              }}
+            >
+              {displayLabel}
+            </label>
+          )}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// ─── FInput ───────────────────────────────────────────────────────────────────
+
+function FInput({ value, onChange, placeholder, type = "text", onKeyDown, onBlur, inputRef }) {
+  const T = useTheme();
+  const mouseDownRef = useRef(false);
+  return (
+    <input
+      ref={inputRef}
+      data-field-nav
+      type={type}
+      value={value ?? ""}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => { fieldNav(e); onKeyDown?.(e); }}
+      onMouseDown={() => { mouseDownRef.current = true; }}
+      onFocus={e => {
+        e.target.style.borderColor = T.accent;
+        e.target.style.boxShadow = `0 0 0 3px ${T.accent}22`;
+        if (!mouseDownRef.current) {
+          const len = e.target.value.length;
+          setTimeout(() => e.target.setSelectionRange(len, len), 0);
+        }
+        mouseDownRef.current = false;
+      }}
+      onBlur={e => {
+        e.target.style.borderColor = T.border;
+        e.target.style.boxShadow = "none";
+        mouseDownRef.current = false;
+        onBlur?.(e);
+      }}
+      placeholder={placeholder || ""}
+      style={{
+        width: "100%", padding: "8px 11px", boxSizing: "border-box",
+        background: T.surface, border: "1px solid " + T.border,
+        borderRadius: 5, color: T.text, fontSize: 13,
+        outline: "none", fontFamily: "inherit",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        minHeight: 36,
+      }}
+    />
+  );
+}
+
+// ─── FTextarea ────────────────────────────────────────────────────────────────
+
+function FTextarea({ value, onChange, placeholder, rows = 3 }) {
+  const T = useTheme();
+  return (
+    <textarea
+      data-field-nav
+      value={value ?? ""}
+      onChange={e => onChange(e.target.value)}
+      onFocus={e => { e.target.style.borderColor = T.accent; e.target.style.boxShadow = `0 0 0 3px ${T.accent}22`; }}
+      onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
+      placeholder={placeholder || ""}
+      rows={rows}
+      style={{
+        width: "100%", padding: "8px 11px", boxSizing: "border-box",
+        background: T.surface, border: "1px solid " + T.border,
+        borderRadius: 5, color: T.text, fontSize: 13,
+        outline: "none", fontFamily: "inherit",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        resize: "vertical", lineHeight: 1.55,
+      }}
+    />
+  );
+}
+
+// ─── InlineStageSelect ────────────────────────────────────────────────────────
+
+function InlineStageSelect({ value, onChange }) {
   const T = useTheme();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);

@@ -12,6 +12,7 @@ import {
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION } from '../constants/index.js';
 import { importHtml as processImport } from '../services/htmlImporter.js';
+import { injectUnsubscribeFooter, injectUnsubUrl, inlineCss } from '../services/email.js';
 
 // ── Guard: assert client exists ───────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export const createTemplate = async (req, res) => {
       subject,
       fromEmail:   resolvedFromEmail,
       body:        resolvedBody,
-      htmlOutput,
+      htmlOutput:  htmlOutput || '',
       trackedLinks: [],
       status,
     });
@@ -285,7 +286,10 @@ export const sendTestEmail = async (req, res) => {
       return sendError(res, 'Template has no HTML output. Open it in the builder and save it first.', 400);
     }
 
-    const html = template.htmlOutput.replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview');
+    const rawHtml = template.htmlOutput
+      .replace(/\{\{INTERACT_URL_[^}]+\}\}/g, '#test-preview')
+      .replace(/\{\{[^}]+\}\}/g, '');          // strip any remaining placeholders
+    const html = injectUnsubUrl(inlineCss(rawHtml), '#test-unsubscribe');
 
     let fromEmail = null;
     const clientDomain = await domainRepo.findFirstVerified(template.clientId ?? null);
@@ -307,7 +311,7 @@ export const sendTestEmail = async (req, res) => {
       from:    fromEmail,
       subject: `[Preview] ${template.subject || template.name}`,
       html,
-      text:    htmlToPlainText(html),
+      text:    htmlToPlainText(rawHtml),
     });
 
     sendSuccess(res, { ok: true, messageId: result?.id });

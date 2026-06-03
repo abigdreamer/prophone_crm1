@@ -76,17 +76,50 @@ export async function getDashboardSummary() {
 }
 
 // Reads active pool from singleton — no manual params needed
-// Optional status: 'active' | 'pending' | 'canceled' — filters server-side
-export async function getContacts(status = null) {
+export async function getContacts({ page = 1, limit = 1000, status = null, search = '', stages = [], sortBy = 'recent', scoreMin = 0, scoreMax = 100, udfFilters = {}, customFilters = {}, searchMethods = {} } = {}) {
   const { pool, clientId } = getActivePool();
   const params = new URLSearchParams();
   if (pool === 'client' && clientId) {
     params.set('pool', 'client');
     params.set('clientId', clientId);
   }
-  if (status && status !== 'all') params.set('status', status);
+  if (status && status !== 'all')  params.set('status', status);
+  if (search)                      params.set('search', search);
+  if (stages.length > 0)           params.set('stages', stages.join(','));
+  if (sortBy) params.set('sortBy', sortBy);
+  if (scoreMin > 0)                params.set('scoreMin', scoreMin);
+  if (scoreMax < 100)              params.set('scoreMax', scoreMax);
+  const activeUdfFilters = Object.fromEntries(Object.entries(udfFilters).filter(([, v]) => v !== '' && v != null));
+  if (Object.keys(activeUdfFilters).length > 0) params.set('udfFilters', JSON.stringify(activeUdfFilters));
+  const activeCustomFilters = Object.fromEntries(Object.entries(customFilters).filter(([, v]) => {
+    if (v == null || v === '') return false;
+    if (typeof v === 'object') return Object.values(v).some(x => x !== '' && x != null);
+    return true;
+  }));
+  if (Object.keys(activeCustomFilters).length > 0) params.set('customFilters', JSON.stringify(activeCustomFilters));
+  const hasSearchOverrides = Object.values(searchMethods).some(v => v === false);
+  if (hasSearchOverrides) params.set('searchMethods', JSON.stringify(searchMethods));
+  params.set('page', page);
+  params.set('limit', limit);
   return request('GET', `/api/contacts?${params}`);
 }
+
+export const getCustomSorts      = ()        => { const p = new URLSearchParams(); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/custom-options/sorts?${p}`); };
+export const createCustomSort    = (data)    => request('POST',   '/api/custom-options/sorts',     { ...data, clientId: _clientId || null });
+export const updateCustomSort    = (id, d)   => request('PATCH',  `/api/custom-options/sorts/${id}`, d);
+export const deleteCustomSort    = (id)      => request('DELETE', `/api/custom-options/sorts/${id}`);
+export const getCustomFilterOpts = ()        => { const p = new URLSearchParams(); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/custom-options/filters?${p}`); };
+export const createCustomFilterOpt  = (data) => request('POST',   '/api/custom-options/filters',     { ...data, clientId: _clientId || null });
+export const updateCustomFilterOpt  = (id, d)=> request('PATCH',  `/api/custom-options/filters/${id}`, d);
+export const deleteCustomFilterOpt  = (id)   => request('DELETE', `/api/custom-options/filters/${id}`);
+
+export const getUdfs         = ()               => { const p = new URLSearchParams(); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs?${p}`); };
+export const createUdf       = (data)           => request('POST',   '/api/udfs',     { ...data, clientId: _clientId || null });
+export const updateUdf       = (id, data)       => request('PATCH',  `/api/udfs/${id}`, data);
+export const deleteUdf       = (id)             => request('DELETE', `/api/udfs/${id}`);
+export const getUdfValues    = (fieldKey, search = '') => { const p = new URLSearchParams({ fieldKey, search }); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs/values?${p}`); };
+export const getContactUdfs    = (contactId)    => request('GET', `/api/contacts/${contactId}/udfs`);
+export const updateContactUdfs = (contactId, values) => request('PUT', `/api/contacts/${contactId}/udfs`, values);
 
 export async function getContact(id) {
   return request('GET', `/api/contacts/${id}`);
@@ -213,10 +246,9 @@ export async function getTemplates() {
 }
 
 export async function getTemplateById(id) {
-  const { clientId } = getActivePool();
-  const params = new URLSearchParams();
-  if (clientId) params.set('clientId', clientId);
-  const r = await request('GET', `/api/email-templates/${id}?${params}`);
+  // No client scoping — a direct UUID lookup is auth-gated and must work across pool contexts
+  // (e.g. share links opened under a different active client)
+  const r = await request('GET', `/api/email-templates/${id}`);
   return r.data ?? r;
 }
 
@@ -342,8 +374,8 @@ export async function previewCampaignRecipients(campaignId, filter) {
   return r.data ?? r;
 }
 
-export async function sendCampaign(id, { limit } = {}) {
-  const body = limit ? { limit } : undefined;
+export async function sendCampaign(id, { limit, label } = {}) {
+  const body = (limit || label) ? { ...(limit ? { limit } : {}), ...(label ? { label } : {}) } : undefined;
   const r = await request('POST', `/api/campaigns/${id}/send`, body);
   return r.data ?? r;
 }

@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { VALID_CLIENT_PLANS, ACTION, ENTITY_TYPE, TRACKED_CLIENT_FIELDS } from '../constants/index.js';
 import { logActivity } from '../lib/activityLogger.js';
+import { seedDefaultsForClient } from '../lib/seedDefaults.js';
 
 async function listClients(req, res) {
   const { all } = req.query;
@@ -50,6 +51,11 @@ async function createClient(req, res) {
 
   const by = req.user?.name || req.user?.email || 'system';
   logActivity(ENTITY_TYPE.CLIENT, client.id, ACTION.CREATE, `Client created: ${client.name}`, by);
+
+  // Auto-seed built-in sort and filter options for the new client pool
+  seedDefaultsForClient(client.id, prisma).catch(err =>
+    console.error(`[seedDefaults] Failed to seed defaults for client ${client.id}:`, err)
+  );
 
   res.status(201).json(client);
 }

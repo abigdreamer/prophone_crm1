@@ -686,14 +686,12 @@ function DetailPanel({ domain, onClose, onDeleted, onUpdated, onCanceled, onRest
                   </button>
                 )}
               </div>
-              {fromEmail && (
-                <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>
-                  Emails will be sent as:{' '}
-                  <span style={{ color: T.dim, fontFamily: 'monospace' }}>
-                    {fromEmail}
-                  </span>
-                </div>
-              )}
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>
+                Emails will be sent as:{' '}
+                <span style={{ color: T.dim, fontFamily: 'monospace' }}>
+                  {fromEmail || `noreply@${domain.domainName}`}
+                </span>
+              </div>
             </div>
           </>
         )}
