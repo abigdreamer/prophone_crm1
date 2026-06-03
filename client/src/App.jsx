@@ -397,8 +397,9 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool('client');
-    // Full reload guarantees clean state across all pages (campaigns, templates, etc.)
-    window.location.reload();
+    // Navigate to the current page's base path (drops ?id=...&mode=... query params)
+    // so detail views don't reload with a stale item ID from the previous client
+    window.location.href = window.location.pathname;
   }, [setClientId, setPool]);
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
