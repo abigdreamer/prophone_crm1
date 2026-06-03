@@ -1888,35 +1888,57 @@ export default function CampaignDetailPage() {
               <CalendarClock size={12} /> Set Up Queue
             </button>
           )}
-          <button
-            onClick={() => setShowExcelModal(true)}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-              background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            <Download size={13} /> Excel
-          </button>
-          <button
-            disabled={pdfExporting}
-            onClick={async () => {
-              setPdfExporting(true);
-              try { await exportCampaignBlob(campaign.id, 'pdf'); }
-              catch { /* ignore */ }
-              finally { setPdfExporting(false); }
-            }}
-            style={{
-              display: "flex", alignItems: "center", gap: 5,
-              padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-              background: T.surface, color: pdfExporting ? T.muted : T.dim,
-              fontSize: 12, cursor: pdfExporting ? "not-allowed" : "pointer",
-              fontFamily: "inherit", opacity: pdfExporting ? 0.6 : 1,
-            }}
-          >
-            <Download size={13} /> {pdfExporting ? "Generating…" : "PDF"}
-          </button>
+          {(() => {
+            const activeDayRun = selectedDayRunId ? queueRuns.find(r => r.id === selectedDayRunId) : null;
+            const dayLabel = activeDayRun ? ` · Day ${activeDayRun.dayNumber}` : "";
+            const activeStyle = activeDayRun ? { borderColor: (T.blue || "#3b82f6") + "55", color: T.blue || "#3b82f6" } : {};
+            return (
+              <>
+                <button
+                  onClick={async () => {
+                    if (activeDayRun) {
+                      await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'excel');
+                    } else {
+                      setShowExcelModal(true);
+                    }
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+                    background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
+                    fontFamily: "inherit", ...activeStyle,
+                  }}
+                >
+                  <Download size={13} /> Excel{dayLabel}
+                </button>
+                <button
+                  disabled={pdfExporting}
+                  onClick={async () => {
+                    setPdfExporting(true);
+                    try {
+                      if (activeDayRun) {
+                        await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'pdf');
+                      } else {
+                        await exportCampaignBlob(campaign.id, 'pdf');
+                      }
+                    } catch { /* ignore */ }
+                    finally { setPdfExporting(false); }
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+                    background: T.surface, fontSize: 12, fontFamily: "inherit",
+                    color: pdfExporting ? T.muted : (activeDayRun ? (T.blue || "#3b82f6") : T.dim),
+                    borderColor: activeDayRun ? (T.blue || "#3b82f6") + "55" : T.border,
+                    cursor: pdfExporting ? "not-allowed" : "pointer",
+                    opacity: pdfExporting ? 0.6 : 1,
+                  }}
+                >
+                  <Download size={13} /> {pdfExporting ? "Generating…" : `PDF${dayLabel}`}
+                </button>
+              </>
+            );
+          })()}
           <RefreshBtn onClick={load} loading={loading} />
         </div>
       </div>
@@ -2009,18 +2031,6 @@ export default function CampaignDetailPage() {
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {selectedDayRunId && (
-              <button
-                onClick={async () => { await exportCampaignDayBlob(id, queueRuns.find(r => r.id === selectedDayRunId)?.dayNumber); }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                  borderRadius: 7, border: "1px solid " + T.border, background: T.surface,
-                  color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <Download size={12} /> Export Day
-              </button>
-            )}
             {queue.status === "active" && (
               <button
                 onClick={handleQueuePause} disabled={queueActing}
