@@ -389,17 +389,18 @@ function AppLayout({ currentUser, onSignOut }) {
 
   const handlePoolSwitch = useCallback((p) => {
     setPool(p);
-    setSelected(null);
-    setCenterMode(null);
-    // useContacts clears contacts + sets loading atomically in its effect
+    // Navigate to the top-level route so stale campaign/template IDs are dropped
+    const topRoute = "/" + (window.location.pathname.split("/").filter(Boolean)[0] || "");
+    window.location.href = topRoute;
   }, [setPool]);
 
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool('client');
-    setSelected(null);
-    setCenterMode(null);
-    // useContacts clears contacts + sets loading atomically in its effect
+    // Keep only the first path segment — strips both query params (?id=...) AND
+    // route-level IDs (/campaigns/old-uuid → /campaigns)
+    const topRoute = "/" + (window.location.pathname.split("/").filter(Boolean)[0] || "");
+    window.location.href = topRoute;
   }, [setClientId, setPool]);
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
