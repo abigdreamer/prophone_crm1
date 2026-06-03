@@ -14,23 +14,6 @@ export default function CustomFieldsSection({ clientId, contactId, udfValues, on
   const [fieldStatus, setFieldStatus] = useState({}); // { [sortKey]: 'saving'|'saved'|null }
   const fieldStatusTimers             = useRef({});
   const dragIdx                       = useRef(null);
-  const seedingRef                    = useRef(false);
-
-  // Seed defaults only after context confirms UDFs are loaded and empty.
-  // seedingRef prevents a race where udfsLoaded flips true→false→true while the
-  // first seed is still in flight, which was causing duplicate UDF rows.
-  useEffect(() => {
-    if (!udfsLoaded || udfs.length > 0 || seedingRef.current) return;
-    seedingRef.current = true;
-    async function seed() {
-      const defaults = ["Usrdefine1", "Usrdefine2", "Usrdefine3", "Usrdefine4", "Usrdefine5"];
-      for (const [i, label] of defaults.entries()) {
-        await createUdf({ label, type: "TEXT", displayOrder: i, isActive: false });
-      }
-      await refreshUdfs();
-    }
-    seed().catch(() => {}).finally(() => { seedingRef.current = false; });
-  }, [udfsLoaded]); // eslint-disable-line
 
   useEffect(() => {
     const timers = fieldStatusTimers.current;
