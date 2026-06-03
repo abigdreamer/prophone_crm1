@@ -303,9 +303,12 @@ export const sendCampaign = async (req, res) => {
     // Mark suppressed recipients so they don't stay as "pending"
     const suppressedRecipients = allRecipients.filter(r => suppressedIds.has(r.contactId));
     if (suppressedRecipients.length) {
-      await Promise.all(suppressedRecipients.map(r =>
-        repo.updateRecipientStatus(r.id, 'skipped'),
-      ));
+      await Promise.all(suppressedRecipients.map(r => {
+        const reason = suppressedIds.unsubIds?.has(r.contactId)
+          ? 'suppressed:unsubscribed'
+          : 'suppressed:bounced';
+        return repo.updateRecipientStatus(r.id, 'skipped', reason);
+      }));
     }
 
     if (!recipients.length) return sendError(res, 'All recipients are suppressed (previously bounced or unsubscribed)', 400);
@@ -330,7 +333,7 @@ export const sendCampaign = async (req, res) => {
       const noEmail = batch.filter(r => !r.contact?.email?.includes('@'));
       if (noEmail.length) {
         await Promise.all(noEmail.map(r =>
-          repo.updateRecipientStatus(r.id, 'skipped'),
+          repo.updateRecipientStatus(r.id, 'skipped', 'no_email'),
         ));
       }
 
@@ -714,6 +717,16 @@ export const resendCampaign = async (req, res) => {
     const suppressedIds = await repo.findSuppressedContactIds(contactIds, campaignId);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
 
+    const suppressedResend = allRecipients.filter(r => suppressedIds.has(r.contactId));
+    if (suppressedResend.length) {
+      await Promise.all(suppressedResend.map(r => {
+        const reason = suppressedIds.unsubIds?.has(r.contactId)
+          ? 'suppressed:unsubscribed'
+          : 'suppressed:bounced';
+        return repo.updateRecipientStatus(r.id, 'skipped', reason);
+      }));
+    }
+
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
     const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
     let totalSent = 0;
@@ -1090,5 +1103,32 @@ export const listPublishedTemplates = async (req, res) => {
     sendSuccess(res, enriched);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
+  }
+};
+
+// ── Dry-run send (read-only skip preview) ────────────────────────────────────
+
+export const dryRunCampaignSend = async (req, res) => {
+  const { id } = req.params;
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  try {
+    const campaign = await repo.findById(id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    const result = await repo.dryRunSend(id, limit);
+    sendSuccess(res, result);
+  } catch (err) {
+    sendServerError(res, err, 'dryRunCampaignSend');
+  }
+};
+
+// ── Re-subscribe recipient (admin override for accidental unsubscribes) ───────
+
+export const resubscribeRecipient = async (req, res) => {
+  const { rid } = req.params;
+  try {
+    const updated = await repo.resubscribeRecipient(rid);
+    sendSuccess(res, updated);
+  } catch (err) {
+    sendServerError(res, err, 'resubscribeRecipient');
   }
 };

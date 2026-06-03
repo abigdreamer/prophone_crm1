@@ -446,6 +446,17 @@ export async function getPublishedTemplates() {
   return r.data ?? r;
 }
 
+export async function dryRunCampaignSend(id, limit = null) {
+  const q = limit ? `?limit=${limit}` : '';
+  const r = await request('GET', `/api/campaigns/${id}/send/dry-run${q}`);
+  return r.data ?? r;
+}
+
+export async function resubscribeRecipient(campaignId, recipientId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/recipients/${recipientId}/resubscribe`);
+  return r.data ?? r;
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function getSettings(clientId, module) {

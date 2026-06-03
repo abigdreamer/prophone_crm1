@@ -14,7 +14,7 @@ import {
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
   cancelCampaign, restoreCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
-  exportCampaignBlob,
+  exportCampaignBlob, dryRunCampaignSend, resubscribeRecipient,
 } from "../services/api";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
@@ -236,8 +236,16 @@ const STAGE_FILTERS = [
   { id: "churned",        label: "Churned",        desc: "Churned" },
 ];
 
+const SKIP_REASON_LABELS = {
+  "suppressed:unsubscribed": { text: "Unsubscribed", color: null },  // color resolved at render time
+  "suppressed:bounced":      { text: "Bounced",      color: null },
+  "no_email":                { text: "No email",     color: null },
+  "duplicate_email":         { text: "Duplicate",    color: null },
+};
+
 function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId, onTotalChange }) {
   const T = useTheme();
+  const toast = useAppToast();
   const thStyle = {
     padding: "10px 16px", textAlign: "left",
     fontSize: 10, fontWeight: 700, color: T.muted,
@@ -278,6 +286,17 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
   useEffect(() => { load(page); }, [load, page]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / limit));
+
+  const handleResubscribe = useCallback(async (e, recipientId) => {
+    e.stopPropagation();
+    try {
+      await resubscribeRecipient(campaignId, recipientId);
+      toast.success("Contact re-subscribed. They can now receive future campaigns.");
+      load(page);
+    } catch {
+      toast.error("Failed to re-subscribe contact.");
+    }
+  }, [campaignId, load, page, toast]);
 
   if (loading) return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -399,6 +418,31 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
+                  {r.status === "skipped" && r.skipReason && (() => {
+                    const label = SKIP_REASON_LABELS[r.skipReason];
+                    const color = r.skipReason === "suppressed:unsubscribed" ? T.red
+                                : r.skipReason === "suppressed:bounced"      ? (T.amber || T.yellow || "#f59e0b")
+                                : T.muted;
+                    return (
+                      <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>
+                        {label?.text || r.skipReason}
+                      </div>
+                    );
+                  })()}
+                  {r.status === "unsubscribed" && !r.resubscribedAt && (
+                    <button
+                      onClick={e => handleResubscribe(e, r.id)}
+                      title="Remove from suppression list"
+                      style={{
+                        marginTop: 4, display: "block", fontSize: 10, padding: "2px 7px",
+                        borderRadius: 4, border: "1px solid " + T.border,
+                        background: "transparent", color: T.muted,
+                        cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+                      }}
+                    >
+                      Re-subscribe
+                    </button>
+                  )}
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.contact?.lifecycleStage
@@ -1155,10 +1199,12 @@ const SEND_LIMIT_PRESETS = [
 
 function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
   const T = useTheme();
-  const [batchLabel,  setBatchLabel]  = useState("");
-  const [limitMode,   setLimitMode]   = useState("all");   // "all" | "preset" | "custom"
-  const [presetVal,   setPresetVal]   = useState(500);
-  const [customVal,   setCustomVal]   = useState("");
+  const [batchLabel,    setBatchLabel]    = useState("");
+  const [limitMode,     setLimitMode]     = useState("all");   // "all" | "preset" | "custom"
+  const [presetVal,     setPresetVal]     = useState(500);
+  const [customVal,     setCustomVal]     = useState("");
+  const [dryRun,        setDryRun]        = useState(null);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
 
   const total = campaign.recipientsCount || 0;
 
@@ -1169,6 +1215,15 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
       : (parseInt(customVal, 10) || null);
 
   const sendCount = resolvedLimit ? Math.min(resolvedLimit, total) : total;
+
+  useEffect(() => {
+    setDryRun(null);
+    setDryRunLoading(true);
+    dryRunCampaignSend(campaign.id, resolvedLimit || null)
+      .then(r => setDryRun(r))
+      .catch(() => {})
+      .finally(() => setDryRunLoading(false));
+  }, [campaign.id, resolvedLimit]); // eslint-disable-line
 
   const btnStyle = (active) => ({
     padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
@@ -1256,6 +1311,50 @@ function SendConfirmModal({ campaign, onClose, onConfirm, loading }) {
               </strong> stay pending for next send.
             </div>
           )}
+
+          {/* Dry-run skip breakdown */}
+          <div style={{
+            marginTop: 8, fontSize: 12, borderRadius: 6, padding: "7px 10px",
+            background: T.surface, border: "1px solid " + T.border + "66",
+            minHeight: 30, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0 6px",
+          }}>
+            {dryRunLoading ? (
+              <span style={{ color: T.muted }}>Calculating…</span>
+            ) : dryRun ? (
+              <>
+                <span style={{ color: T.green, fontWeight: 700 }}>{dryRun.willSend.toLocaleString()}</span>
+                <span style={{ color: T.muted }}> will be sent</span>
+                {dryRun.skipUnsubscribed > 0 && (
+                  <span style={{ color: T.muted }}>
+                    {" "}·{" "}
+                    <span style={{ color: T.red, fontWeight: 600 }}>{dryRun.skipUnsubscribed}</span>
+                    {" "}unsubscribed
+                  </span>
+                )}
+                {dryRun.skipBounced > 0 && (
+                  <span style={{ color: T.muted }}>
+                    {" "}·{" "}
+                    <span style={{ color: T.amber || T.yellow || "#f59e0b", fontWeight: 600 }}>{dryRun.skipBounced}</span>
+                    {" "}bounced
+                  </span>
+                )}
+                {dryRun.skipNoEmail > 0 && (
+                  <span style={{ color: T.muted }}>
+                    {" "}·{" "}
+                    <span style={{ fontWeight: 600 }}>{dryRun.skipNoEmail}</span>
+                    {" "}no email
+                  </span>
+                )}
+                {dryRun.skipDuplicate > 0 && (
+                  <span style={{ color: T.muted }}>
+                    {" "}·{" "}
+                    <span style={{ fontWeight: 600 }}>{dryRun.skipDuplicate}</span>
+                    {" "}duplicate
+                  </span>
+                )}
+              </>
+            ) : null}
+          </div>
         </div>
 
         {/* Batch label */}

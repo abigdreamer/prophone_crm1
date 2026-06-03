@@ -218,11 +218,44 @@ export async function resetRecipientsForResend(campaignId, statuses) {
   });
 }
 
-export async function updateRecipientStatus(id, status) {
+export async function updateRecipientStatus(id, status, skipReason = null) {
   return prisma.campaignRecipient.update({
     where: { id },
-    data:  { status },
+    data:  { status, ...(skipReason != null ? { skipReason } : {}) },
   });
+}
+
+export async function resubscribeRecipient(recipientId) {
+  return prisma.campaignRecipient.update({
+    where: { id: recipientId },
+    data:  { resubscribedAt: new Date() },
+  });
+}
+
+export async function dryRunSend(campaignId, limit = null) {
+  const allPending = await findPendingRecipientsForSend(campaignId, limit);
+  const total = allPending.length;
+  if (total === 0) {
+    return { total: 0, willSend: 0, skipUnsubscribed: 0, skipBounced: 0, skipNoEmail: 0, skipDuplicate: 0 };
+  }
+
+  const contactIds    = allPending.map(r => r.contactId).filter(Boolean);
+  const suppressedIds = await findSuppressedContactIds(contactIds, campaignId);
+
+  let skipUnsubscribed = 0, skipBounced = 0, skipNoEmail = 0, skipDuplicate = 0, willSend = 0;
+  const seenEmails = new Set();
+
+  for (const r of allPending) {
+    if (suppressedIds.unsubIds.has(r.contactId))  { skipUnsubscribed++; continue; }
+    if (suppressedIds.bounceIds.has(r.contactId)) { skipBounced++;      continue; }
+    const email = r.contact?.email?.toLowerCase();
+    if (!email || !email.includes('@'))            { skipNoEmail++;      continue; }
+    if (seenEmails.has(email))                     { skipDuplicate++;    continue; }
+    seenEmails.add(email);
+    willSend++;
+  }
+
+  return { total, willSend, skipUnsubscribed, skipBounced, skipNoEmail, skipDuplicate };
 }
 
 // ── Webhook event helpers ─────────────────────────────────────────────────────
@@ -487,9 +520,9 @@ export async function findPendingRecipientsForContacts(campaignId, contactIds) {
 }
 
 export async function findSuppressedContactIds(contactIds, campaignId) {
-  // Global: respect explicit opt-outs across all campaigns
+  // Global: unsubscribed contacts that have NOT been re-subscribed by an admin
   const unsubRows = await prisma.campaignRecipient.findMany({
-    where:  { contactId: { in: contactIds }, status: 'unsubscribed' },
+    where:  { contactId: { in: contactIds }, status: 'unsubscribed', resubscribedAt: null },
     select: { contactId: true },
     distinct: ['contactId'],
   });
@@ -503,10 +536,13 @@ export async function findSuppressedContactIds(contactIds, campaignId) {
     distinct: ['contactId'],
   });
 
-  return new Set([
-    ...unsubRows.map(r => r.contactId),
-    ...bounceRows.map(r => r.contactId),
-  ]);
+  const unsubIds  = new Set(unsubRows.map(r => r.contactId));
+  const bounceIds = new Set(bounceRows.map(r => r.contactId));
+  const all = new Set([...unsubIds, ...bounceIds]);
+  // Expose split sets for skip-reason attribution while staying backwards-compatible
+  all.unsubIds  = unsubIds;
+  all.bounceIds = bounceIds;
+  return all;
 }
 
 /**
