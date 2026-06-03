@@ -6,6 +6,7 @@ import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, Plus, Loader2, ChevronRight, CheckCircle2,
   Search, Trash2, Activity, X, Clock, Pencil, Ban, RotateCcw, Download,
+  CalendarClock, Pause, Play, Settings2, BarChart2, List,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
@@ -15,13 +16,39 @@ import {
   cancelCampaign, restoreCampaign,
   getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
   exportCampaignBlob, dryRunCampaignSend, resubscribeRecipient,
+  getCampaignQueue, createCampaignQueue, updateCampaignQueue,
+  pauseCampaignQueue, resumeCampaignQueue, cancelCampaignQueue,
+  exportCampaignDayBlob,
 } from "../services/api";
+import CampaignGraphView from "../components/CampaignGraphView";
 import { ACT_DEF } from "../data/activities";
 import { StagePill } from "../components/ui/Pill";
 import { SkeletonActivityRow, SkeletonRow, SkeletonBlock } from "../components/ui/Loader";
 import RefreshBtn from "../components/ui/RefreshBtn";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtCountdown(targetIso) {
+  if (!targetIso) return null;
+  const diffMs = new Date(targetIso).getTime() - Date.now();
+  if (diffMs <= 0) return "any moment now";
+  const totalSec = Math.floor(diffMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${s}s`;
+}
+
+function fmtLocalTime(isoStr) {
+  if (!isoStr) return "";
+  return new Date(isoStr).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 function fmtRelTime(ts) {
   if (!ts) return "";
@@ -243,7 +270,7 @@ const SKIP_REASON_LABELS = {
   "duplicate_email":         { text: "Duplicate",    color: null },
 };
 
-function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId, onTotalChange }) {
+function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKey, onSelectContact, selectedContactId, onTotalChange, queueRunId }) {
   const T = useTheme();
   const toast = useAppToast();
   const thStyle = {
@@ -265,14 +292,12 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
     try {
       const params = { page: currentPage, limit };
       if (statusFilter && statusFilter !== "all") {
-        // pending/bounced/unsubscribed are terminal or initial statuses with no event progression.
-        // sent/delivered/opened/clicked all advance — use event-based so recipients who moved
-        // further (e.g. sent→opened) still appear in the earlier filter.
         const statusOnly = new Set(["pending", "bounced", "unsubscribed"]);
         if (statusOnly.has(statusFilter)) params.status = statusFilter;
         else params.event = statusFilter;
       }
-      if (search) params.search = search;
+      if (search)      params.search     = search;
+      if (queueRunId)  params.queueRunId = queueRunId;
       const res = await getCampaignRecipients(campaignId, params);
       setData(res);
       onTotalChange?.(res.total);
@@ -1556,6 +1581,13 @@ export default function CampaignDetailPage() {
   const [excelExporting,    setExcelExporting]    = useState(false);
   const [filteredTotal,     setFilteredTotal]     = useState(null);
 
+  // Queue state
+  const [showQueueModal,    setShowQueueModal]    = useState(false);
+  const [queueActing,       setQueueActing]       = useState(false);
+  const [selectedDayRunId,  setSelectedDayRunId]  = useState(null); // null = all days
+  const [viewMode,          setViewMode]          = useState("table"); // "table" | "graph"
+  const [, setTick]         = useState(0); // force re-render every second for countdown
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -1573,6 +1605,12 @@ export default function CampaignDetailPage() {
   }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Live countdown — tick every second while a pending queue run exists
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleSelectRecipient = useCallback(async (recipient) => {
     if (selectedRecipient?.id === recipient.id) {
@@ -1667,6 +1705,54 @@ export default function CampaignDetailPage() {
     setTableKey(k => k + 1);
   }, []);
 
+  const handleQueueSave = useCallback(async (config) => {
+    setQueueActing(true);
+    try {
+      const queue = campaign.queue;
+      if (queue && queue.status !== "cancelled") {
+        await updateCampaignQueue(id, config);
+      } else {
+        await createCampaignQueue(id, { clientId: campaign.clientId, ...config });
+      }
+      const updated = await getCampaign(id);
+      setCampaign(updated);
+      setShowQueueModal(false);
+      toast.success("Queue settings saved.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to save queue settings.");
+    } finally {
+      setQueueActing(false);
+    }
+  }, [id, campaign, toast]);
+
+  const handleQueuePause = useCallback(async () => {
+    setQueueActing(true);
+    try {
+      await pauseCampaignQueue(id);
+      const updated = await getCampaign(id);
+      setCampaign(updated);
+      toast.success("Queue paused.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to pause queue.");
+    } finally {
+      setQueueActing(false);
+    }
+  }, [id, toast]);
+
+  const handleQueueResume = useCallback(async () => {
+    setQueueActing(true);
+    try {
+      await resumeCampaignQueue(id);
+      const updated = await getCampaign(id);
+      setCampaign(updated);
+      toast.success("Queue resumed.");
+    } catch (err) {
+      toast.error(err?.message || "Failed to resume queue.");
+    } finally {
+      setQueueActing(false);
+    }
+  }, [id, toast]);
+
   const handleClearRecipients = useCallback(async () => {
     if (!window.confirm("Remove all recipients from this campaign?")) return;
     try {
@@ -1700,6 +1786,8 @@ export default function CampaignDetailPage() {
   const isSending     = campaign.status === "sending";
   const isAbTest      = campaign.type === "ab_test";
   const pendingCount  = Math.max(0, (campaign.recipientsCount ?? 0) - (campaign.sentCount ?? 0) - (campaign.bouncedCount ?? 0));
+  const queue         = campaign.queue ?? null;
+  const queueRuns     = queue?.runs ?? [];
 
   const totals = analytics?.totals ?? {};
   const rates  = analytics?.rates  ?? {};
@@ -1759,21 +1847,6 @@ export default function CampaignDetailPage() {
               <Plus size={13} /> Add Recipients
             </button>
           )}
-          {/* Send to new pending recipients (for sent campaigns with new additions) */}
-          {isSent && pendingCount > 0 && (
-            <button
-              onClick={() => handleResend(["pending"])}
-              disabled={sending}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.accent + "60",
-                background: T.accent + "12", color: T.accent, fontSize: 12, fontWeight: 600,
-                cursor: sending ? "default" : "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Send size={12} /> Send to {pendingCount} New
-            </button>
-          )}
           {canSend && (
             <button
               onClick={() => setShowSendModal(true)}
@@ -1798,6 +1871,21 @@ export default function CampaignDetailPage() {
               }}
             >
               <Send size={12} /> Resend Campaign
+            </button>
+          )}
+          {(!queue || queue.status === "cancelled") && campaign.recipientsCount > 0 && (
+            <button
+              onClick={() => setShowQueueModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", borderRadius: 7,
+                border: "1px solid " + (T.blue || "#3b82f6") + "55",
+                background: (T.blue || "#3b82f6") + "12",
+                color: T.blue || "#3b82f6", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <CalendarClock size={12} /> Set Up Queue
             </button>
           )}
           <button
@@ -1832,6 +1920,145 @@ export default function CampaignDetailPage() {
           <RefreshBtn onClick={load} loading={loading} />
         </div>
       </div>
+
+      {/* ── Queue Status Banner ── */}
+      {queue && queue.status !== "cancelled" && (
+        <div style={{
+          background: T.card, border: "1px solid " + (queue.status === "active" ? T.blue + "50" : T.border),
+          borderRadius: 12, padding: "14px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+        }}>
+          {/* Icon */}
+          <div style={{
+            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+            background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
+            border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <CalendarClock size={16} color={queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green} />
+          </div>
+
+          {/* Info */}
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Queue</span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                textTransform: "uppercase", letterSpacing: "0.05em",
+                color: queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green,
+                background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
+                border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
+              }}>
+                {queue.status === "active" ? "Active" : queue.status === "paused" ? "Paused" : "Completed"}
+              </span>
+            </div>
+            {(() => {
+              const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
+              const countdown = nextRun ? fmtCountdown(nextRun.scheduledAt) : null;
+              const localTime = nextRun ? fmtLocalTime(nextRun.scheduledAt) : null;
+              const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
+              const sentPct   = queue.totalRecipients > 0
+                ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100))
+                : 0;
+              const barColor  = queue.status === "completed" ? T.green : T.blue;
+
+              return (
+                <div>
+                  {/* Progress row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
+                      {queue.totalSent?.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>of</span> {queue.totalRecipients?.toLocaleString()} sent
+                    </span>
+                    <div style={{ flex: 1, height: 5, borderRadius: 4, background: T.border, overflow: "hidden", minWidth: 60 }}>
+                      <div style={{ height: "100%", borderRadius: 4, background: barColor, width: sentPct + "%", transition: "width 0.4s ease" }} />
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: barColor, whiteSpace: "nowrap" }}>{sentPct}%</span>
+                  </div>
+
+                  {/* Meta row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: T.muted }}>
+                      Day <strong style={{ color: T.text }}>{queue.currentDay}</strong> of <strong style={{ color: T.text }}>{totalDays}</strong>
+                    </span>
+
+                    {nextRun && queue.status === "active" && (
+                      nextRun.status === "running"
+                        ? <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Sending now…</span>
+                        : <span style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}>
+                            <Clock size={10} />
+                            Next in <strong style={{ color: T.blue }}>{countdown}</strong>
+                            <span style={{ color: T.border }}>·</span>
+                            {localTime}
+                          </span>
+                    )}
+
+                    {queue.status === "paused" && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Paused</span>
+                    )}
+
+                    {queue.estimatedEndAt && queue.status === "active" && (
+                      <span style={{ fontSize: 11, color: T.muted }}>
+                        Ends <strong style={{ color: T.text }}>{new Date(queue.estimatedEndAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {selectedDayRunId && (
+              <button
+                onClick={async () => { await exportCampaignDayBlob(id, queueRuns.find(r => r.id === selectedDayRunId)?.dayNumber); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
+                  borderRadius: 7, border: "1px solid " + T.border, background: T.surface,
+                  color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Download size={12} /> Export Day
+              </button>
+            )}
+            {queue.status === "active" && (
+              <button
+                onClick={handleQueuePause} disabled={queueActing}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
+                  borderRadius: 7, border: "1px solid " + T.amber + "60", background: T.amber + "12",
+                  color: T.amber, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Pause size={12} /> Pause
+              </button>
+            )}
+            {queue.status === "paused" && (
+              <button
+                onClick={handleQueueResume} disabled={queueActing}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
+                  borderRadius: 7, border: "1px solid " + T.green + "60", background: T.green + "12",
+                  color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Play size={12} /> Resume
+              </button>
+            )}
+            <button
+              onClick={() => setShowQueueModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
+                borderRadius: 7, border: "1px solid " + T.border, background: T.surface,
+                color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Settings2 size={12} /> Settings
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* ── Campaign Summary Cards ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -1959,6 +2186,27 @@ export default function CampaignDetailPage() {
               </span>
             </div>
 
+            {/* View toggle */}
+            <div style={{ display: "flex", borderRadius: 7, border: "1px solid " + T.border, overflow: "hidden" }}>
+              {[["table", <List size={13} />], ["graph", <BarChart2 size={13} />]].map(([mode, icon]) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    padding: "5px 10px", border: "none", fontFamily: "inherit",
+                    background: viewMode === mode ? T.accent + "18" : T.surface,
+                    color: viewMode === mode ? T.accent : T.muted,
+                    fontSize: 11, fontWeight: viewMode === mode ? 700 : 500,
+                    cursor: "pointer", borderRight: mode === "table" ? "1px solid " + T.border : "none",
+                  }}
+                >
+                  {icon}
+                  <span style={{ textTransform: "capitalize" }}>{mode}</span>
+                </button>
+              ))}
+            </div>
+
             <div style={{ flex: 1 }} />
 
             {/* Search */}
@@ -2016,6 +2264,40 @@ export default function CampaignDetailPage() {
             )}
           </div>
 
+          {/* Day filter row (only shown when queue exists) */}
+          {queue && queueRuns.length > 0 && (
+            <div style={{
+              padding: "8px 20px", borderBottom: "1px solid " + T.border,
+              display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: 4 }}>
+                Day
+              </span>
+              {[{ id: null, label: "All" }, ...queueRuns.map(r => ({ id: r.id, label: `Day ${r.dayNumber}` }))].map(d => {
+                const active = selectedDayRunId === d.id;
+                return (
+                  <button
+                    key={d.id ?? "all"}
+                    onClick={() => { setSelectedDayRunId(d.id); setTableKey(k => k + 1); }}
+                    style={{
+                      padding: "4px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", fontFamily: "inherit",
+                      background: active ? T.blue + "18" : T.surface,
+                      border: "1px solid " + (active ? (T.blue || "#3b82f6") : T.border),
+                      color: active ? (T.blue || "#3b82f6") : T.muted,
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {d.label}
+                    {d.id && queueRuns.find(r => r.id === d.id)?.status === "completed" && (
+                      <span style={{ marginLeft: 5, fontSize: 9, opacity: 0.7 }}>✓</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Body */}
           {campaign.recipientsCount === 0 ? (
             <div style={{
@@ -2039,9 +2321,19 @@ export default function CampaignDetailPage() {
                 <Plus size={13} /> Add Recipients
               </button>
             </div>
+          ) : viewMode === "graph" ? (
+            <div style={{ padding: 20 }}>
+              <CampaignGraphView
+                campaign={campaign}
+                analytics={analytics}
+                queue={queue}
+                queueRuns={queueRuns}
+                selectedDayRunId={selectedDayRunId}
+              />
+            </div>
           ) : (
             <RecipientsTable
-              key={`${tableKey}-${statusFilter}-${search}`}
+              key={`${tableKey}-${statusFilter}-${search}-${selectedDayRunId}`}
               campaignId={id}
               statusFilter={statusFilter}
               search={search}
@@ -2050,6 +2342,7 @@ export default function CampaignDetailPage() {
               onSelectContact={handleSelectRecipient}
               selectedContactId={selectedRecipient?.contact?.id}
               onTotalChange={setFilteredTotal}
+              queueRunId={selectedDayRunId}
             />
           )}
         </div>
@@ -2114,6 +2407,16 @@ export default function CampaignDetailPage() {
         />
       )}
 
+      {/* Queue Settings Modal */}
+      {showQueueModal && (
+        <QueueSettingsModal
+          queue={queue}
+          onClose={() => setShowQueueModal(false)}
+          onSave={handleQueueSave}
+          saving={queueActing}
+        />
+      )}
+
       {/* Excel Export Modal */}
       {showExcelModal && (
         <ExcelExportModal
@@ -2137,6 +2440,149 @@ export default function CampaignDetailPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ── Queue Settings Modal ──────────────────────────────────────────────────────
+const TIMEZONES = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver",
+  "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu",
+];
+
+function QueueSettingsModal({ queue, onClose, onSave, saving }) {
+  const T = useTheme();
+  const [dailyLimit, setDailyLimit] = useState(String(queue?.dailyLimit || 500));
+  const [sendTime,   setSendTime]   = useState(queue?.sendTime || "09:00");
+  const [timezone,   setTimezone]   = useState(queue?.timezone || "UTC");
+
+  const isEdit = queue && queue.status !== "cancelled";
+
+  const inputStyle = {
+    width: "100%", padding: "9px 12px", borderRadius: 7, boxSizing: "border-box",
+    background: T.surface, border: "1px solid " + T.border,
+    color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none",
+  };
+
+  const handleSave = () => {
+    const limit = parseInt(dailyLimit, 10);
+    if (!limit || limit < 1) return;
+    onSave({ dailyLimit: limit, sendTime, timezone });
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,0.75)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.card, border: "1px solid " + T.border, borderRadius: 12,
+        width: 420, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.8)",
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 22px 14px", borderBottom: "1px solid " + T.border }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+            background: (T.blue || "#3b82f6") + "18",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <CalendarClock size={16} color={T.blue || "#3b82f6"} />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
+              {isEdit ? "Queue Settings" : "Set Up Queue"}
+            </div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
+              {isEdit ? "Update daily limit and send schedule" : "Configure automated daily sending"}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "none", border: "none", color: T.muted, fontSize: 16, cursor: "pointer", padding: 4 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Daily limit */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+              Daily Send Limit <span style={{ color: T.accent }}>*</span>
+            </div>
+            <input
+              type="number" min="1" value={dailyLimit}
+              onChange={e => setDailyLimit(e.target.value)}
+              placeholder="e.g. 500"
+              style={inputStyle}
+              onFocus={e => e.target.style.borderColor = T.accent}
+              onBlur={e => e.target.style.borderColor = T.border}
+            />
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>
+              Max emails sent per day. The queue will run over multiple days to reach all recipients.
+            </div>
+          </div>
+
+          {/* Send time */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+              Send Time (UTC) <span style={{ color: T.accent }}>*</span>
+            </div>
+            <input
+              type="time" value={sendTime}
+              onChange={e => setSendTime(e.target.value)}
+              style={inputStyle}
+              onFocus={e => e.target.style.borderColor = T.accent}
+              onBlur={e => e.target.style.borderColor = T.border}
+            />
+          </div>
+
+          {/* Timezone (informational) */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+              Reference Timezone
+            </div>
+            <select
+              value={timezone}
+              onChange={e => setTimezone(e.target.value)}
+              style={{ ...inputStyle, cursor: "pointer" }}
+            >
+              {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+
+          {dailyLimit && parseInt(dailyLimit) > 0 && (
+            <div style={{
+              background: (T.blue || "#3b82f6") + "0d",
+              border: "1px solid " + (T.blue || "#3b82f6") + "30",
+              borderRadius: 8, padding: "10px 14px",
+              fontSize: 11, color: T.dim, lineHeight: 1.6,
+            }}>
+              ⏰ First send will be scheduled for today at <strong>{sendTime}</strong> UTC.
+              The system will automatically run each day until all recipients are sent.
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "14px 22px", borderTop: "1px solid " + T.border }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !parseInt(dailyLimit)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 20px", borderRadius: 7, border: "none",
+              background: saving || !parseInt(dailyLimit) ? T.border : (T.blue || "#3b82f6"),
+              color: saving || !parseInt(dailyLimit) ? T.muted : "#fff",
+              fontSize: 13, fontWeight: 600,
+              cursor: saving || !parseInt(dailyLimit) ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {saving
+              ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Saving…</>
+              : <><CalendarClock size={13} /> {isEdit ? "Save Changes" : "Enable Queue"}</>
+            }
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,10 @@ export async function findMany(where) {
 export async function findById(id) {
   return prisma.campaign.findUnique({
     where:   { id },
-    include: { template: { select: { id: true, name: true, subject: true } } },
+    include: {
+      template: { select: { id: true, name: true, subject: true } },
+      queue:    { include: { runs: { orderBy: { dayNumber: 'asc' } } } },
+    },
   });
 }
 
@@ -50,18 +53,17 @@ export async function restoreCampaign(id) {
   });
 }
 
-export async function findRecipients(campaignId, { status, event, abVariant, search, skip = 0, limit = 50 } = {}) {
+export async function findRecipients(campaignId, { status, event, abVariant, search, queueRunId, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
 
   if (event) {
-    // Scope event filter to this campaign so the count matches getStatisticsFromEvents,
-    // which also filters CampaignRecipientEvent by campaignId.
     where.events = { some: { event, campaignId } };
   } else if (status) {
     where.status = status;
   }
 
-  if (abVariant) where.abVariant = abVariant;
+  if (abVariant)   where.abVariant  = abVariant;
+  if (queueRunId)  where.queueRunId = queueRunId;
   if (search) {
     where.contact = {
       OR: [

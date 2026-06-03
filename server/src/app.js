@@ -17,6 +17,7 @@ import domainsRoutes       from './routes/domains.routes.js';
 import emailTemplateRoutes from './routes/emailTemplates.routes.js';
 import interactiveRoutes   from './routes/interactive.routes.js';
 import campaignRoutes      from './routes/campaigns.routes.js';
+import queueRoutes         from './routes/queue.routes.js';
 import emailRoutes         from './routes/email.routes.js';
 import scoringRulesRoutes  from './routes/scoringRules.routes.js';
 import templateLinksRoutes from './routes/templateLinks.routes.js';
@@ -33,6 +34,7 @@ import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
 import { updateDomainTracking }                 from './services/domainService.js';
 import { startRedditPoller }                    from './jobs/redditPoller.js';
+import { startQueueScheduler }                 from './jobs/queueScheduler.js';
 
 const app = express();
 
@@ -68,6 +70,7 @@ app.use('/api/domains',             domainsRoutes);
 app.use('/api/email-templates',     emailTemplateRoutes);
 app.use('/api/interactive/sessions', interactiveRoutes);
 app.use('/api/campaigns',           campaignRoutes);
+app.use('/api/campaigns/:id/queue', queueRoutes);
 app.use('/api/email',               emailRoutes);
 app.use('/api/scoring-rules',       scoringRulesRoutes);
 app.use('/api/tl',                  templateLinksRoutes);
@@ -116,6 +119,7 @@ const server = app.listen(PORT, () => {
   // and if the Resend tracking subdomain (e.g. track.foxtow.com) has no DNS record the link breaks.
   disableResendTrackingForAllDomains();
   startRedditPoller();
+  startQueueScheduler();
 });
 
 let _bindRetry = false;

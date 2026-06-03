@@ -457,6 +457,53 @@ export async function resubscribeRecipient(campaignId, recipientId) {
   return r.data ?? r;
 }
 
+// ── Campaign Queue ────────────────────────────────────────────────────────────
+
+export async function getCampaignQueue(campaignId) {
+  const r = await request('GET', `/api/campaigns/${campaignId}/queue`);
+  return r.data ?? r;
+}
+
+export async function createCampaignQueue(campaignId, { clientId, dailyLimit, sendTime, timezone }) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue`, { clientId, dailyLimit, sendTime, timezone });
+  return r.data ?? r;
+}
+
+export async function updateCampaignQueue(campaignId, { dailyLimit, sendTime, timezone }) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue`, { dailyLimit, sendTime, timezone });
+  return r.data ?? r;
+}
+
+export async function pauseCampaignQueue(campaignId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue/pause`);
+  return r.data ?? r;
+}
+
+export async function resumeCampaignQueue(campaignId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue/resume`);
+  return r.data ?? r;
+}
+
+export async function cancelCampaignQueue(campaignId) {
+  const r = await request('DELETE', `/api/campaigns/${campaignId}/queue`);
+  return r.data ?? r;
+}
+
+export async function exportCampaignDayBlob(campaignId, dayNumber, format = 'excel') {
+  const token = localStorage.getItem('prophone_token');
+  const qs = new URLSearchParams({ format, day: dayNumber }).toString();
+  const res = await fetch(`${API}/api/campaigns/${campaignId}/export?${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `campaign_day${dayNumber}.${ext}`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function getSettings(clientId, module) {
