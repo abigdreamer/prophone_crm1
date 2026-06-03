@@ -409,6 +409,7 @@ model CampaignQueue {
   campaignId      String             @unique @map("campaign_id")
   clientId        String             @map("client_id")
   dailyLimit      Int                @map("daily_limit")
+  sendGapSeconds  Int                @default(5) @map("send_gap_seconds")
   sendTime        String             @default("09:00") @map("send_time")
   timezone        String             @default("UTC")
   status          String             @default("active")

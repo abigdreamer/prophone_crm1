@@ -1,0 +1,1 @@
+ALTER TABLE "campaign_queues" ADD COLUMN IF NOT EXISTS "send_gap_seconds" INTEGER NOT NULL DEFAULT 5;
