@@ -194,6 +194,8 @@ export async function resetSkippedToPending(campaignId) {
 export async function findPendingRecipientsForSend(campaignId, limit = null) {
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
+    // Deterministic order: creation order (import order = Record #1 → #N), tie-break by id
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     ...(limit ? { take: limit } : {}),
     include: {
       contact: {

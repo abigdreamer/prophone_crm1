@@ -464,13 +464,13 @@ export async function getCampaignQueue(campaignId) {
   return r.data ?? r;
 }
 
-export async function createCampaignQueue(campaignId, { clientId, dailyLimit, sendTime, timezone }) {
-  const r = await request('POST', `/api/campaigns/${campaignId}/queue`, { clientId, dailyLimit, sendTime, timezone });
+export async function createCampaignQueue(campaignId, { clientId, dailyLimit, sendTime, timezone, sendGapSeconds }) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue`, { clientId, dailyLimit, sendTime, timezone, sendGapSeconds });
   return r.data ?? r;
 }
 
-export async function updateCampaignQueue(campaignId, { dailyLimit, sendTime, timezone }) {
-  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue`, { dailyLimit, sendTime, timezone });
+export async function updateCampaignQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds }) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue`, { dailyLimit, sendTime, timezone, sendGapSeconds });
   return r.data ?? r;
 }
 

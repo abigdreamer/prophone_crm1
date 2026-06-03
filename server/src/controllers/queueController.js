@@ -11,7 +11,7 @@ export const getQueue = async (req, res) => {
 };
 
 export const createQueue = async (req, res) => {
-  const { dailyLimit, sendTime, timezone } = req.body ?? {};
+  const { dailyLimit, sendTime, timezone, sendGapSeconds } = req.body ?? {};
   if (!dailyLimit) return sendError(res, 'dailyLimit is required', 400);
   if (!req.body.clientId) return sendError(res, 'clientId is required', 400);
 
@@ -21,9 +21,10 @@ export const createQueue = async (req, res) => {
       return sendError(res, 'Campaign already has an active queue. Update or cancel it first.', 409);
     }
     const queue = await queueService.createQueue(req.params.id, req.body.clientId, {
-      dailyLimit: parseInt(dailyLimit, 10),
-      sendTime:   sendTime || '09:00',
-      timezone:   timezone || 'UTC',
+      dailyLimit:     parseInt(dailyLimit, 10),
+      sendTime:       sendTime || '09:00',
+      timezone:       timezone || 'UTC',
+      sendGapSeconds: sendGapSeconds != null ? parseInt(sendGapSeconds, 10) : 5,
     });
     sendSuccess(res, queue, 201);
   } catch (err) {
@@ -32,12 +33,13 @@ export const createQueue = async (req, res) => {
 };
 
 export const updateQueue = async (req, res) => {
-  const { dailyLimit, sendTime, timezone } = req.body ?? {};
+  const { dailyLimit, sendTime, timezone, sendGapSeconds } = req.body ?? {};
   try {
     const queue = await queueService.updateQueue(req.params.id, {
-      dailyLimit: dailyLimit ? parseInt(dailyLimit, 10) : undefined,
+      dailyLimit:     dailyLimit != null ? parseInt(dailyLimit, 10) : undefined,
       sendTime,
       timezone,
+      sendGapSeconds: sendGapSeconds != null ? parseInt(sendGapSeconds, 10) : undefined,
     });
     sendSuccess(res, queue);
   } catch (err) {

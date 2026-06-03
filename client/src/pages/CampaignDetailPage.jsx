@@ -2462,9 +2462,10 @@ const TIMEZONES = [
 
 function QueueSettingsModal({ queue, onClose, onSave, saving }) {
   const T = useTheme();
-  const [dailyLimit, setDailyLimit] = useState(String(queue?.dailyLimit || 500));
-  const [sendTime,   setSendTime]   = useState(queue?.sendTime || "09:00");
-  const [timezone,   setTimezone]   = useState(queue?.timezone || "UTC");
+  const [dailyLimit,     setDailyLimit]     = useState(String(queue?.dailyLimit || 500));
+  const [sendTime,       setSendTime]       = useState(queue?.sendTime || "09:00");
+  const [timezone,       setTimezone]       = useState(queue?.timezone || "UTC");
+  const [sendGapSeconds, setSendGapSeconds] = useState(String(queue?.sendGapSeconds ?? 5));
 
   const isEdit = queue && queue.status !== "cancelled";
 
@@ -2476,8 +2477,9 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
 
   const handleSave = () => {
     const limit = parseInt(dailyLimit, 10);
+    const gap   = Math.max(0, parseInt(sendGapSeconds, 10) || 0);
     if (!limit || limit < 1) return;
-    onSave({ dailyLimit: limit, sendTime, timezone });
+    onSave({ dailyLimit: limit, sendTime, timezone, sendGapSeconds: gap });
   };
 
   return (
@@ -2555,6 +2557,32 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
             >
               {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
             </select>
+          </div>
+
+          {/* Gap between sends */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+              Gap Between Each Send (seconds)
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number" min="0" max="300" value={sendGapSeconds}
+                onChange={e => setSendGapSeconds(e.target.value)}
+                placeholder="5"
+                style={{ ...inputStyle, width: 100 }}
+                onFocus={e => e.target.style.borderColor = T.accent}
+                onBlur={e => e.target.style.borderColor = T.border}
+              />
+              <span style={{ fontSize: 11, color: T.muted }}>seconds per lead</span>
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>
+              Each contact is sent individually with this delay between sends.
+              {parseInt(sendGapSeconds) > 0 && parseInt(dailyLimit) > 0 && (
+                <span style={{ color: T.dim, marginLeft: 4 }}>
+                  ({Math.round(parseInt(dailyLimit) * parseInt(sendGapSeconds) / 60)} min total per day)
+                </span>
+              )}
+            </div>
           </div>
 
           {dailyLimit && parseInt(dailyLimit) > 0 && (
