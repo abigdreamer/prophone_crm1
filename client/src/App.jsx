@@ -397,9 +397,8 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleClientSwitch = useCallback((id) => {
     setClientId(id);
     setPool('client');
-    setSelected(null);
-    setCenterMode(null);
-    // useContacts clears contacts + sets loading atomically in its effect
+    // Full reload guarantees clean state across all pages (campaigns, templates, etc.)
+    window.location.reload();
   }, [setClientId, setPool]);
 
   const handleCancelForm = useCallback(() => setCenterMode(null), []);
