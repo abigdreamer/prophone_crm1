@@ -86,4 +86,75 @@ async function listUdfValues(req, res) {
   res.json({ data: rows.map(r => r.value).filter(Boolean) });
 }
 
-export { listUdfs, createUdf, updateUdf, deleteUdf, listUdfValues };
+// Deletes duplicate UDFs (same clientId+label), keeps oldest.
+// Also resets isActive=false on any still-default-named Usrdefine\d+ fields.
+async function cleanupUdfs(req, res) {
+  const cid = req.body?.clientId;
+  const clientId = cid !== undefined ? (cid || null) : null;
+
+  const all = await prisma.userDefinedField.findMany({
+    where: { clientId },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const seen = new Map(); // label -> keep id
+  const toDelete = [];
+  for (const udf of all) {
+    if (seen.has(udf.label)) {
+      toDelete.push(udf.id);
+    } else {
+      seen.set(udf.label, udf.id);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    await prisma.userDefinedField.deleteMany({ where: { id: { in: toDelete } } });
+  }
+
+  // Set isActive=false on any still-default-named fields
+  const defaultPattern = /^Usrdefine\d+$/i;
+  const remaining = await prisma.userDefinedField.findMany({
+    where: { clientId },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+  const defaultIds = remaining.filter(u => defaultPattern.test(u.label) && u.isActive).map(u => u.id);
+  if (defaultIds.length > 0) {
+    await prisma.userDefinedField.updateMany({ where: { id: { in: defaultIds } }, data: { isActive: false } });
+  }
+
+  const final = await prisma.userDefinedField.findMany({
+    where: { clientId },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+  res.json({ data: final, deleted: toDelete.length });
+}
+
+// Atomically seeds 5 default UDFs if none exist for this clientId.
+async function seedUdfs(req, res) {
+  const cid = req.body?.clientId;
+  const clientId = cid !== undefined ? (cid || null) : null;
+
+  await prisma.$transaction(async (tx) => {
+    const count = await tx.userDefinedField.count({ where: { clientId } });
+    if (count > 0) return;
+
+    const defaults = ['Usrdefine1', 'Usrdefine2', 'Usrdefine3', 'Usrdefine4', 'Usrdefine5'];
+    for (const [i, label] of defaults.entries()) {
+      const existing = await tx.userDefinedField.findMany({ select: { sortKey: true } });
+      const usedNums = existing.map(u => u.sortKey.match(/^udf_(\d+)$/)?.[1]).filter(Boolean).map(Number);
+      let next = 1;
+      while (usedNums.includes(next)) next++;
+      await tx.userDefinedField.create({
+        data: { clientId, label, type: 'TEXT', options: [], sortKey: `udf_${next}`, displayOrder: i, isActive: false },
+      });
+    }
+  });
+
+  const udfs = await prisma.userDefinedField.findMany({
+    where: { clientId },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+  res.json({ data: udfs });
+}
+
+export { listUdfs, createUdf, updateUdf, deleteUdf, listUdfValues, cleanupUdfs, seedUdfs };

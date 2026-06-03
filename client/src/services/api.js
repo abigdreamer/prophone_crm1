@@ -133,6 +133,8 @@ export const getUdfs         = ()               => { const p = new URLSearchPara
 export const createUdf       = (data)           => request('POST',   '/api/udfs',     { ...data, clientId: _clientId || null });
 export const updateUdf       = (id, data)       => request('PATCH',  `/api/udfs/${id}`, data);
 export const deleteUdf       = (id)             => request('DELETE', `/api/udfs/${id}`);
+export const cleanupUdfs     = (clientId)       => request('POST',   '/api/udfs/cleanup', { clientId: clientId || null });
+export const seedUdfs        = (clientId)       => request('POST',   '/api/udfs/seed',    { clientId: clientId || null });
 export const getUdfValues    = (fieldKey, search = '') => { const p = new URLSearchParams({ fieldKey, search }); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs/values?${p}`); };
 export const getContactUdfs    = (contactId)    => request('GET', `/api/contacts/${contactId}/udfs`);
 export const updateContactUdfs = (contactId, values) => request('PUT', `/api/contacts/${contactId}/udfs`, values);

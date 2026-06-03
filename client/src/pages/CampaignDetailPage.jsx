@@ -8,6 +8,7 @@ import {
   Search, Trash2, Activity, X, Clock, Pencil, Ban, RotateCcw, Download,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { useAppToast } from "../context/ToastContext";
 import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
@@ -1429,6 +1430,7 @@ function RestoreCampaignModal({ campaign, onClose, onConfirm, loading }) {
 
 export default function CampaignDetailPage() {
   const T = useTheme();
+  const toast = useAppToast();
   const { id }   = useParams();
   const navigate = useNavigate();
 
@@ -1498,37 +1500,36 @@ export default function CampaignDetailPage() {
     setSending(true);
     try {
       const updated = await sendCampaign(id, { label: batchLabel, limit });
-      setCampaign(updated);
-      analytics.campaignLaunched({
-        clientId:       updated.clientId,
-        recipientCount: updated.recipientsCount,
-      });
       setShowSendModal(false);
+      toast.success(`Campaign sent! Emails are being delivered.`);
+      // Full refresh — campaign status, analytics, and recipient table all update
+      setCampaign(updated);
       const a = await getCampaignAnalytics(id).catch(() => null);
       setAnalytics(a);
       setTableKey(k => k + 1);
     } catch (err) {
-      console.error(err);
+      toast.error(err?.message || "Failed to send campaign. Please try again.");
     } finally {
       setSending(false);
     }
-  }, [id]);
+  }, [id, toast]);
 
   const handleResend = useCallback(async (recipientStatuses) => {
     setSending(true);
     try {
       const updated = await resendCampaign(id, recipientStatuses);
-      setCampaign(updated);
       setShowResendModal(false);
+      toast.success("Resend queued! Emails are being delivered.");
+      setCampaign(updated);
       const a = await getCampaignAnalytics(id).catch(() => null);
       setAnalytics(a);
       setTableKey(k => k + 1);
     } catch (err) {
-      console.error(err);
+      toast.error(err?.message || "Resend failed. Please try again.");
     } finally {
       setSending(false);
     }
-  }, [id]);
+  }, [id, toast]);
 
   const handleEditSaved = useCallback(updated => {
     setCampaign(updated);

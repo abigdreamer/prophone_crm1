@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Avatar from "../components/ui/Avatar";
 import { useTheme } from "../context/ThemeContext";
 import USERS_DB from "../data/users";
@@ -10,8 +10,6 @@ import {
   Users, TrendingUp, Mail, BarChart2, Zap, Shield,
   PhoneCall, Clock, Star,
 } from "lucide-react";
-
-const accent = "#6366f1";
 
 const FEATURES = [
   { icon: Users,      label: "Smart Contact Management",  desc: "Organize leads, clients & prospects in one place"    },
@@ -71,29 +69,42 @@ export default function LoginPage({ onLogin }) {
       display: "flex",
       minHeight: "100vh",
       fontFamily: "'Inter', sans-serif",
-      background: "#0a0a12",
+      background: "#fff",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: isMobile ? "20px 16px" : "40px 32px",
     }}>
+      {/* Centered card container */}
+      <div style={{
+        display: "flex",
+        width: "100%",
+        maxWidth: 1120,
+        minHeight: isMobile ? "auto" : 700,
+        borderRadius: 20,
+        overflow: "hidden",
+        boxShadow: T.shadowLg + ", 0 0 0 1px " + T.border,
+      }}>
 
       {/* LEFT PROMO PANEL */}
       {!isMobile && (
         <div style={{
           width: "42%",
           flexShrink: 0,
-          background: "linear-gradient(160deg, #0f0e1c 0%, #0b0b18 60%, #080c18 100%)",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
-          padding: "44px",
+          background: T.navBg,
+          borderRight: "1px solid " + T.border,
+          padding: "56px 52px",
           display: "flex",
           flexDirection: "column",
           position: "relative",
           overflow: "hidden",
         }}>
-          <div style={{ position: "absolute", top: -60, left: -60, width: 300, height: 300, borderRadius: "50%", background: accent + "12", filter: "blur(80px)", pointerEvents: "none" }} />
-          <div style={{ position: "absolute", bottom: 80, right: -40, width: 240, height: 240, borderRadius: "50%", background: "#3b82f610", filter: "blur(70px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: -60, left: -60, width: 300, height: 300, borderRadius: "50%", background: T.accent + "12", filter: "blur(80px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: 80, right: -40, width: 240, height: 240, borderRadius: "50%", background: T.accent + "08", filter: "blur(70px)", pointerEvents: "none" }} />
 
           {/* Badge */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 44, position: "relative" }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: accent, boxShadow: "0 0 6px " + accent }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.3)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.accent, boxShadow: "0 0 6px " + T.accent }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.navMuted, letterSpacing: "0.14em", textTransform: "uppercase" }}>
               Powered by GeniusAI
             </span>
           </div>
@@ -102,17 +113,17 @@ export default function LoginPage({ onLogin }) {
           <div style={{ position: "relative", marginBottom: 36 }}>
             <div style={{
               width: 60, height: 60, borderRadius: 16,
-              background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
+              background: "linear-gradient(135deg, " + T.accent + " 0%, " + T.blue + " 100%)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 8px 28px " + accent + "44",
+              boxShadow: "0 8px 28px " + T.accent + "44",
               marginBottom: 18,
             }}>
               <Phone size={28} color="#fff" strokeWidth={2} />
             </div>
-            <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.03em", marginBottom: 6 }}>
+            <div style={{ fontSize: 30, fontWeight: 900, color: T.navText, lineHeight: 1.1, letterSpacing: "-0.03em", marginBottom: 6 }}>
               ProPhone CRM
             </div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.28)", letterSpacing: "0.18em", textTransform: "uppercase" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.navMuted, letterSpacing: "0.18em", textTransform: "uppercase" }}>
               Towing &amp; Roadside Sales Suite
             </div>
           </div>
@@ -123,28 +134,28 @@ export default function LoginPage({ onLogin }) {
               <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                  background: accent + "18", border: "1px solid " + accent + "30",
+                  background: T.accent + "18", border: "1px solid " + T.accent + "30",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   marginTop: 1,
                 }}>
-                  <Icon size={14} color={accent} strokeWidth={2} />
+                  <Icon size={14} color={T.accent} strokeWidth={2} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginBottom: 1 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", lineHeight: 1.4 }}>{desc}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: T.navText, marginBottom: 1 }}>{label}</div>
+                  <div style={{ fontSize: 11, color: T.navMuted, lineHeight: 1.4 }}>{desc}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Platform Highlights (replaces testimonials) */}
+          {/* Platform Highlights */}
           <div style={{
             marginTop: "auto", position: "relative",
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.07)",
+            background: "rgba(255,255,255,0.07)",
+            border: "1px solid rgba(255,255,255,0.10)",
             borderRadius: 14, padding: "18px 20px",
           }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.navMuted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
               Platform Highlights
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -152,14 +163,14 @@ export default function LoginPage({ onLogin }) {
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{
                     width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-                    background: accent + "18", border: "1px solid " + accent + "25",
+                    background: T.accent + "18", border: "1px solid " + T.accent + "25",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    <Icon size={13} color={accent} strokeWidth={2} />
+                    <Icon size={13} color={T.accent} strokeWidth={2} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#fff" }}>{value}</div>
-                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>{label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: T.navText }}>{value}</div>
+                    <div style={{ fontSize: 10, color: T.navMuted }}>{label}</div>
                   </div>
                 </div>
               ))}
@@ -174,32 +185,41 @@ export default function LoginPage({ onLogin }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: T.bg,
-        padding: "32px 24px",
+        background: T.surface,
+        padding: isMobile ? "32px 20px" : "64px 60px",
       }}>
-        <div style={{ width: "100%", maxWidth: 420 }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
 
           {isMobile && (
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
               <div style={{
-                width: 52, height: 52, borderRadius: 14, margin: "0 auto 10px",
-                background: "linear-gradient(135deg, " + accent + " 0%, #3b82f6 100%)",
+                width: 52, height: 52, borderRadius: 14, margin: "0 auto 12px",
+                background: "linear-gradient(135deg, " + T.accent + " 0%, " + T.blue + " 100%)",
                 display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 8px 24px " + T.accent + "44",
               }}>
                 <Phone size={24} color="#fff" strokeWidth={2} />
               </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>ProPhone CRM</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>ProPhone CRM</div>
             </div>
           )}
 
-          <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 5, letterSpacing: "-0.02em" }}>Welcome back</h1>
-            <p style={{ fontSize: 13, color: T.muted }}>Sign in to your ProPhone account</p>
+          {/* Header */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.accent, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8 }}>
+              Welcome back
+            </div>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: T.text, margin: "0 0 6px", letterSpacing: "-0.025em", lineHeight: 1.2 }}>
+              Sign in to continue
+            </h1>
+            <p style={{ fontSize: 13, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+              Access your ProPhone workspace
+            </p>
           </div>
 
           {/* Quick Select */}
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>
               Quick Select
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -211,8 +231,8 @@ export default function LoginPage({ onLogin }) {
                     onClick={() => setEmail(u.email)}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                      background: active ? accent + "12" : T.card,
-                      border: "1.5px solid " + (active ? accent + "80" : T.border),
+                      background: active ? T.accent + "14" : T.card,
+                      border: "1.5px solid " + (active ? T.accent + "70" : T.border),
                       borderRadius: 10, cursor: "pointer", position: "relative",
                       transition: "border-color 0.15s, background 0.15s",
                       textAlign: "left",
@@ -229,9 +249,9 @@ export default function LoginPage({ onLogin }) {
                       <div style={{
                         position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
                         width: 18, height: 18, borderRadius: "50%",
-                        background: "linear-gradient(135deg, " + accent + " 0%, #4f46e5 100%)",
+                        background: T.accent,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        boxShadow: "0 2px 8px " + accent + "55",
+                        boxShadow: "0 2px 8px " + T.accent + "55",
                       }}>
                         <Check size={10} color="#fff" strokeWidth={3} />
                       </div>
@@ -243,32 +263,33 @@ export default function LoginPage({ onLogin }) {
           </div>
 
           {/* Divider */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
             <div style={{ flex: 1, height: 1, background: T.border }} />
             <span style={{ fontSize: 10, color: T.muted, fontWeight: 600, letterSpacing: "0.1em" }}>OR ENTER MANUALLY</span>
             <div style={{ flex: 1, height: 1, background: T.border }} />
           </div>
 
           {/* Inputs */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Email</label>
+              <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 7, letterSpacing: "0.04em" }}>Email address</label>
               <input
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleLogin()}
+                placeholder="you@example.com"
                 style={{
-                  width: "100%", padding: "11px 14px", boxSizing: "border-box",
-                  background: T.surface, border: "1.5px solid " + T.border,
+                  width: "100%", padding: "12px 14px", boxSizing: "border-box",
+                  background: T.bg, border: "1.5px solid " + T.border,
                   borderRadius: 10, color: T.text, fontSize: 13,
-                  outline: "none", fontFamily: "inherit", transition: "border-color 0.15s",
+                  outline: "none", fontFamily: "inherit", transition: "border-color 0.15s, box-shadow 0.15s",
                 }}
-                onFocus={e => { e.target.style.borderColor = accent; }}
-                onBlur={e => { e.target.style.borderColor = T.border; }}
+                onFocus={e => { e.target.style.borderColor = T.accent; e.target.style.boxShadow = `0 0 0 3px ${T.accent}20`; }}
+                onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
               />
             </div>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: T.muted, display: "block", marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>Password</label>
+              <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 7, letterSpacing: "0.04em" }}>Password</label>
               <div style={{ position: "relative" }}>
                 <input
                   value={password}
@@ -276,13 +297,13 @@ export default function LoginPage({ onLogin }) {
                   type={showPass ? "text" : "password"}
                   onKeyDown={e => e.key === "Enter" && handleLogin()}
                   style={{
-                    width: "100%", padding: "11px 42px 11px 14px", boxSizing: "border-box",
-                    background: T.surface, border: "1.5px solid " + T.border,
+                    width: "100%", padding: "12px 42px 12px 14px", boxSizing: "border-box",
+                    background: T.bg, border: "1.5px solid " + T.border,
                     borderRadius: 10, color: T.text, fontSize: 13,
-                    outline: "none", fontFamily: "inherit", transition: "border-color 0.15s",
+                    outline: "none", fontFamily: "inherit", transition: "border-color 0.15s, box-shadow 0.15s",
                   }}
-                  onFocus={e => { e.target.style.borderColor = accent; }}
-                  onBlur={e => { e.target.style.borderColor = T.border; }}
+                  onFocus={e => { e.target.style.borderColor = T.accent; e.target.style.boxShadow = `0 0 0 3px ${T.accent}20`; }}
+                  onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
                 />
                 <button
                   type="button"
@@ -301,9 +322,9 @@ export default function LoginPage({ onLogin }) {
 
           {error && (
             <div style={{
-              marginTop: 14, padding: "10px 14px", borderRadius: 9,
-              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
-              color: "#f87171", fontSize: 12,
+              marginTop: 16, padding: "11px 14px", borderRadius: 10,
+              background: T.red + "12", border: "1px solid " + T.red + "35",
+              color: T.red, fontSize: 12, lineHeight: 1.5,
             }}>
               {error}
             </div>
@@ -313,36 +334,27 @@ export default function LoginPage({ onLogin }) {
             onClick={handleLogin}
             disabled={loading}
             style={{
-              width: "100%", marginTop: 20, padding: "13px 0",
+              width: "100%", marginTop: 22, padding: "14px 0",
               borderRadius: 10, border: "none",
               cursor: loading ? "not-allowed" : "pointer",
-              background: loading ? accent + "60" : "linear-gradient(90deg, " + accent + " 0%, #4f46e5 100%)",
+              background: loading ? T.accent + "60" : T.accent,
               color: "#fff", fontWeight: 700, fontSize: 14,
               display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
-              boxShadow: loading ? "none" : "0 4px 20px " + accent + "44",
-              transition: "box-shadow 0.15s",
+              boxShadow: loading ? "none" : `0 4px 20px ${T.accent}44`,
+              transition: "box-shadow 0.15s, transform 0.1s",
+              letterSpacing: "0.01em",
             }}
-            onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = "0 6px 28px " + accent + "66"; }}
-            onMouseLeave={e => { if (!loading) e.currentTarget.style.boxShadow = "0 4px 20px " + accent + "44"; }}
+            onMouseEnter={e => { if (!loading) { e.currentTarget.style.boxShadow = `0 6px 28px ${T.accent}60`; e.currentTarget.style.transform = "translateY(-1px)"; } }}
+            onMouseLeave={e => { if (!loading) { e.currentTarget.style.boxShadow = `0 4px 20px ${T.accent}44`; e.currentTarget.style.transform = "translateY(0)"; } }}
           >
             {loading ? "Signing in…" : <><span>Sign in</span><ArrowRight size={15} /></>}
           </button>
 
-          <div style={{ marginTop: 20, textAlign: "center" }}>
-            <Link
-              to="/client-login"
-              style={{ fontSize: 12, color: T.muted, textDecoration: "none" }}
-              onMouseEnter={e => { e.currentTarget.style.color = accent; }}
-              onMouseLeave={e => { e.currentTarget.style.color = T.muted; }}
-            >
-              Client? Access your portal here
-            </Link>
-          </div>
-
-          <div style={{ marginTop: 16, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.1em", opacity: 0.5 }}>
-            GENIUSAI · PROPHONE SUITE
+          <div style={{ marginTop: 28, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.12em", opacity: 0.4, textTransform: "uppercase" }}>
+            GeniusAI · ProPhone Suite
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
