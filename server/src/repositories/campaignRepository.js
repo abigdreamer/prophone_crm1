@@ -214,7 +214,7 @@ export async function markRecipientSent(id, messageId, campaignId = null, sendLa
   if (campaignId) {
     logEvent(id, campaignId, 'sent',      null, sendId).catch(() => {});
     logEvent(id, campaignId, 'delivered', null, sendId).catch(() => {});
-    prisma.campaign.update({ where: { id: campaignId }, data: { deliveredCount: { increment: 1 } } }).catch(() => {});
+    prisma.campaign.update({ where: { id: campaignId }, data: { sentCount: { increment: 1 }, deliveredCount: { increment: 1 } } }).catch(() => {});
   }
   return result;
 }

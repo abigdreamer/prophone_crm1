@@ -191,8 +191,7 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
   }
 
   await repo.updateCampaign(campaignId, {
-    status:    'sent',
-    sentCount: { increment: totalSent },
+    status:      'sent',
     completedAt: new Date(),
   });
 
@@ -233,7 +232,8 @@ async function markRecipientSentWithRun(recipientId, messageId, campaignId, send
   // Log sent + delivered events immediately (no webhook needed)
   prisma.campaignRecipientEvent.create({ data: { recipientId, campaignId, sendId, event: 'sent' } }).catch(() => {});
   prisma.campaignRecipientEvent.create({ data: { recipientId, campaignId, sendId, event: 'delivered' } }).catch(() => {});
-  prisma.campaign.update({ where: { id: campaignId }, data: { deliveredCount: { increment: 1 } } }).catch(() => {});
+  // Increment per-email so counts survive process restarts mid-batch
+  prisma.campaign.update({ where: { id: campaignId }, data: { sentCount: { increment: 1 }, deliveredCount: { increment: 1 } } }).catch(() => {});
 }
 
 // ── Queue CRUD ────────────────────────────────────────────────────────────────
