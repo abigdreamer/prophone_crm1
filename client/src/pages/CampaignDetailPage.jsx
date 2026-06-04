@@ -1588,8 +1588,8 @@ export default function CampaignDetailPage() {
   const [viewMode,          setViewMode]          = useState("table"); // "table" | "graph"
   const [, setTick]         = useState(0); // force re-render every second for countdown
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [c, a] = await Promise.all([
         getCampaign(id),
@@ -1598,13 +1598,25 @@ export default function CampaignDetailPage() {
       setCampaign(c);
       setAnalytics(a);
     } catch {
-      navigate("/campaigns");
+      if (!silent) navigate("/campaigns");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [id, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh every 10s while campaign is sending or queue is active
+  useEffect(() => {
+    const isLive = campaign?.status === "sending" ||
+      (campaign?.queue?.status === "active");
+    if (!isLive) return;
+    const timer = setInterval(() => {
+      load({ silent: true });
+      setTableKey(k => k + 1);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [campaign?.status, campaign?.queue?.status, load]);
 
   // Live countdown — tick every second while a pending queue run exists
   useEffect(() => {
@@ -2024,6 +2036,40 @@ export default function CampaignDetailPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Live stats — visible when queue is active */}
+                  {queue.status === "active" && (() => {
+                    const liveSent      = analytics?.totals?.sent ?? queue.totalSent ?? 0;
+                    const remaining     = Math.max(0, queue.totalRecipients - liveSent);
+                    const todayLimit    = queue.dailyLimit ?? 0;
+                    const prevSent      = queue.totalSent ?? 0;
+                    const todaySent     = Math.max(0, liveSent - prevSent);
+                    const todayLeft     = Math.max(0, todayLimit - todaySent);
+                    const gapSec        = queue.sendGapSeconds ?? 5;
+                    const estMinToday   = Math.round(todayLeft * gapSec / 60);
+                    return (
+                      <div style={{
+                        display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap",
+                      }}>
+                        {[
+                          { label: "Remaining", value: remaining.toLocaleString(), color: T.blue },
+                          { label: "Today's batch", value: `${todaySent.toLocaleString()} / ${todayLimit.toLocaleString()}`, color: T.text },
+                          ...(nextRun?.status === "running" && estMinToday > 0
+                            ? [{ label: "Est. time left today", value: estMinToday >= 60 ? `~${Math.round(estMinToday/60)}h ${estMinToday%60}m` : `~${estMinToday}m`, color: T.amber }]
+                            : []),
+                        ].map(({ label, value, color }) => (
+                          <div key={label} style={{
+                            background: T.surface, border: "1px solid " + T.border,
+                            borderRadius: 6, padding: "4px 10px",
+                            display: "flex", alignItems: "center", gap: 6,
+                          }}>
+                            <span style={{ fontSize: 10, color: T.muted }}>{label}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
