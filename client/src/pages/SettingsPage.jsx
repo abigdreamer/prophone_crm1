@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router-dom";
 
 import ClientsPage from "./ClientsPage";
 import UserSettingsPage from "../components/settings/UserSettingsPage";
+import EmailConfigPage from "../components/settings/EmailConfigPage";
 
 export default function SettingsPage({ currentUser }) {
   const [searchParams] = useSearchParams();
@@ -11,6 +12,7 @@ export default function SettingsPage({ currentUser }) {
     <div style={{ padding: "28px 32px", overflowY: "auto", height: "100%" }}>
       {activeTab === "clients" && <ClientsPage />}
       {activeTab === "user"    && <UserSettingsPage currentUser={currentUser} />}
+      {activeTab === "email"   && <EmailConfigPage />}
     </div>
   );
 }

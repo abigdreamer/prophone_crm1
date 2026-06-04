@@ -654,3 +654,21 @@ export async function updateClientPortalUser(clientId, userId, data) {
 export async function deleteClientPortalUser(clientId, userId) {
   return request('DELETE', `/api/clients/${clientId}/portal-users/${userId}`);
 }
+
+// ── Email Provider Configuration ─────────────────────────────────────────────
+
+export async function getEmailConfig() {
+  return request('GET', '/api/email-config');
+}
+
+export async function saveEmailConfig(data) {
+  return request('POST', '/api/email-config', data);
+}
+
+export async function activateEmailConfig(id) {
+  return request('POST', '/api/email-config/activate', { id });
+}
+
+export async function testEmailConfig(data) {
+  return request('POST', '/api/email-config/test', data);
+}

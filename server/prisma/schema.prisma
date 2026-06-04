@@ -565,3 +565,19 @@ model PosthogProject {
 
   @@map("posthog_projects")
 }
+
+// ─── Email Provider Configuration ────────────────────────────────────────────
+
+model EmailProviderConfig {
+  id               String   @id @default(uuid())
+  providerName     String   @map("provider_name")
+  apiKeyEncrypted  String   @map("api_key_encrypted")
+  defaultFromEmail String   @default("") @map("default_from_email")
+  defaultFromName  String   @default("") @map("default_from_name")
+  isActive         Boolean  @default(false) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([providerName])
+  @@map("email_provider_configs")
+}
