@@ -79,7 +79,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function RecipientStatusBadge({ status }) {
+function RecipientStatusBadge({ status, count }) {
   const T = useTheme();
   const map = {
     pending:      { color: T.muted,   label: "Pending"      },
@@ -92,11 +92,21 @@ function RecipientStatusBadge({ status }) {
   };
   const { color, label } = map[status] ?? { color: T.muted, label: status };
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 600,
-      color, background: color + "15",
-      borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
-    }}>{label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{
+        fontSize: 10, fontWeight: 600,
+        color, background: color + "15",
+        borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
+      }}>{label}</span>
+      {count > 1 && (
+        <span title={`${count}x`} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 18, height: 18, borderRadius: "50%",
+          background: color + "25", border: "1px solid " + color + "50",
+          fontSize: 9, fontWeight: 700, color,
+        }}>{count}</span>
+      )}
+    </span>
   );
 }
 
@@ -382,6 +392,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
             <th style={thStyle}>Email</th>
             {isAbTest && <th style={{ ...thStyle, textAlign: "center" }}>Variant</th>}
             <th style={thStyle}>Status</th>
+            <th style={thStyle}>Reason</th>
             <th style={thStyle}>Stage</th>
             <th style={thStyle}>Batch</th>
           </tr>
@@ -442,39 +453,31 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                   </td>
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
-                  <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
-                  {r.status === "skipped" && r.skipReason && (() => {
+                  <RecipientStatusBadge
+                    status={statusFilter && statusFilter !== "all" ? statusFilter : r.status}
+                    count={(() => {
+                      const evType = statusFilter && statusFilter !== "all" ? statusFilter : r.status;
+                      return (r.events || []).filter(e => e.event === evType).length;
+                    })()}
+                  />
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  {r.status === "skipped" && r.skipReason ? (() => {
                     const label = SKIP_REASON_LABELS[r.skipReason];
                     const color = r.skipReason === "suppressed:unsubscribed" ? T.red
                                 : r.skipReason === "suppressed:bounced"      ? (T.amber || T.yellow || "#f59e0b")
                                 : T.muted;
-                    return (
-                      <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>
-                        {label?.text || r.skipReason}
-                      </div>
-                    );
-                  })()}
-                  {r.status === "unsubscribed" && r.unsubReason && (
-                    <div title={r.unsubReason} style={{
-                      fontSize: 10, color: T.muted, marginTop: 3,
-                      maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    return <span style={{ fontSize: 11, color, fontWeight: 600 }}>{label?.text || r.skipReason}</span>;
+                  })() : r.status === "unsubscribed" && r.unsubReason ? (
+                    <span title={r.unsubReason} style={{
+                      fontSize: 11, color: T.dim,
+                      display: "block", maxWidth: 200,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      💬 {r.unsubReason}
-                    </div>
-                  )}
-                  {r.status === "unsubscribed" && !r.resubscribedAt && (
-                    <button
-                      onClick={e => handleResubscribe(e, r.id)}
-                      title="Remove from suppression list"
-                      style={{
-                        marginTop: 4, display: "block", fontSize: 10, padding: "2px 7px",
-                        borderRadius: 4, border: "1px solid " + T.border,
-                        background: "transparent", color: T.muted,
-                        cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
-                      }}
-                    >
-                      Re-subscribe
-                    </button>
+                      {r.unsubReason}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: T.muted }}>—</span>
                   )}
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
