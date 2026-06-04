@@ -122,6 +122,7 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
             email: true, company: true, lifecycleStage: true,
           },
         },
+        events: { select: { event: true } },
       },
     }),
     prisma.campaignRecipient.count({ where }),

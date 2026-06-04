@@ -79,7 +79,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function RecipientStatusBadge({ status }) {
+function RecipientStatusBadge({ status, count }) {
   const T = useTheme();
   const map = {
     pending:      { color: T.muted,   label: "Pending"      },
@@ -92,11 +92,21 @@ function RecipientStatusBadge({ status }) {
   };
   const { color, label } = map[status] ?? { color: T.muted, label: status };
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 600,
-      color, background: color + "15",
-      borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
-    }}>{label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{
+        fontSize: 10, fontWeight: 600,
+        color, background: color + "15",
+        borderRadius: 4, padding: "2px 7px", border: "1px solid " + color + "30",
+      }}>{label}</span>
+      {count > 1 && (
+        <span title={`${count}x`} style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 18, height: 18, borderRadius: "50%",
+          background: color + "25", border: "1px solid " + color + "50",
+          fontSize: 9, fontWeight: 700, color,
+        }}>{count}</span>
+      )}
+    </span>
   );
 }
 
@@ -443,7 +453,13 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                   </td>
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
-                  <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
+                  <RecipientStatusBadge
+                    status={statusFilter && statusFilter !== "all" ? statusFilter : r.status}
+                    count={(() => {
+                      const evType = statusFilter && statusFilter !== "all" ? statusFilter : r.status;
+                      return (r.events || []).filter(e => e.event === evType).length;
+                    })()}
+                  />
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   {r.status === "skipped" && r.skipReason ? (() => {
