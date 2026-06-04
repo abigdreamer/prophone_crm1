@@ -2460,12 +2460,33 @@ const TIMEZONES = [
   "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu",
 ];
 
+const DAY_LIST = [
+  { label: "Mon", value: 1 },
+  { label: "Tue", value: 2 },
+  { label: "Wed", value: 3 },
+  { label: "Thu", value: 4 },
+  { label: "Fri", value: 5 },
+  { label: "Sat", value: 6 },
+  { label: "Sun", value: 0 },
+];
+
 function QueueSettingsModal({ queue, onClose, onSave, saving }) {
   const T = useTheme();
   const [dailyLimit,     setDailyLimit]     = useState(String(queue?.dailyLimit || 500));
   const [sendTime,       setSendTime]       = useState(queue?.sendTime || "09:00");
   const [timezone,       setTimezone]       = useState(queue?.timezone || "UTC");
   const [sendGapSeconds, setSendGapSeconds] = useState(String(queue?.sendGapSeconds ?? 5));
+  const [sendDays,       setSendDays]       = useState(
+    Array.isArray(queue?.sendDays) && queue.sendDays.length ? queue.sendDays : [0,1,2,3,4,5,6]
+  );
+
+  const toggleDay = (val) => {
+    setSendDays(prev =>
+      prev.includes(val)
+        ? prev.length > 1 ? prev.filter(d => d !== val) : prev  // keep at least 1
+        : [...prev, val]
+    );
+  };
 
   const isEdit = queue && queue.status !== "cancelled";
 
@@ -2479,7 +2500,7 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
     const limit = parseInt(dailyLimit, 10);
     const gap   = Math.max(0, parseInt(sendGapSeconds, 10) || 0);
     if (!limit || limit < 1) return;
-    onSave({ dailyLimit: limit, sendTime, timezone, sendGapSeconds: gap });
+    onSave({ dailyLimit: limit, sendTime, timezone, sendGapSeconds: gap, sendDays });
   };
 
   return (
@@ -2585,6 +2606,38 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
             </div>
           </div>
 
+          {/* Send days */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 8, letterSpacing: "0.03em" }}>
+              Active Send Days
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {DAY_LIST.map(({ label, value }) => {
+                const active = sendDays.includes(value);
+                return (
+                  <button
+                    key={value}
+                    onClick={() => toggleDay(value)}
+                    style={{
+                      padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", fontFamily: "inherit",
+                      border: "1px solid " + (active ? (T.blue || "#3b82f6") : T.border),
+                      background: active ? (T.blue || "#3b82f6") + "22" : T.surface,
+                      color: active ? (T.blue || "#3b82f6") : T.muted,
+                      transition: "all 0.15s",
+                      opacity: active ? 1 : 0.55,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 5 }}>
+              The queue will only run on selected days. At least one day must remain active.
+            </div>
+          </div>
+
           {dailyLimit && parseInt(dailyLimit) > 0 && (
             <div style={{
               background: (T.blue || "#3b82f6") + "0d",
@@ -2593,7 +2646,7 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
               fontSize: 11, color: T.dim, lineHeight: 1.6,
             }}>
               ⏰ First send will be scheduled for today at <strong>{sendTime}</strong> UTC.
-              The system will automatically run each day until all recipients are sent.
+              The system will automatically run on selected days until all recipients are sent.
             </div>
           )}
         </div>

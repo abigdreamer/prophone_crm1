@@ -411,6 +411,7 @@ model CampaignQueue {
   dailyLimit      Int                @map("daily_limit")
   sendGapSeconds  Int                @default(5) @map("send_gap_seconds")
   sendTime        String             @default("09:00") @map("send_time")
+  sendDays        Json?              @map("send_days")
   timezone        String             @default("UTC")
   status          String             @default("active")
   startedAt       DateTime?          @map("started_at")
