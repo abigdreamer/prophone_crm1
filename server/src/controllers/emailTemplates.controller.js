@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
-import { sendSingleEmail } from '../services/resendService.js';
+import { sendSingleEmail } from '../services/EmailService.js';
 import { htmlToPlainText } from '../services/email.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo    from '../repositories/domainRepository.js';
@@ -299,8 +299,8 @@ export const sendTestEmail = async (req, res) => {
       const anyDomain = await domainRepo.findAnyVerified();
       if (anyDomain) {
         fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
-      } else if (process.env.RESEND_FROM_EMAIL) {
-        fromEmail = process.env.RESEND_FROM_EMAIL;
+      } else if (process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL) {
+        fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL;
       } else {
         return sendError(res, 'No verified sending domain found. Verify a domain in Domains first.', 400);
       }
