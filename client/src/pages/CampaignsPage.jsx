@@ -101,7 +101,7 @@ function CampaignRow({ campaign, isLast, onOpen, onEdit, onCancel, onRestore, on
     setMenuOpen(o => !o);
   };
 
-  const isSent          = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending" || campaign.sentCount > 0);
+  const isSent          = !campaign.isCanceled && (campaign.status === "sent" || campaign.status === "sending" || campaign.sentCount > 0 || campaign.openedCount > 0);
   const isSending       = !campaign.isCanceled && campaign.status === "sending";
   const displayStatus   = getDisplayStatus(campaign);
 

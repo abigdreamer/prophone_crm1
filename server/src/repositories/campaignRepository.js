@@ -5,13 +5,42 @@ import { tracking } from '../config/tracking.js';
 import { TIMESTAMP_FILTERS } from '../constants/index.js';
 
 export async function findMany(where) {
-  return prisma.campaign.findMany({
+  const rows = await prisma.campaign.findMany({
     where,
     include: {
       template: { select: { id: true, name: true, subject: true } },
       _count:   { select: { recipients: true } },
     },
     orderBy: { createdAt: 'desc' },
+  });
+
+  if (!rows.length) return rows;
+
+  // Compute all stats from events in one query — same source as the detail page
+  const ids = rows.map(r => r.id);
+  const groups = await prisma.campaignRecipientEvent.groupBy({
+    by:    ['campaignId', 'event', 'recipientId'],
+    where: { campaignId: { in: ids } },
+  });
+
+  // Count unique recipients per event per campaign
+  const stats = {};
+  for (const g of groups) {
+    if (!stats[g.campaignId]) stats[g.campaignId] = {};
+    stats[g.campaignId][g.event] = (stats[g.campaignId][g.event] || 0) + 1;
+  }
+
+  return rows.map(r => {
+    const s = stats[r.id] ?? {};
+    return {
+      ...r,
+      sentCount:         s.sent          ?? 0,
+      deliveredCount:    s.delivered     ?? 0,
+      openedCount:       s.opened        ?? 0,
+      clickedCount:      s.clicked       ?? 0,
+      bouncedCount:      s.bounced       ?? 0,
+      unsubscribedCount: s.unsubscribed  ?? 0,
+    };
   });
 }
 
@@ -214,7 +243,6 @@ export async function markRecipientSent(id, messageId, campaignId = null, sendLa
   if (campaignId) {
     logEvent(id, campaignId, 'sent',      null, sendId).catch(() => {});
     logEvent(id, campaignId, 'delivered', null, sendId).catch(() => {});
-    prisma.campaign.update({ where: { id: campaignId }, data: { sentCount: { increment: 1 }, deliveredCount: { increment: 1 } } }).catch(() => {});
   }
   return result;
 }
@@ -298,28 +326,20 @@ export async function applyEmailEvent(messageId, event) {
         return;
       }
       recipientData.deliveredAt = now;
-      // Only update status if it hasn't progressed past delivered
       if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.delivered) {
         recipientData.status = 'delivered';
       }
-      campaignData.deliveredCount = { increment: 1 };
       break;
     case 'opened':
       if (recipient.openedAt) {
         await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
         return;
       }
-      // Only update status if it hasn't progressed past opened (e.g., already clicked)
       if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.opened) {
         recipientData.status = 'opened';
       }
       recipientData.openedAt = now;
-      // Open implies delivered
-      if (!recipient.deliveredAt) {
-        recipientData.deliveredAt = now;
-        campaignData.deliveredCount = { increment: 1 };
-      }
-      campaignData.openedCount = { increment: 1 };
+      if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'clicked':
       if (recipient.clickedAt) {
@@ -328,25 +348,15 @@ export async function applyEmailEvent(messageId, event) {
       }
       recipientData.status    = 'clicked';
       recipientData.clickedAt = now;
-      // Click implies open + delivered
-      if (!recipient.openedAt) {
-        recipientData.openedAt = now;
-        campaignData.openedCount = { increment: 1 };
-      }
-      if (!recipient.deliveredAt) {
-        recipientData.deliveredAt = now;
-        campaignData.deliveredCount = { increment: 1 };
-      }
-      campaignData.clickedCount = { increment: 1 };
+      if (!recipient.openedAt)   recipientData.openedAt   = now;
+      if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'bounced':
       recipientData.status    = 'bounced';
       recipientData.bouncedAt = now;
-      campaignData.bouncedCount = { increment: 1 };
       break;
     case 'complained':
       recipientData.status = 'unsubscribed';
-      campaignData.unsubscribedCount = { increment: 1 };
       break;
     default:
       return;
@@ -355,7 +365,6 @@ export async function applyEmailEvent(messageId, event) {
   const logEventType = event === 'complained' ? 'unsubscribed' : event;
   await Promise.all([
     prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
-    prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
     logEvent(recipient.id, recipient.campaignId, logEventType, null, recipient.sendId),
   ]);
 
@@ -443,11 +452,7 @@ export async function applyTrackingEvent(recipientId, event) {
       recipientData.deliveredAt = now;
     }
 
-    const campaignData = {
-      ...(isClick ? { clickedCount: { increment: 1 } } : { openedCount: { increment: 1 } }),
-      ...(openBackfilled ? { openedCount: { increment: 1 } } : {}),
-      ...(!recipient.deliveredAt ? { deliveredCount: { increment: 1 } } : {}),
-    };
+    // Campaign counters are now computed from events — no increment needed here
 
     const contactData = {
       ...(isClick ? { emailsClicked: { increment: 1 } } : { emailsOpened: { increment: 1 } }),
@@ -506,9 +511,8 @@ export async function applyTrackingEvent(recipientId, event) {
     });
 
     await Promise.all([
-      tx.campaignRecipient.update({ where: { id: recipient.id },         data: recipientData }),
-      tx.campaign.update({          where: { id: recipient.campaignId },  data: campaignData  }),
-      tx.contact.update({           where: { id: recipient.contactId },   data: contactData   }),
+      tx.campaignRecipient.update({ where: { id: recipient.id },       data: recipientData }),
+      tx.contact.update({          where: { id: recipient.contactId }, data: contactData   }),
       ...activityRows.map(data => tx.activity.create({ data })),
       ...eventRows.map(data => tx.campaignRecipientEvent.create({ data })),
     ]);
