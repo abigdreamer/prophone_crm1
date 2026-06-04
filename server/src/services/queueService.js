@@ -4,7 +4,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
-import { sendSingleEmail } from './EmailService.js';
+import { sendSingleEmail, getActiveFromDefaults } from './EmailService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from './htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -27,13 +27,14 @@ async function sendOneWithRetry(email) {
   for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
     try {
       const result = await sendSingleEmail(email);
+      console.log(`[queue:send] ✅ to=${email.to} from=${email.from} subject="${email.subject}" messageId=${result?.id ?? 'none'}`);
       return result ?? { id: null };
     } catch (err) {
       if (attempt < MAX_SEND_ATTEMPTS) {
-        console.warn(`[queue] ${email.to} attempt ${attempt}/${MAX_SEND_ATTEMPTS} failed: ${err.message} — retrying in ${RETRY_DELAY_MS / 1000}s`);
+        console.warn(`[queue:send] ⚠️  to=${email.to} attempt ${attempt}/${MAX_SEND_ATTEMPTS} failed: ${err.message} — retrying in ${RETRY_DELAY_MS / 1000}s`);
         await sleep(RETRY_DELAY_MS);
       } else {
-        console.error(`[queue] ${email.to} failed all ${MAX_SEND_ATTEMPTS} attempts: ${err.message} — deferred to next run`);
+        console.error(`[queue:send] ❌ to=${email.to} from=${email.from} — all ${MAX_SEND_ATTEMPTS} attempts failed: ${err.message}`);
       }
     }
   }
@@ -67,22 +68,38 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
   const templateB = campaign.templateIdB ? await templateRepo.findById(campaign.templateIdB) : null;
 
   let fromEmail = campaign.fromEmail?.trim() || '';
+  let fromName  = campaign.fromName?.trim()  || '';
+
+  // Step 1 — campaign-level override already set above.
+  // Step 2 — active provider's configured default (verified for the current provider).
+  const providerDefaults = await getActiveFromDefaults();
+  if (!fromEmail && providerDefaults.fromEmail) {
+    fromEmail = providerDefaults.fromEmail;
+    if (!fromName) fromName = providerDefaults.fromName;
+    console.log(`[queue] fromEmail resolved from provider config (${providerDefaults.provider}): ${fromEmail}`);
+  }
+
+  // Step 3 — fall back to app domain registry (Resend-registered domains).
   const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
   if (!fromEmail) {
     if (clientDomain) {
       fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+      console.log(`[queue] fromEmail resolved from client domain: ${fromEmail}`);
     } else {
       const anyDomain = await domainRepo.findAnyVerified();
       if (anyDomain) {
         fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
         await disableResendDomainTracking(anyDomain);
+        console.log(`[queue] fromEmail resolved from any domain: ${fromEmail}`);
       } else {
         fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+        console.log(`[queue] fromEmail resolved from env vars: ${fromEmail}`);
       }
     }
   }
   await disableResendDomainTracking(clientDomain);
   if (!fromEmail) throw new Error('No sender email configured');
+  console.log(`[queue] Campaign ${campaignId} — provider: ${providerDefaults.provider}, from: ${fromEmail}`);
 
   await repo.resetSkippedToPending(campaignId);
 
