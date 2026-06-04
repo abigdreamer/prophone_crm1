@@ -454,6 +454,14 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                       </div>
                     );
                   })()}
+                  {r.status === "unsubscribed" && r.unsubReason && (
+                    <div title={r.unsubReason} style={{
+                      fontSize: 10, color: T.muted, marginTop: 3,
+                      maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      💬 {r.unsubReason}
+                    </div>
+                  )}
                   {r.status === "unsubscribed" && !r.resubscribedAt && (
                     <button
                       onClick={e => handleResubscribe(e, r.id)}

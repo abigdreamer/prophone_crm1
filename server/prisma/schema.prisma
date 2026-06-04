@@ -360,6 +360,7 @@ model CampaignRecipient {
   abVariant  String?   @map("ab_variant")
   status         String    @default("pending")
   skipReason     String?   @map("skip_reason")
+  unsubReason    String?   @map("unsub_reason")
   resubscribedAt DateTime? @map("resubscribed_at")
   messageId  String?   @map("message_id")
   sendId     String?   @map("send_id")
