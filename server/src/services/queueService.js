@@ -103,7 +103,24 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
 
   await repo.resetSkippedToPending(campaignId);
 
-  const allRecipients = await repo.findPendingRecipientsForSend(campaignId, limit || null);
+  // If this run was retried (withRetry or orphan recovery), some recipients may have
+  // already been sent under this queueRunId. Subtract them so we never exceed the daily limit.
+  let effectiveLimit = limit || null;
+  if (effectiveLimit && queueRunId) {
+    const alreadySentThisRun = await prisma.campaignRecipient.count({
+      where: { queueRunId, status: { notIn: ['pending', 'skipped'] } },
+    });
+    effectiveLimit = Math.max(0, effectiveLimit - alreadySentThisRun);
+    if (alreadySentThisRun > 0) {
+      console.log(`[queue:executeBatch] ${alreadySentThisRun} already sent for this run — effective limit reduced to ${effectiveLimit}`);
+    }
+    if (effectiveLimit === 0) {
+      console.log(`[queue:executeBatch] Daily limit already reached for run ${queueRunId} — skipping`);
+      return { sent: 0, skipped: 0, total: 0 };
+    }
+  }
+
+  const allRecipients = await repo.findPendingRecipientsForSend(campaignId, effectiveLimit);
   if (!allRecipients.length) return { sent: 0, skipped: 0, total: 0 };
 
   const contactIds     = allRecipients.map(r => r.contactId).filter(Boolean);
