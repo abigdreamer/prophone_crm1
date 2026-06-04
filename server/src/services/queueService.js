@@ -238,24 +238,46 @@ async function markRecipientSentWithRun(recipientId, messageId, campaignId, send
 
 // ── Queue CRUD ────────────────────────────────────────────────────────────────
 
-function parseTimeToday(sendTime, timezone) {
-  // sendTime is "HH:MM" — compute the next occurrence at or after now
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+function normalizeSendDays(sendDays) {
+  if (!Array.isArray(sendDays) || !sendDays.length) return ALL_DAYS;
+  return sendDays.filter(d => d >= 0 && d <= 6);
+}
+
+// Returns next UTC date (starting from "from", offset by ≥1 day) that falls on an allowed day.
+function nextAllowedDate(from, sendDays) {
+  const allowed = normalizeSendDays(sendDays);
+  for (let offset = 1; offset <= 7; offset++) {
+    const candidate = new Date(from);
+    candidate.setUTCDate(candidate.getUTCDate() + offset);
+    if (allowed.includes(candidate.getUTCDay())) return candidate;
+  }
+  // Fallback — all days disabled somehow; just go tomorrow
+  const fallback = new Date(from);
+  fallback.setUTCDate(fallback.getUTCDate() + 1);
+  return fallback;
+}
+
+function parseTimeOnAllowedDay(sendTime, sendDays) {
   const [hStr, mStr] = sendTime.split(':');
   const h = parseInt(hStr, 10);
   const m = parseInt(mStr, 10);
-
-  // Build a date at sendTime today in UTC (we store/schedule in UTC)
+  const allowed = normalizeSendDays(sendDays);
   const now = new Date();
-  const candidate = new Date(Date.UTC(
-    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(),
-    h, m, 0, 0,
-  ));
 
-  // If that time has already passed today, move to tomorrow
-  if (candidate <= now) {
-    candidate.setUTCDate(candidate.getUTCDate() + 1);
+  // Try today first; if today is allowed and the time hasn't passed, use it
+  if (allowed.includes(now.getUTCDay())) {
+    const candidate = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, m, 0, 0,
+    ));
+    if (candidate > now) return candidate;
   }
-  return candidate;
+
+  // Advance to the next allowed day
+  const next = nextAllowedDate(now, sendDays);
+  next.setUTCHours(h, m, 0, 0);
+  return next;
 }
 
 function addDays(date, n) {
@@ -264,15 +286,17 @@ function addDays(date, n) {
   return d;
 }
 
-export async function createQueue(campaignId, clientId, { dailyLimit, sendTime = '09:00', timezone = 'UTC', sendGapSeconds = 5 }) {
+export async function createQueue(campaignId, clientId, { dailyLimit, sendTime = '09:00', timezone = 'UTC', sendGapSeconds = 5, sendDays = null }) {
   if (!dailyLimit || dailyLimit < 1) throw new Error('dailyLimit must be >= 1');
+
+  const normalizedDays = normalizeSendDays(sendDays);
 
   // Count pending recipients
   const totalRecipients = await prisma.campaignRecipient.count({
     where: { campaignId, status: 'pending' },
   });
 
-  const firstRunAt   = parseTimeToday(sendTime, timezone);
+  const firstRunAt   = parseTimeOnAllowedDay(sendTime, normalizedDays);
   const totalDays    = Math.ceil(totalRecipients / dailyLimit);
   const estimatedEnd = addDays(firstRunAt, totalDays - 1);
 
@@ -283,6 +307,7 @@ export async function createQueue(campaignId, clientId, { dailyLimit, sendTime =
       dailyLimit,
       sendGapSeconds: Math.max(0, sendGapSeconds),
       sendTime,
+      sendDays:       normalizedDays,
       timezone,
       status:         'active',
       startedAt:      firstRunAt,
@@ -315,7 +340,7 @@ export async function getQueue(campaignId) {
   });
 }
 
-export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds }) {
+export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds, sendDays }) {
   const queue = await prisma.campaignQueue.findUnique({ where: { campaignId } });
   if (!queue) throw new Error('Queue not found');
 
@@ -328,12 +353,14 @@ export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, 
   if (sendTime != null)        updates.sendTime        = sendTime;
   if (timezone != null)        updates.timezone        = timezone;
   if (sendGapSeconds != null)  updates.sendGapSeconds  = Math.max(0, sendGapSeconds);
+  if (sendDays != null)        updates.sendDays        = normalizeSendDays(sendDays);
 
-  const newLimit = updates.dailyLimit || queue.dailyLimit;
-  const newTime  = updates.sendTime   || queue.sendTime;
-  const newTz    = updates.timezone   || queue.timezone;
+  const newLimit   = updates.dailyLimit || queue.dailyLimit;
+  const newTime    = updates.sendTime   || queue.sendTime;
+  const newTz      = updates.timezone   || queue.timezone;
+  const newDays    = updates.sendDays   || normalizeSendDays(queue.sendDays);
 
-  const nextRun = parseTimeToday(newTime, newTz);
+  const nextRun = parseTimeOnAllowedDay(newTime, newDays);
   const totalDays = Math.ceil((queue.totalSent + remaining) / newLimit);
   const completedDays = queue.currentDay;
   const estimatedEnd = addDays(nextRun, Math.max(0, totalDays - completedDays - 1));
@@ -366,8 +393,8 @@ export async function resumeQueue(campaignId) {
   const queue = await prisma.campaignQueue.findUnique({ where: { campaignId } });
   if (!queue) throw new Error('Queue not found');
 
-  // Reschedule any pending run that was missed while paused
-  const nextRun = parseTimeToday(queue.sendTime, queue.timezone);
+  const sendDays = normalizeSendDays(queue.sendDays);
+  const nextRun  = parseTimeOnAllowedDay(queue.sendTime, sendDays);
   await prisma.campaignQueueRun.updateMany({
     where: { queueId: queue.id, status: 'pending' },
     data:  { scheduledAt: nextRun },

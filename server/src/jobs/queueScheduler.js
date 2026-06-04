@@ -101,14 +101,21 @@ async function processRun(run) {
       });
       console.log(`[queue-scheduler] Campaign ${queue.campaignId} fully completed — all contacts sent`);
     } else {
-      // Schedule next run for tomorrow at sendTime (remaining contacts, including any deferred failures)
+      // Schedule next run on the next allowed day at sendTime
       const [h, m] = queue.sendTime.split(':').map(Number);
-      const tomorrow = new Date();
-      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-      tomorrow.setUTCHours(h, m, 0, 0);
+      const allowedDays = (Array.isArray(queue.sendDays) && queue.sendDays.length)
+        ? queue.sendDays : [0, 1, 2, 3, 4, 5, 6];
+      const now = new Date();
+      let nextDate = new Date(now);
+      for (let offset = 1; offset <= 7; offset++) {
+        nextDate = new Date(now);
+        nextDate.setUTCDate(now.getUTCDate() + offset);
+        if (allowedDays.includes(nextDate.getUTCDay())) break;
+      }
+      nextDate.setUTCHours(h, m, 0, 0);
 
       await prisma.campaignQueueRun.create({
-        data: { queueId: queue.id, dayNumber: run.dayNumber + 1, scheduledAt: tomorrow, status: 'pending' },
+        data: { queueId: queue.id, dayNumber: run.dayNumber + 1, scheduledAt: nextDate, status: 'pending' },
       });
 
       await prisma.campaignQueue.update({
@@ -116,7 +123,7 @@ async function processRun(run) {
         data:  { totalSent: newTotalSent, currentDay: newCurrentDay, status: 'active' },
       });
 
-      console.log(`[queue-scheduler] Next run scheduled for ${tomorrow.toISOString()} (${remaining} contacts remaining)`);
+      console.log(`[queue-scheduler] Next run scheduled for ${nextDate.toISOString()} (${remaining} contacts remaining, allowed days: ${allowedDays})`);
     }
   } catch (err) {
     console.error(`[queue-scheduler] Run ${run.id} failed after all retries:`, err.message);

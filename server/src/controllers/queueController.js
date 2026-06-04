@@ -11,7 +11,7 @@ export const getQueue = async (req, res) => {
 };
 
 export const createQueue = async (req, res) => {
-  const { dailyLimit, sendTime, timezone, sendGapSeconds } = req.body ?? {};
+  const { dailyLimit, sendTime, timezone, sendGapSeconds, sendDays } = req.body ?? {};
   if (!dailyLimit) return sendError(res, 'dailyLimit is required', 400);
   if (!req.body.clientId) return sendError(res, 'clientId is required', 400);
 
@@ -25,6 +25,7 @@ export const createQueue = async (req, res) => {
       sendTime:       sendTime || '09:00',
       timezone:       timezone || 'UTC',
       sendGapSeconds: sendGapSeconds != null ? parseInt(sendGapSeconds, 10) : 5,
+      sendDays:       Array.isArray(sendDays) ? sendDays : null,
     });
     sendSuccess(res, queue, 201);
   } catch (err) {
@@ -33,13 +34,14 @@ export const createQueue = async (req, res) => {
 };
 
 export const updateQueue = async (req, res) => {
-  const { dailyLimit, sendTime, timezone, sendGapSeconds } = req.body ?? {};
+  const { dailyLimit, sendTime, timezone, sendGapSeconds, sendDays } = req.body ?? {};
   try {
     const queue = await queueService.updateQueue(req.params.id, {
       dailyLimit:     dailyLimit != null ? parseInt(dailyLimit, 10) : undefined,
       sendTime,
       timezone,
       sendGapSeconds: sendGapSeconds != null ? parseInt(sendGapSeconds, 10) : undefined,
+      sendDays:       Array.isArray(sendDays) ? sendDays : undefined,
     });
     sendSuccess(res, queue);
   } catch (err) {
