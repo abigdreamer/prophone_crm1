@@ -27,6 +27,7 @@ import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 import redditRoutes            from './routes/reddit.routes.js';
 import udfRoutes               from './routes/udf.routes.js';
 import customOptionsRoutes     from './routes/customOptions.routes.js';
+import emailConfigRoutes       from './routes/emailConfig.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -80,6 +81,7 @@ app.use('/api/posthog-projects',    posthogProjectsRoutes);
 app.use('/api/reddit',              redditRoutes);
 app.use('/api/udfs',                udfRoutes);
 app.use('/api/custom-options',      customOptionsRoutes);
+app.use('/api/email-config',        emailConfigRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
@@ -109,6 +111,10 @@ async function disableResendTrackingForAllDomains() {
   } catch (err) {
     console.warn('[startup] disableResendTrackingForAllDomains failed:', err.message);
   }
+}
+
+if (!process.env.EMAIL_CONFIG_SECRET) {
+  console.warn('[startup] WARNING: EMAIL_CONFIG_SECRET is not set — email provider credentials cannot be stored via the Settings UI');
 }
 
 const PORT   = process.env.PORT || 8040;

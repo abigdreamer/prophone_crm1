@@ -4,7 +4,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
-import { sendSingleEmail } from './resendService.js';
+import { sendSingleEmail } from './EmailService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from './htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -77,7 +77,7 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
         fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
         await disableResendDomainTracking(anyDomain);
       } else {
-        fromEmail = process.env.RESEND_FROM_EMAIL || '';
+        fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
       }
     }
   }

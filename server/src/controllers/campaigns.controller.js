@@ -5,7 +5,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
-import { sendBatchEmails } from '../services/resendService.js';
+import { sendBatchEmails } from '../services/EmailService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -279,14 +279,14 @@ export const sendCampaign = async (req, res) => {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
         }
       }
     }
     // Disable Resend's own click/open tracking so ProPhone's tracking isn't double-wrapped
     await disableResendDomainTracking(clientDomain);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     // Reset contacts that were previously skipped so re-evaluation with current suppression rules applies
@@ -489,13 +489,13 @@ export const sendToContacts = async (req, res) => {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
         }
       }
     }
     await disableResendDomainTracking(clientDomainQS);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     // Fetch contacts — skip canceled, require email
@@ -701,13 +701,13 @@ export const resendCampaign = async (req, res) => {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
         }
       }
     }
     await disableResendDomainTracking(clientDomainRS);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     await repo.updateCampaign(campaignId, { status: 'sending' });
