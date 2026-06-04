@@ -5,7 +5,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
-import { sendBatchEmails } from '../services/EmailService.js';
+import { sendBatchEmails, getActiveFromDefaults } from '../services/EmailService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -267,24 +267,33 @@ export const sendCampaign = async (req, res) => {
       ? await templateRepo.findById(campaign.templateIdB)
       : null;
 
-    // Resolve sender address: campaign field → verified client domain → env fallback
+    // Resolve sender: campaign override → provider default → domain registry → env fallback
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsSC = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsSC.fromEmail) {
+      fromEmail = providerDefaultsSC.fromEmail;
+      console.log(`[sendCampaign] fromEmail from provider config (${providerDefaultsSC.provider}): ${fromEmail}`);
+    }
     const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomain) {
         fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+        console.log(`[sendCampaign] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[sendCampaign] fromEmail from any domain: ${fromEmail}`);
         } else {
           fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[sendCampaign] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     // Disable Resend's own click/open tracking so ProPhone's tracking isn't double-wrapped
     await disableResendDomainTracking(clientDomain);
+    console.log(`[sendCampaign] Campaign ${campaignId} — provider: ${providerDefaultsSC.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
@@ -479,21 +488,30 @@ export const sendToContacts = async (req, res) => {
 
     // Resolve from-email
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsQS = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsQS.fromEmail) {
+      fromEmail = providerDefaultsQS.fromEmail;
+      console.log(`[sendToContacts] fromEmail from provider config (${providerDefaultsQS.provider}): ${fromEmail}`);
+    }
     const clientDomainQS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomainQS) {
         fromEmail = clientDomainQS.defaultFromEmail || `noreply@${clientDomainQS.domainName}`;
+        console.log(`[sendToContacts] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[sendToContacts] fromEmail from any domain: ${fromEmail}`);
         } else {
           fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[sendToContacts] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     await disableResendDomainTracking(clientDomainQS);
+    console.log(`[sendToContacts] Campaign ${campaignId} — provider: ${providerDefaultsQS.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
@@ -603,15 +621,19 @@ export const sendToContacts = async (req, res) => {
       if (!emails.length) continue;
 
       try {
+        console.log(`[sendToContacts] Sending batch of ${emails.length} emails via ${providerDefaultsQS.provider}`);
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
           repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
+        emails.forEach((e, j) => {
+          console.log(`[sendToContacts] ✅ to=${e.to} from=${e.from} subject="${e.subject}" messageId=${results[j]?.id ?? 'none'}`);
+        });
         batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
           .forEach(r => sentContactIdsQuick.push(r.contact.id));
         totalSent += emails.length;
       } catch (batchErr) {
-        console.error('[sendToContacts] batch error:', batchErr.message);
+        console.error('[sendToContacts] ❌ batch error:', batchErr.message);
       }
 
       if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < pendingRecipients.length) {
@@ -691,21 +713,30 @@ export const resendCampaign = async (req, res) => {
       : null;
 
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsRS = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsRS.fromEmail) {
+      fromEmail = providerDefaultsRS.fromEmail;
+      console.log(`[resendCampaign] fromEmail from provider config (${providerDefaultsRS.provider}): ${fromEmail}`);
+    }
     const clientDomainRS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomainRS) {
         fromEmail = clientDomainRS.defaultFromEmail || `noreply@${clientDomainRS.domainName}`;
+        console.log(`[resendCampaign] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[resendCampaign] fromEmail from any domain: ${fromEmail}`);
         } else {
           fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[resendCampaign] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     await disableResendDomainTracking(clientDomainRS);
+    console.log(`[resendCampaign] Campaign ${campaignId} — provider: ${providerDefaultsRS.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
       return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
@@ -774,13 +805,17 @@ export const resendCampaign = async (req, res) => {
 
       if (!emails.length) continue;
       try {
+        console.log(`[resendCampaign] Sending batch of ${emails.length} emails via ${providerDefaultsRS.provider}`);
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
           repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
+        emails.forEach((e, j) => {
+          console.log(`[resendCampaign] ✅ to=${e.to} from=${e.from} subject="${e.subject}" messageId=${results[j]?.id ?? 'none'}`);
+        });
         totalSent += emails.length;
       } catch (batchErr) {
-        console.error(`[resendCampaign] batch error:`, batchErr.message);
+        console.error(`[resendCampaign] ❌ batch error:`, batchErr.message);
       }
 
       if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
