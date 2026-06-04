@@ -103,19 +103,22 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
 
   await repo.resetSkippedToPending(campaignId);
 
-  // If this run was retried (withRetry or orphan recovery), some recipients may have
-  // already been sent under this queueRunId. Subtract them so we never exceed the daily limit.
+  // Enforce daily limit by counting how many were already sent TODAY for this campaign.
+  // Using today's date (UTC) means the DB dailyLimit value is always honoured — even if
+  // the run was restarted mid-batch or the user updated dailyLimit directly in the database.
   let effectiveLimit = limit || null;
-  if (effectiveLimit && queueRunId) {
-    const alreadySentThisRun = await prisma.campaignRecipient.count({
-      where: { queueRunId, status: { notIn: ['pending', 'skipped'] } },
+  if (effectiveLimit) {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const alreadySentToday = await prisma.campaignRecipient.count({
+      where: { campaignId, sentAt: { gte: todayStart }, status: { notIn: ['pending', 'skipped'] } },
     });
-    effectiveLimit = Math.max(0, effectiveLimit - alreadySentThisRun);
-    if (alreadySentThisRun > 0) {
-      console.log(`[queue:executeBatch] ${alreadySentThisRun} already sent for this run — effective limit reduced to ${effectiveLimit}`);
+    effectiveLimit = Math.max(0, effectiveLimit - alreadySentToday);
+    if (alreadySentToday > 0) {
+      console.log(`[queue:executeBatch] ${alreadySentToday} already sent today — effective limit reduced to ${effectiveLimit}`);
     }
     if (effectiveLimit === 0) {
-      console.log(`[queue:executeBatch] Daily limit already reached for run ${queueRunId} — skipping`);
+      console.log(`[queue:executeBatch] Daily limit already reached for today — skipping`);
       return { sent: 0, skipped: 0, total: 0 };
     }
   }

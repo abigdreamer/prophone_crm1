@@ -93,52 +93,65 @@ async function processRun(run) {
       `run ${run.id} (day ${run.dayNumber})`
     );
 
-    const newTotalSent  = queue.totalSent + result.sent;
-    const newCurrentDay = run.dayNumber;
+    // Always read totalSent from actual DB records — never rely on the incremental counter,
+    // which becomes stale when runs are interrupted and retried.
+    const [totalSentFromDB, remaining] = await Promise.all([
+      prisma.campaignRecipient.count({
+        where: { campaignId: queue.campaignId, status: { notIn: ['pending', 'skipped'] } },
+      }),
+      prisma.campaignRecipient.count({
+        where: { campaignId: queue.campaignId, status: 'pending' },
+      }),
+    ]);
 
-    // Count contacts still pending (includes any that failed all send retries this run)
-    const remaining = await prisma.campaignRecipient.count({
-      where: { campaignId: queue.campaignId, status: 'pending' },
+    console.log(`[queue-scheduler] Run ${run.id} day ${run.dayNumber}: sent=${result.sent} totalSent=${totalSentFromDB} remaining=${remaining}`);
+
+    // Mark run completed — use actual per-run sent count from DB for accuracy
+    const runSentCount = await prisma.campaignRecipient.count({
+      where: { queueRunId: run.id, status: { notIn: ['pending', 'skipped'] } },
     });
-
-    console.log(`[queue-scheduler] Run ${run.id} day ${run.dayNumber}: sent=${result.sent} remaining=${remaining}`);
-
-    // Mark run completed (partial success is still "completed" — remaining will be picked up next day)
     await prisma.campaignQueueRun.update({
       where: { id: run.id },
-      data:  { status: 'completed', completedAt: new Date(), sentCount: result.sent },
+      data:  { status: 'completed', completedAt: new Date(), sentCount: runSentCount },
     });
 
     if (remaining === 0) {
       await prisma.campaignQueue.update({
         where: { id: queue.id },
-        data:  { status: 'completed', totalSent: newTotalSent, currentDay: newCurrentDay, estimatedEndAt: new Date() },
+        data:  { status: 'completed', totalSent: totalSentFromDB, currentDay: run.dayNumber, estimatedEndAt: new Date() },
       });
       console.log(`[queue-scheduler] Campaign ${queue.campaignId} fully completed — all contacts sent`);
     } else {
-      // Schedule next run on the next allowed day at sendTime
-      const [h, m] = queue.sendTime.split(':').map(Number);
-      const allowedDays = (Array.isArray(queue.sendDays) && queue.sendDays.length)
-        ? queue.sendDays : [0, 1, 2, 3, 4, 5, 6];
-      const now = new Date();
-      let nextDate = new Date(now);
-      for (let offset = 1; offset <= 7; offset++) {
-        nextDate = new Date(now);
-        nextDate.setUTCDate(now.getUTCDate() + offset);
-        if (allowedDays.includes(nextDate.getUTCDay())) break;
-      }
-      nextDate.setUTCHours(h, m, 0, 0);
-
-      await prisma.campaignQueueRun.create({
-        data: { queueId: queue.id, dayNumber: run.dayNumber + 1, scheduledAt: nextDate, status: 'pending' },
+      // Schedule next run on the next allowed day at sendTime — but only if one doesn't exist yet
+      const existingNext = await prisma.campaignQueueRun.findFirst({
+        where: { queueId: queue.id, dayNumber: run.dayNumber + 1 },
       });
+
+      if (!existingNext) {
+        const [h, m] = queue.sendTime.split(':').map(Number);
+        const allowedDays = (Array.isArray(queue.sendDays) && queue.sendDays.length)
+          ? queue.sendDays : [0, 1, 2, 3, 4, 5, 6];
+        const now = new Date();
+        let nextDate = new Date(now);
+        for (let offset = 1; offset <= 7; offset++) {
+          nextDate = new Date(now);
+          nextDate.setUTCDate(now.getUTCDate() + offset);
+          if (allowedDays.includes(nextDate.getUTCDay())) break;
+        }
+        nextDate.setUTCHours(h, m, 0, 0);
+
+        await prisma.campaignQueueRun.create({
+          data: { queueId: queue.id, dayNumber: run.dayNumber + 1, scheduledAt: nextDate, status: 'pending' },
+        });
+        console.log(`[queue-scheduler] Next run scheduled for ${nextDate.toISOString()} (${remaining} contacts remaining, allowed days: ${allowedDays})`);
+      } else {
+        console.log(`[queue-scheduler] Next run (day ${run.dayNumber + 1}) already exists — skipping duplicate creation`);
+      }
 
       await prisma.campaignQueue.update({
         where: { id: queue.id },
-        data:  { totalSent: newTotalSent, currentDay: newCurrentDay, status: 'active' },
+        data:  { totalSent: totalSentFromDB, currentDay: run.dayNumber, status: 'active' },
       });
-
-      console.log(`[queue-scheduler] Next run scheduled for ${nextDate.toISOString()} (${remaining} contacts remaining, allowed days: ${allowedDays})`);
     }
   } catch (err) {
     console.error(`[queue-scheduler] Run ${run.id} failed after all retries:`, err.message);
