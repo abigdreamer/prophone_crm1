@@ -1614,7 +1614,7 @@ export default function CampaignDetailPage() {
     const timer = setInterval(() => {
       load({ silent: true });
       setTableKey(k => k + 1);
-    }, 10000);
+    }, 30000);
     return () => clearInterval(timer);
   }, [campaign?.status, campaign?.queue?.status, load]);
 
