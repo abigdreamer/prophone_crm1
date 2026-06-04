@@ -436,7 +436,6 @@ export const sendCampaign = async (req, res) => {
 
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -644,7 +643,6 @@ export const sendToContacts = async (req, res) => {
     // Mark sent — same fields as sendCampaign so the campaigns list shows correct status/stats
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -823,7 +821,7 @@ export const resendCampaign = async (req, res) => {
       }
     }
 
-    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: { increment: totalSent } });
+    await repo.updateCampaign(campaignId, { status: 'sent' });
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
