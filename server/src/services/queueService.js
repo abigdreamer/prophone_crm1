@@ -217,21 +217,23 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
 async function markRecipientSentWithRun(recipientId, messageId, campaignId, sendLabel, queueRunId) {
   const { randomUUID } = await import('crypto');
   const sendId = randomUUID();
+  const now = new Date();
   await prisma.campaignRecipient.update({
     where: { id: recipientId },
     data: {
-      status:    'sent',
-      messageId: messageId || null,
+      status:      'delivered',
+      messageId:   messageId || null,
       sendId,
-      sendLabel: sendLabel || '',
-      sentAt:    new Date(),
+      sendLabel:   sendLabel || '',
+      sentAt:      now,
+      deliveredAt: now,
       ...(queueRunId ? { queueRunId } : {}),
     },
   });
-  // Log event
-  prisma.campaignRecipientEvent.create({
-    data: { recipientId, campaignId, sendId, event: 'sent' },
-  }).catch(() => {});
+  // Log sent + delivered events immediately (no webhook needed)
+  prisma.campaignRecipientEvent.create({ data: { recipientId, campaignId, sendId, event: 'sent' } }).catch(() => {});
+  prisma.campaignRecipientEvent.create({ data: { recipientId, campaignId, sendId, event: 'delivered' } }).catch(() => {});
+  prisma.campaign.update({ where: { id: campaignId }, data: { deliveredCount: { increment: 1 } } }).catch(() => {});
 }
 
 // ── Queue CRUD ────────────────────────────────────────────────────────────────
