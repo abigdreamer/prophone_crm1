@@ -382,6 +382,7 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
             <th style={thStyle}>Email</th>
             {isAbTest && <th style={{ ...thStyle, textAlign: "center" }}>Variant</th>}
             <th style={thStyle}>Status</th>
+            <th style={thStyle}>Reason</th>
             <th style={thStyle}>Stage</th>
             <th style={thStyle}>Batch</th>
           </tr>
@@ -443,38 +444,24 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
                 )}
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
                   <RecipientStatusBadge status={statusFilter && statusFilter !== "all" ? statusFilter : r.status} />
-                  {r.status === "skipped" && r.skipReason && (() => {
+                </td>
+                <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
+                  {r.status === "skipped" && r.skipReason ? (() => {
                     const label = SKIP_REASON_LABELS[r.skipReason];
                     const color = r.skipReason === "suppressed:unsubscribed" ? T.red
                                 : r.skipReason === "suppressed:bounced"      ? (T.amber || T.yellow || "#f59e0b")
                                 : T.muted;
-                    return (
-                      <div style={{ fontSize: 10, color, marginTop: 3, fontWeight: 600 }}>
-                        {label?.text || r.skipReason}
-                      </div>
-                    );
-                  })()}
-                  {r.status === "unsubscribed" && r.unsubReason && (
-                    <div title={r.unsubReason} style={{
-                      fontSize: 10, color: T.muted, marginTop: 3,
-                      maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    return <span style={{ fontSize: 11, color, fontWeight: 600 }}>{label?.text || r.skipReason}</span>;
+                  })() : r.status === "unsubscribed" && r.unsubReason ? (
+                    <span title={r.unsubReason} style={{
+                      fontSize: 11, color: T.dim,
+                      display: "block", maxWidth: 200,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      💬 {r.unsubReason}
-                    </div>
-                  )}
-                  {r.status === "unsubscribed" && !r.resubscribedAt && (
-                    <button
-                      onClick={e => handleResubscribe(e, r.id)}
-                      title="Remove from suppression list"
-                      style={{
-                        marginTop: 4, display: "block", fontSize: 10, padding: "2px 7px",
-                        borderRadius: 4, border: "1px solid " + T.border,
-                        background: "transparent", color: T.muted,
-                        cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
-                      }}
-                    >
-                      Re-subscribe
-                    </button>
+                      {r.unsubReason}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: T.muted }}>—</span>
                   )}
                 </td>
                 <td style={{ padding: "12px 16px", borderBottom: "1px solid " + T.border + "80" }}>
