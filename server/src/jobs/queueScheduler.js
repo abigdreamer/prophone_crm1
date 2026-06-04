@@ -22,8 +22,23 @@ async function withRetry(fn, label) {
   throw lastErr;
 }
 
-export function startQueueScheduler() {
+export async function startQueueScheduler() {
   if (schedulerTimer) return;
+
+  // Any run left in 'running' status means the previous process was killed mid-batch.
+  // Reset them to 'pending' scheduled for now so they resume on the next tick.
+  try {
+    const orphaned = await prisma.campaignQueueRun.updateMany({
+      where: { status: 'running' },
+      data:  { status: 'pending', scheduledAt: new Date() },
+    });
+    if (orphaned.count > 0) {
+      console.log(`[queue-scheduler] Recovered ${orphaned.count} orphaned run(s) from previous process — will resume shortly`);
+    }
+  } catch (err) {
+    console.warn('[queue-scheduler] Could not recover orphaned runs:', err.message);
+  }
+
   schedulerTimer = setInterval(tickQueueScheduler, POLL_INTERVAL_MS);
   setTimeout(tickQueueScheduler, 5000);
 }
