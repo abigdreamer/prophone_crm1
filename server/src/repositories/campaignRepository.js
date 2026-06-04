@@ -108,7 +108,13 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
       where,
       skip,
       take:    limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { clickedAt:   'desc' },
+        { openedAt:    'desc' },
+        { deliveredAt: 'desc' },
+        { sentAt:      'desc' },
+        { createdAt:   'desc' },
+      ],
       include: {
         contact: {
           select: {
