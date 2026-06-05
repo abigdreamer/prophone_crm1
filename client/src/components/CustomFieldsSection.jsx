@@ -15,19 +15,6 @@ export default function CustomFieldsSection({ clientId, contactId, udfValues, on
   const fieldStatusTimers             = useRef({});
   const dragIdx                       = useRef(null);
 
-  // Seed defaults only after context confirms UDFs are loaded and empty
-  useEffect(() => {
-    if (!udfsLoaded || udfs.length > 0) return;
-    async function seed() {
-      const defaults = ["Usrdefine1", "Usrdefine2", "Usrdefine3", "Usrdefine4", "Usrdefine5"];
-      for (const [i, label] of defaults.entries()) {
-        await createUdf({ label, type: "TEXT", displayOrder: i });
-      }
-      refreshUdfs();
-    }
-    seed().catch(() => {});
-  }, [udfsLoaded]); // eslint-disable-line
-
   useEffect(() => {
     const timers = fieldStatusTimers.current;
     return () => Object.values(timers).forEach(clearTimeout);
@@ -74,7 +61,7 @@ export default function CustomFieldsSection({ clientId, contactId, udfValues, on
   async function handleAdd() {
     try {
       const label = "Usrdefine" + (udfs.length + 1);
-      const res = await createUdf({ label, type: "TEXT", displayOrder: udfs.length });
+      const res = await createUdf({ label, type: "TEXT", displayOrder: udfs.length, isActive: false });
       const newUdf = res.data;
       setUdfs(prev => [...prev, newUdf]);
       // Auto-focus the new label for immediate rename

@@ -1,8 +1,17 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { getUdfs } from "../services/api";
+import { getUdfs, cleanupUdfs, seedUdfs } from "../services/api";
 import { usePool } from "./PoolContext";
 
 const UdfContext = createContext(null);
+
+function dedupeByLabel(list) {
+  const seen = new Set();
+  return list.filter(u => {
+    if (seen.has(u.label)) return false;
+    seen.add(u.label);
+    return true;
+  });
+}
 
 export function UdfProvider({ children }) {
   const { pool, clientId } = usePool();
@@ -12,14 +21,24 @@ export function UdfProvider({ children }) {
   const refreshUdfs = useCallback(async () => {
     try {
       const res = await getUdfs();
-      setUdfs(res.data || []);
+      setUdfs(dedupeByLabel(res.data || []));
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
     setUdfsLoaded(false);
     setUdfs([]);
-    refreshUdfs().finally(() => setUdfsLoaded(true));
+    async function load() {
+      try {
+        // Cleanup duplicates in DB, then seed defaults if empty, then fetch
+        await cleanupUdfs(clientId);
+        const res = await seedUdfs(clientId);
+        setUdfs(dedupeByLabel(res.data || []));
+      } catch {
+        await refreshUdfs();
+      }
+    }
+    load().finally(() => setUdfsLoaded(true));
   }, [pool, clientId]); // eslint-disable-line
 
   return (

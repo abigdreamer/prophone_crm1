@@ -5,7 +5,7 @@ import { tracking } from '../config/tracking.js';
 import { TIMESTAMP_FILTERS } from '../constants/index.js';
 
 export async function findMany(where) {
-  return prisma.campaign.findMany({
+  const rows = await prisma.campaign.findMany({
     where,
     include: {
       template: { select: { id: true, name: true, subject: true } },
@@ -13,12 +13,44 @@ export async function findMany(where) {
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  if (!rows.length) return rows;
+
+  // Compute all stats from events in one query — same source as the detail page
+  const ids = rows.map(r => r.id);
+  const groups = await prisma.campaignRecipientEvent.groupBy({
+    by:    ['campaignId', 'event', 'recipientId'],
+    where: { campaignId: { in: ids } },
+  });
+
+  // Count unique recipients per event per campaign
+  const stats = {};
+  for (const g of groups) {
+    if (!stats[g.campaignId]) stats[g.campaignId] = {};
+    stats[g.campaignId][g.event] = (stats[g.campaignId][g.event] || 0) + 1;
+  }
+
+  return rows.map(r => {
+    const s = stats[r.id] ?? {};
+    return {
+      ...r,
+      sentCount:         s.sent          ?? 0,
+      deliveredCount:    s.delivered     ?? 0,
+      openedCount:       s.opened        ?? 0,
+      clickedCount:      s.clicked       ?? 0,
+      bouncedCount:      s.bounced       ?? 0,
+      unsubscribedCount: s.unsubscribed  ?? 0,
+    };
+  });
 }
 
 export async function findById(id) {
   return prisma.campaign.findUnique({
     where:   { id },
-    include: { template: { select: { id: true, name: true, subject: true } } },
+    include: {
+      template: { select: { id: true, name: true, subject: true } },
+      queue:    { include: { runs: { orderBy: { dayNumber: 'asc' } } } },
+    },
   });
 }
 
@@ -50,18 +82,17 @@ export async function restoreCampaign(id) {
   });
 }
 
-export async function findRecipients(campaignId, { status, event, abVariant, search, skip = 0, limit = 50 } = {}) {
+export async function findRecipients(campaignId, { status, event, abVariant, search, queueRunId, skip = 0, limit = 50 } = {}) {
   const where = { campaignId };
 
   if (event) {
-    // Scope event filter to this campaign so the count matches getStatisticsFromEvents,
-    // which also filters CampaignRecipientEvent by campaignId.
     where.events = { some: { event, campaignId } };
   } else if (status) {
     where.status = status;
   }
 
-  if (abVariant) where.abVariant = abVariant;
+  if (abVariant)   where.abVariant  = abVariant;
+  if (queueRunId)  where.queueRunId = queueRunId;
   if (search) {
     where.contact = {
       OR: [
@@ -77,7 +108,13 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
       where,
       skip,
       take:    limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { clickedAt:   'desc' },
+        { openedAt:    'desc' },
+        { deliveredAt: 'desc' },
+        { sentAt:      'desc' },
+        { createdAt:   'desc' },
+      ],
       include: {
         contact: {
           select: {
@@ -85,6 +122,7 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
             email: true, company: true, lifecycleStage: true,
           },
         },
+        events: { select: { event: true } },
       },
     }),
     prisma.campaignRecipient.count({ where }),
@@ -192,6 +230,8 @@ export async function resetSkippedToPending(campaignId) {
 export async function findPendingRecipientsForSend(campaignId, limit = null) {
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
+    // Deterministic order: creation order (import order = Record #1 → #N), tie-break by id
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     ...(limit ? { take: limit } : {}),
     include: {
       contact: {
@@ -205,9 +245,12 @@ export async function markRecipientSent(id, messageId, campaignId = null, sendLa
   const sendId = randomUUID();
   const result = await prisma.campaignRecipient.update({
     where: { id },
-    data:  { status: 'sent', messageId: messageId || null, sendId, sendLabel: sendLabel || '', sentAt: new Date() },
+    data:  { status: 'delivered', messageId: messageId || null, sendId, sendLabel: sendLabel || '', sentAt: new Date(), deliveredAt: new Date() },
   });
-  if (campaignId) logEvent(id, campaignId, 'sent', null, sendId).catch(() => {});
+  if (campaignId) {
+    logEvent(id, campaignId, 'sent',      null, sendId).catch(() => {});
+    logEvent(id, campaignId, 'delivered', null, sendId).catch(() => {});
+  }
   return result;
 }
 
@@ -218,11 +261,44 @@ export async function resetRecipientsForResend(campaignId, statuses) {
   });
 }
 
-export async function updateRecipientStatus(id, status) {
+export async function updateRecipientStatus(id, status, skipReason = null) {
   return prisma.campaignRecipient.update({
     where: { id },
-    data:  { status },
+    data:  { status, ...(skipReason != null ? { skipReason } : {}) },
   });
+}
+
+export async function resubscribeRecipient(recipientId) {
+  return prisma.campaignRecipient.update({
+    where: { id: recipientId },
+    data:  { resubscribedAt: new Date() },
+  });
+}
+
+export async function dryRunSend(campaignId, limit = null) {
+  const allPending = await findPendingRecipientsForSend(campaignId, limit);
+  const total = allPending.length;
+  if (total === 0) {
+    return { total: 0, willSend: 0, skipUnsubscribed: 0, skipBounced: 0, skipNoEmail: 0, skipDuplicate: 0 };
+  }
+
+  const contactIds    = allPending.map(r => r.contactId).filter(Boolean);
+  const suppressedIds = await findSuppressedContactIds(contactIds, campaignId);
+
+  let skipUnsubscribed = 0, skipBounced = 0, skipNoEmail = 0, skipDuplicate = 0, willSend = 0;
+  const seenEmails = new Set();
+
+  for (const r of allPending) {
+    if (suppressedIds.unsubIds.has(r.contactId))  { skipUnsubscribed++; continue; }
+    if (suppressedIds.bounceIds.has(r.contactId)) { skipBounced++;      continue; }
+    const email = r.contact?.email?.toLowerCase();
+    if (!email || !email.includes('@'))            { skipNoEmail++;      continue; }
+    if (seenEmails.has(email))                     { skipDuplicate++;    continue; }
+    seenEmails.add(email);
+    willSend++;
+  }
+
+  return { total, willSend, skipUnsubscribed, skipBounced, skipNoEmail, skipDuplicate };
 }
 
 // ── Webhook event helpers ─────────────────────────────────────────────────────
@@ -257,28 +333,20 @@ export async function applyEmailEvent(messageId, event) {
         return;
       }
       recipientData.deliveredAt = now;
-      // Only update status if it hasn't progressed past delivered
       if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.delivered) {
         recipientData.status = 'delivered';
       }
-      campaignData.deliveredCount = { increment: 1 };
       break;
     case 'opened':
       if (recipient.openedAt) {
         await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
         return;
       }
-      // Only update status if it hasn't progressed past opened (e.g., already clicked)
       if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.opened) {
         recipientData.status = 'opened';
       }
       recipientData.openedAt = now;
-      // Open implies delivered
-      if (!recipient.deliveredAt) {
-        recipientData.deliveredAt = now;
-        campaignData.deliveredCount = { increment: 1 };
-      }
-      campaignData.openedCount = { increment: 1 };
+      if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'clicked':
       if (recipient.clickedAt) {
@@ -287,25 +355,15 @@ export async function applyEmailEvent(messageId, event) {
       }
       recipientData.status    = 'clicked';
       recipientData.clickedAt = now;
-      // Click implies open + delivered
-      if (!recipient.openedAt) {
-        recipientData.openedAt = now;
-        campaignData.openedCount = { increment: 1 };
-      }
-      if (!recipient.deliveredAt) {
-        recipientData.deliveredAt = now;
-        campaignData.deliveredCount = { increment: 1 };
-      }
-      campaignData.clickedCount = { increment: 1 };
+      if (!recipient.openedAt)   recipientData.openedAt   = now;
+      if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'bounced':
       recipientData.status    = 'bounced';
       recipientData.bouncedAt = now;
-      campaignData.bouncedCount = { increment: 1 };
       break;
     case 'complained':
       recipientData.status = 'unsubscribed';
-      campaignData.unsubscribedCount = { increment: 1 };
       break;
     default:
       return;
@@ -314,7 +372,6 @@ export async function applyEmailEvent(messageId, event) {
   const logEventType = event === 'complained' ? 'unsubscribed' : event;
   await Promise.all([
     prisma.campaignRecipient.update({ where: { id: recipient.id }, data: recipientData }),
-    prisma.campaign.update({ where: { id: recipient.campaignId }, data: campaignData }),
     logEvent(recipient.id, recipient.campaignId, logEventType, null, recipient.sendId),
   ]);
 
@@ -402,11 +459,7 @@ export async function applyTrackingEvent(recipientId, event) {
       recipientData.deliveredAt = now;
     }
 
-    const campaignData = {
-      ...(isClick ? { clickedCount: { increment: 1 } } : { openedCount: { increment: 1 } }),
-      ...(openBackfilled ? { openedCount: { increment: 1 } } : {}),
-      ...(!recipient.deliveredAt ? { deliveredCount: { increment: 1 } } : {}),
-    };
+    // Campaign counters are now computed from events — no increment needed here
 
     const contactData = {
       ...(isClick ? { emailsClicked: { increment: 1 } } : { emailsOpened: { increment: 1 } }),
@@ -465,9 +518,8 @@ export async function applyTrackingEvent(recipientId, event) {
     });
 
     await Promise.all([
-      tx.campaignRecipient.update({ where: { id: recipient.id },         data: recipientData }),
-      tx.campaign.update({          where: { id: recipient.campaignId },  data: campaignData  }),
-      tx.contact.update({           where: { id: recipient.contactId },   data: contactData   }),
+      tx.campaignRecipient.update({ where: { id: recipient.id },       data: recipientData }),
+      tx.contact.update({          where: { id: recipient.contactId }, data: contactData   }),
       ...activityRows.map(data => tx.activity.create({ data })),
       ...eventRows.map(data => tx.campaignRecipientEvent.create({ data })),
     ]);
@@ -487,9 +539,9 @@ export async function findPendingRecipientsForContacts(campaignId, contactIds) {
 }
 
 export async function findSuppressedContactIds(contactIds, campaignId) {
-  // Global: respect explicit opt-outs across all campaigns
+  // Global: unsubscribed contacts that have NOT been re-subscribed by an admin
   const unsubRows = await prisma.campaignRecipient.findMany({
-    where:  { contactId: { in: contactIds }, status: 'unsubscribed' },
+    where:  { contactId: { in: contactIds }, status: 'unsubscribed', resubscribedAt: null },
     select: { contactId: true },
     distinct: ['contactId'],
   });
@@ -503,10 +555,13 @@ export async function findSuppressedContactIds(contactIds, campaignId) {
     distinct: ['contactId'],
   });
 
-  return new Set([
-    ...unsubRows.map(r => r.contactId),
-    ...bounceRows.map(r => r.contactId),
-  ]);
+  const unsubIds  = new Set(unsubRows.map(r => r.contactId));
+  const bounceIds = new Set(bounceRows.map(r => r.contactId));
+  const all = new Set([...unsubIds, ...bounceIds]);
+  // Expose split sets for skip-reason attribution while staying backwards-compatible
+  all.unsubIds  = unsubIds;
+  all.bounceIds = bounceIds;
+  return all;
 }
 
 /**

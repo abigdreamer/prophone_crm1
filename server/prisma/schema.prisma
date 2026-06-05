@@ -42,11 +42,12 @@ model Client {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt     @map("updated_at")
 
-  contacts       Contact[]
-  contactGroups  ContactGroup[]
-  emailTemplates EmailTemplate[]
-  campaigns      Campaign[]
-  templateLinks  TemplateLink[]
+  contacts        Contact[]
+  contactGroups   ContactGroup[]
+  emailTemplates  EmailTemplate[]
+  campaigns       Campaign[]
+  templateLinks   TemplateLink[]
+  campaignQueues  CampaignQueue[]
   redditMonitors RedditMonitor[]
   redditPosts    RedditPost[]
   portalUsers    ClientUser[]
@@ -318,6 +319,7 @@ model Campaign {
   client     Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
   template   EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   recipients CampaignRecipient[]
+  queue      CampaignQueue?
 
   @@index([clientId])
   @@map("campaigns")
@@ -328,20 +330,26 @@ model CampaignRecipient {
   campaignId String    @map("campaign_id")
   contactId  String    @map("contact_id")
   abVariant  String?   @map("ab_variant")
-  status     String    @default("pending")
+  status         String    @default("pending")
+  skipReason     String?   @map("skip_reason")
+  unsubReason    String?   @map("unsub_reason")
+  resubscribedAt DateTime? @map("resubscribed_at")
   messageId  String?   @map("message_id")
   sendId     String?   @map("send_id")
   sendLabel  String    @default("") @map("send_label")
-  sentAt     DateTime? @map("sent_at")
-  openedAt   DateTime? @map("opened_at")
-  clickedAt  DateTime? @map("clicked_at")
-  bouncedAt  DateTime? @map("bounced_at")
+  queueRunId String?   @map("queue_run_id")
+  sentAt      DateTime? @map("sent_at")
+  deliveredAt DateTime? @map("delivered_at")
+  openedAt    DateTime? @map("opened_at")
+  clickedAt   DateTime? @map("clicked_at")
+  bouncedAt   DateTime? @map("bounced_at")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt     @map("updated_at")
 
-  campaign Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  events   CampaignRecipientEvent[]
+  campaign  Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact   Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  events    CampaignRecipientEvent[]
+  queueRun  CampaignQueueRun?        @relation(fields: [queueRunId], references: [id], onDelete: SetNull)
 
   @@unique([campaignId, contactId])
   @@index([campaignId])
@@ -365,6 +373,55 @@ model CampaignRecipientEvent {
   @@index([campaignId])
   @@index([sendId])
   @@map("campaign_recipient_events")
+}
+
+// ─── Campaign Queue ───────────────────────────────────────────────────────────
+
+model CampaignQueue {
+  id              String             @id @default(uuid())
+  campaignId      String             @unique @map("campaign_id")
+  clientId        String             @map("client_id")
+  dailyLimit      Int                @map("daily_limit")
+  sendGapSeconds  Int                @default(5) @map("send_gap_seconds")
+  sendTime        String             @default("09:00") @map("send_time")
+  sendDays        Json?              @map("send_days")
+  timezone        String             @default("UTC")
+  status          String             @default("active")
+  startedAt       DateTime?          @map("started_at")
+  estimatedEndAt  DateTime?          @map("estimated_end_at")
+  totalRecipients Int                @default(0) @map("total_recipients")
+  totalSent       Int                @default(0) @map("total_sent")
+  currentDay      Int                @default(0) @map("current_day")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  runs     CampaignQueueRun[]
+
+  @@index([clientId])
+  @@map("campaign_queues")
+}
+
+model CampaignQueueRun {
+  id           String    @id @default(uuid())
+  queueId      String    @map("queue_id")
+  dayNumber    Int       @map("day_number")
+  scheduledAt  DateTime  @map("scheduled_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  status       String    @default("pending")
+  sentCount    Int       @default(0) @map("sent_count")
+  errorMessage String?   @map("error_message")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  queue      CampaignQueue       @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  recipients CampaignRecipient[]
+
+  @@index([queueId])
+  @@index([scheduledAt])
+  @@map("campaign_queue_runs")
 }
 
 // ─── Interactive Sessions ─────────────────────────────────────────────────────
@@ -481,4 +538,20 @@ model PosthogProject {
   updatedAt  DateTime @updatedAt     @map("updated_at")
 
   @@map("posthog_projects")
+}
+
+// ─── Email Provider Configuration ────────────────────────────────────────────
+
+model EmailProviderConfig {
+  id               String   @id @default(uuid())
+  providerName     String   @map("provider_name")
+  apiKeyEncrypted  String   @map("api_key_encrypted")
+  defaultFromEmail String   @default("") @map("default_from_email")
+  defaultFromName  String   @default("") @map("default_from_name")
+  isActive         Boolean  @default(false) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([providerName])
+  @@map("email_provider_configs")
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle, SlidersHorizontal, ChevronDown, Settings2 } from "lucide-react";
+import { List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle, SlidersHorizontal, ChevronDown, Cog } from "lucide-react";
 import Hi from "./ui/Hi";
 import ScoreBar from "./ui/ScoreBar";
 import { useTheme } from "../context/ThemeContext";
@@ -706,7 +706,7 @@ export default function Sidebar({
               display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <Settings2 size={11} strokeWidth={2} />
+            <Cog size={11} strokeWidth={1.8} />
           </button>
           {showSearchGear && (
             <div style={{
@@ -803,7 +803,7 @@ export default function Sidebar({
                     transition: "background 0.15s, color 0.15s",
                   }}
                 >
-                  <Settings2 size={12} strokeWidth={2} />
+                  <Cog size={12} strokeWidth={1.8} />
                 </button>
               </div>
 
@@ -986,7 +986,7 @@ export default function Sidebar({
                   transition: "background 0.15s, color 0.15s",
                 }}
               >
-                <Settings2 size={12} strokeWidth={2} />
+                <Cog size={12} strokeWidth={1.8} />
               </button>
             </div>
 
@@ -1341,7 +1341,7 @@ export default function Sidebar({
                 transition: "all 0.15s", padding: 0,
               }}
             >
-              <Settings2 size={11} strokeWidth={2} />
+              <Cog size={11} strokeWidth={1.8} />
             </button>
           </div>
 

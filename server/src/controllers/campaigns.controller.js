@@ -5,7 +5,7 @@ import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
 import { logActivity } from '../lib/activityLogger.js';
 import { ENTITY_TYPE, ACTION, ACTIVITY_TYPE } from '../constants/index.js';
-import { sendBatchEmails } from '../services/resendService.js';
+import { sendBatchEmails, getActiveFromDefaults } from '../services/EmailService.js';
 import { substituteIntoHtml, renderTemplate, applyTracking } from '../services/htmlRenderer.js';
 import {
   htmlToPlainText,
@@ -166,7 +166,7 @@ export const restoreCampaign = async (req, res) => {
 
 export const listRecipients = async (req, res) => {
   try {
-    const { status, event, variant, search, page = '1', limit = '50' } = req.query;
+    const { status, event, variant, search, queueRunId, page = '1', limit = '50' } = req.query;
     const take = Math.min(parseInt(limit, 10) || 50, 200);
     const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
 
@@ -175,6 +175,7 @@ export const listRecipients = async (req, res) => {
       event,
       abVariant: variant,
       search,
+      queueRunId,
       skip,
       limit: take,
     });
@@ -266,26 +267,35 @@ export const sendCampaign = async (req, res) => {
       ? await templateRepo.findById(campaign.templateIdB)
       : null;
 
-    // Resolve sender address: campaign field → verified client domain → env fallback
+    // Resolve sender: campaign override → provider default → domain registry → env fallback
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsSC = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsSC.fromEmail) {
+      fromEmail = providerDefaultsSC.fromEmail;
+      console.log(`[sendCampaign] fromEmail from provider config (${providerDefaultsSC.provider}): ${fromEmail}`);
+    }
     const clientDomain = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomain) {
         fromEmail = clientDomain.defaultFromEmail || `noreply@${clientDomain.domainName}`;
+        console.log(`[sendCampaign] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[sendCampaign] fromEmail from any domain: ${fromEmail}`);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[sendCampaign] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     // Disable Resend's own click/open tracking so ProPhone's tracking isn't double-wrapped
     await disableResendDomainTracking(clientDomain);
+    console.log(`[sendCampaign] Campaign ${campaignId} — provider: ${providerDefaultsSC.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     // Reset contacts that were previously skipped so re-evaluation with current suppression rules applies
@@ -303,9 +313,12 @@ export const sendCampaign = async (req, res) => {
     // Mark suppressed recipients so they don't stay as "pending"
     const suppressedRecipients = allRecipients.filter(r => suppressedIds.has(r.contactId));
     if (suppressedRecipients.length) {
-      await Promise.all(suppressedRecipients.map(r =>
-        repo.updateRecipientStatus(r.id, 'skipped'),
-      ));
+      await Promise.all(suppressedRecipients.map(r => {
+        const reason = suppressedIds.unsubIds?.has(r.contactId)
+          ? 'suppressed:unsubscribed'
+          : 'suppressed:bounced';
+        return repo.updateRecipientStatus(r.id, 'skipped', reason);
+      }));
     }
 
     if (!recipients.length) return sendError(res, 'All recipients are suppressed (previously bounced or unsubscribed)', 400);
@@ -330,7 +343,7 @@ export const sendCampaign = async (req, res) => {
       const noEmail = batch.filter(r => !r.contact?.email?.includes('@'));
       if (noEmail.length) {
         await Promise.all(noEmail.map(r =>
-          repo.updateRecipientStatus(r.id, 'skipped'),
+          repo.updateRecipientStatus(r.id, 'skipped', 'no_email'),
         ));
       }
 
@@ -423,7 +436,6 @@ export const sendCampaign = async (req, res) => {
 
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -475,23 +487,32 @@ export const sendToContacts = async (req, res) => {
 
     // Resolve from-email
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsQS = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsQS.fromEmail) {
+      fromEmail = providerDefaultsQS.fromEmail;
+      console.log(`[sendToContacts] fromEmail from provider config (${providerDefaultsQS.provider}): ${fromEmail}`);
+    }
     const clientDomainQS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomainQS) {
         fromEmail = clientDomainQS.defaultFromEmail || `noreply@${clientDomainQS.domainName}`;
+        console.log(`[sendToContacts] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[sendToContacts] fromEmail from any domain: ${fromEmail}`);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[sendToContacts] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     await disableResendDomainTracking(clientDomainQS);
+    console.log(`[sendToContacts] Campaign ${campaignId} — provider: ${providerDefaultsQS.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     // Fetch contacts — skip canceled, require email
@@ -599,15 +620,19 @@ export const sendToContacts = async (req, res) => {
       if (!emails.length) continue;
 
       try {
+        console.log(`[sendToContacts] Sending batch of ${emails.length} emails via ${providerDefaultsQS.provider}`);
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
           repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
+        emails.forEach((e, j) => {
+          console.log(`[sendToContacts] ✅ to=${e.to} from=${e.from} subject="${e.subject}" messageId=${results[j]?.id ?? 'none'}`);
+        });
         batch.filter(r => r.contact?.email?.includes('@') && r.contact?.id)
           .forEach(r => sentContactIdsQuick.push(r.contact.id));
         totalSent += emails.length;
       } catch (batchErr) {
-        console.error('[sendToContacts] batch error:', batchErr.message);
+        console.error('[sendToContacts] ❌ batch error:', batchErr.message);
       }
 
       if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < pendingRecipients.length) {
@@ -618,7 +643,6 @@ export const sendToContacts = async (req, res) => {
     // Mark sent — same fields as sendCampaign so the campaigns list shows correct status/stats
     await repo.updateCampaign(campaignId, {
       status:      'sent',
-      sentCount:   { increment: totalSent },
       completedAt: new Date(),
     });
 
@@ -687,23 +711,32 @@ export const resendCampaign = async (req, res) => {
       : null;
 
     let fromEmail = campaign.fromEmail?.trim() || '';
+    const providerDefaultsRS = await getActiveFromDefaults();
+    if (!fromEmail && providerDefaultsRS.fromEmail) {
+      fromEmail = providerDefaultsRS.fromEmail;
+      console.log(`[resendCampaign] fromEmail from provider config (${providerDefaultsRS.provider}): ${fromEmail}`);
+    }
     const clientDomainRS = await domainRepo.findFirstVerified(campaign.clientId);
     if (!fromEmail) {
       if (clientDomainRS) {
         fromEmail = clientDomainRS.defaultFromEmail || `noreply@${clientDomainRS.domainName}`;
+        console.log(`[resendCampaign] fromEmail from client domain: ${fromEmail}`);
       } else {
         const anyDomain = await domainRepo.findAnyVerified();
         if (anyDomain) {
           fromEmail = anyDomain.defaultFromEmail || `noreply@${anyDomain.domainName}`;
           await disableResendDomainTracking(anyDomain);
+          console.log(`[resendCampaign] fromEmail from any domain: ${fromEmail}`);
         } else {
-          fromEmail = process.env.RESEND_FROM_EMAIL || '';
+          fromEmail = process.env.RESEND_FROM_EMAIL || process.env.BREVO_FROM_EMAIL || '';
+          console.log(`[resendCampaign] fromEmail from env vars: ${fromEmail}`);
         }
       }
     }
     await disableResendDomainTracking(clientDomainRS);
+    console.log(`[resendCampaign] Campaign ${campaignId} — provider: ${providerDefaultsRS.provider}, from: ${fromEmail}`);
     if (!fromEmail) {
-      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL.', 400);
+      return sendError(res, 'No sender email configured. Add a verified domain or set RESEND_FROM_EMAIL / BREVO_FROM_EMAIL.', 400);
     }
 
     await repo.updateCampaign(campaignId, { status: 'sending' });
@@ -713,6 +746,16 @@ export const resendCampaign = async (req, res) => {
     const contactIds = allRecipients.map(r => r.contactId).filter(Boolean);
     const suppressedIds = await repo.findSuppressedContactIds(contactIds, campaignId);
     const recipients = allRecipients.filter(r => !suppressedIds.has(r.contactId));
+
+    const suppressedResend = allRecipients.filter(r => suppressedIds.has(r.contactId));
+    if (suppressedResend.length) {
+      await Promise.all(suppressedResend.map(r => {
+        const reason = suppressedIds.unsubIds?.has(r.contactId)
+          ? 'suppressed:unsubscribed'
+          : 'suppressed:bounced';
+        return repo.updateRecipientStatus(r.id, 'skipped', reason);
+      }));
+    }
 
     const trackingBase = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
     const unsubSecret  = process.env.UNSUB_SECRET || process.env.JWT_SECRET || '';
@@ -760,13 +803,17 @@ export const resendCampaign = async (req, res) => {
 
       if (!emails.length) continue;
       try {
+        console.log(`[resendCampaign] Sending batch of ${emails.length} emails via ${providerDefaultsRS.provider}`);
         const results = await sendBatchEmails(emails);
         await Promise.all(emails.map((e, j) =>
           repo.markRecipientSent(e._recipientId, results[j]?.id || null, campaignId),
         ));
+        emails.forEach((e, j) => {
+          console.log(`[resendCampaign] ✅ to=${e.to} from=${e.from} subject="${e.subject}" messageId=${results[j]?.id ?? 'none'}`);
+        });
         totalSent += emails.length;
       } catch (batchErr) {
-        console.error(`[resendCampaign] batch error:`, batchErr.message);
+        console.error(`[resendCampaign] ❌ batch error:`, batchErr.message);
       }
 
       if (BATCH_DELAY_MS > 0 && i + SEND_BATCH_SIZE < recipients.length) {
@@ -774,7 +821,7 @@ export const resendCampaign = async (req, res) => {
       }
     }
 
-    await repo.updateCampaign(campaignId, { status: 'sent', sentCount: { increment: totalSent } });
+    await repo.updateCampaign(campaignId, { status: 'sent' });
 
     sendSuccess(res, await repo.findById(campaignId));
   } catch (err) {
@@ -869,25 +916,60 @@ export const duplicateCampaign = async (req, res) => {
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const exportCampaign = async (req, res) => {
-  const { format = 'excel', sheets = '' } = req.query;
+  const { format = 'excel', sheets = '', day } = req.query;
   const campaignId = req.params.id;
 
   try {
     const campaign = await repo.findById(campaignId);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
+    // If day filter requested, resolve the queueRunId for that day number
+    let dayFilter = null;
+    if (day) {
+      const dayNum = parseInt(day, 10);
+      const run = await prisma.campaignQueueRun.findFirst({
+        where: { queue: { campaignId }, dayNumber: dayNum },
+      });
+      if (run) dayFilter = { queueRunId: run.id, dayNumber: dayNum };
+    }
+
     const [eventStats, recipientsResult] = await Promise.all([
       repo.getStatisticsFromEvents(campaignId),
-      format === 'pdf' ? Promise.resolve({ rows: [] }) : repo.findRecipients(campaignId, { limit: 10000 }),
+      repo.findRecipients(campaignId, {
+        limit: 10000,
+        ...(dayFilter ? { queueRunId: dayFilter.queueRunId } : {}),
+      }),
     ]);
     const allRecipients = recipientsResult.rows;
 
-    const sent      = eventStats.sent         || campaign.sentCount         || 0;
-    const delivered = eventStats.delivered    || campaign.deliveredCount    || 0;
-    const opened    = eventStats.opened       || campaign.openedCount       || 0;
-    const clicked   = eventStats.clicked      || campaign.clickedCount      || 0;
-    const bounced   = eventStats.bounced      || campaign.bouncedCount      || 0;
-    const unsubbed  = eventStats.unsubscribed || campaign.unsubscribedCount || 0;
+    // When a day filter is active, compute stats from that day's recipients only
+    let sent, delivered, opened, clicked, bounced, unsubbed, recipientCount;
+    if (dayFilter) {
+      const dayRecipientIds = allRecipients.map(r => r.id);
+      const dayGroups = dayRecipientIds.length
+        ? await prisma.campaignRecipientEvent.groupBy({
+            by:    ['event', 'recipientId'],
+            where: { campaignId, recipientId: { in: dayRecipientIds } },
+          })
+        : [];
+      const dayCounts = {};
+      for (const g of dayGroups) dayCounts[g.event] = (dayCounts[g.event] || 0) + 1;
+      sent         = dayCounts.sent         || 0;
+      delivered    = dayCounts.delivered    || 0;
+      opened       = dayCounts.opened       || 0;
+      clicked      = dayCounts.clicked      || 0;
+      bounced      = dayCounts.bounced      || 0;
+      unsubbed     = dayCounts.unsubscribed || 0;
+      recipientCount = allRecipients.length;
+    } else {
+      sent         = eventStats.sent         || campaign.sentCount         || 0;
+      delivered    = eventStats.delivered    || campaign.deliveredCount    || 0;
+      opened       = eventStats.opened       || campaign.openedCount       || 0;
+      clicked      = eventStats.clicked      || campaign.clickedCount      || 0;
+      bounced      = eventStats.bounced      || campaign.bouncedCount      || 0;
+      unsubbed     = eventStats.unsubscribed || campaign.unsubscribedCount || 0;
+      recipientCount = campaign.recipientsCount || 0;
+    }
 
     const base = sent || 1;
     const stats = {
@@ -897,105 +979,138 @@ export const exportCampaign = async (req, res) => {
       bounceRate:  +((bounced / base) * 100).toFixed(1),
     };
 
-    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_');
+    const filename = campaign.name.replace(/[^a-z0-9]/gi, '_') + (dayFilter ? `_day${dayFilter.dayNumber}` : '');
 
     // ── PDF ──────────────────────────────────────────────────────────────────
     if (format === 'pdf') {
-      const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+      // PDFKit uses Helvetica which has no emoji support — strip anything outside Latin-1
+      const clean = (str) => String(str || '').replace(/[^\x00-\xFF]/g, '').trim() || '—';
+
+      const doc = new PDFDocument({ margin: 0, size: 'LETTER' });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
       doc.pipe(res);
 
-      // ── Dark header bar ──
-      doc.rect(0, 0, 612, 80).fillColor('#0f0f13').fill();
-      doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold').text('ProPhone', 50, 22);
+      const PW = 612, PH = 792;
+      const L = 40, R = PW - 40;
+
+      // ── Header gradient band ──
+      doc.rect(0, 0, PW, 90).fillColor('#0c0c14').fill();
+      doc.rect(0, 0, PW, 90).fillAndStroke('#0c0c14', '#0c0c14');
+      // Accent bar on left
+      doc.rect(0, 0, 4, 90).fillColor('#a855f7').fill();
+
+      // Logo / brand
+      doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('ProPhone CRM', L + 8, 22);
       doc.fillColor('#a855f7').fontSize(8).font('Helvetica')
-        .text('CRM  ·  Campaign Report', 50, 50);
-      doc.fillColor('#cccccc').fontSize(11).font('Helvetica-Bold')
-        .text(campaign.name, 200, 30, { width: 362, align: 'right' });
+        .text('CAMPAIGN REPORT', L + 8, 50, { characterSpacing: 1.5 });
 
-      let y = 104;
+      // Campaign name top-right
+      doc.fillColor('#c4b5fd').fontSize(10).font('Helvetica-Bold')
+        .text(clean(campaign.name), L, 28, { width: R - L, align: 'right' });
+      if (dayFilter) {
+        doc.fillColor('#7c3aed').fontSize(8).font('Helvetica-Bold')
+          .text(`DAY ${dayFilter.dayNumber}`, L, 46, { width: R - L, align: 'right', characterSpacing: 1 });
+      }
 
-      // ── Campaign details ──
+      let y = 110;
+
+      // ── Details card ──
+      doc.rect(L, y, R - L, 118).fillColor('#f9f7ff').fill();
+      doc.rect(L, y, R - L, 118).strokeColor('#e2d9f3').lineWidth(0.5).stroke();
+      doc.rect(L, y, 3, 118).fillColor('#a855f7').fill();
+
       const details = [
-        ['Subject',   campaign.subject || '—'],
-        ['From',      [(campaign.fromName || ''), campaign.fromEmail ? `<${campaign.fromEmail}>` : ''].filter(Boolean).join(' ') || '—'],
-        ['Template',  campaign.template?.name || '—'],
-        ['Status',    (campaign.status || '—').toUpperCase()],
+        ['Subject',   clean(campaign.subject)],
+        ['From',      clean([campaign.fromName, campaign.fromEmail ? `<${campaign.fromEmail}>` : ''].filter(Boolean).join(' '))],
+        ['Template',  clean(campaign.template?.name)],
+        ['Status',    (campaign.status || 'draft').toUpperCase()],
         ['Sent',      campaign.sentAt ? new Date(campaign.sentAt).toLocaleString() : '—'],
         ['Completed', campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : '—'],
       ];
-      for (const [label, val] of details) {
-        doc.fillColor('#999999').fontSize(9).font('Helvetica').text(label, 50, y, { width: 85 });
-        doc.fillColor('#1a1a1a').fontSize(9).font('Helvetica').text(val,   140, y, { width: 422 });
-        y += 18;
+      let dy = y + 12;
+      for (const [lbl, val] of details) {
+        doc.fillColor('#8b5cf6').fontSize(8).font('Helvetica-Bold')
+          .text(lbl.toUpperCase(), L + 14, dy, { width: 72, characterSpacing: 0.5 });
+        doc.fillColor('#1e1b2e').fontSize(8.5).font('Helvetica')
+          .text(val, L + 90, dy, { width: R - L - 96 });
+        dy += 17;
       }
 
-      y += 12;
-      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
-      y += 22;
+      y += 130;
 
-      // ── Section title ──
-      doc.fillColor('#1a1a1a').fontSize(13).font('Helvetica-Bold').text('Campaign Performance', 50, y);
-      y += 20;
+      // ── Section heading ──
+      doc.fillColor('#1e1b2e').fontSize(13).font('Helvetica-Bold')
+        .text('Campaign Performance', L, y);
+      if (dayFilter) {
+        doc.fillColor('#8b5cf6').fontSize(9).font('Helvetica')
+          .text(`Day ${dayFilter.dayNumber} results only`, L, y + 17);
+        y += 12;
+      }
+      y += 26;
 
-      // ── 6 stat boxes in 2 rows × 3 cols ──
-      const BOX_W = 162, BOX_H = 72, GAP = 5;
+      // ── 6 stat boxes: 3 cols × 2 rows ──
+      const BOX_W = 172, BOX_H = 80, GAP = 4;
       const statBoxes = [
-        { label: 'Recipients', value: campaign.recipientsCount || 0, rate: null,                    accent: '#6b7280' },
-        { label: 'Sent',       value: stats.sent,                    rate: null,                    accent: '#3b82f6' },
-        { label: 'Delivered',  value: stats.delivered,               rate: null,                    accent: '#14b8a6' },
-        { label: 'Opened',     value: stats.opened,                  rate: `${stats.openRate}%`,    accent: '#22c55e' },
-        { label: 'Clicked',    value: stats.clicked,                 rate: `${stats.clickRate}%`,   accent: '#a855f7' },
-        { label: 'Bounced',    value: stats.bounced,                 rate: `${stats.bounceRate}%`,  accent: '#ef4444' },
+        { label: 'Recipients', value: recipientCount,   rate: null,                   accent: '#6366f1', bg: '#eef2ff' },
+        { label: 'Sent',       value: stats.sent,       rate: null,                   accent: '#3b82f6', bg: '#eff6ff' },
+        { label: 'Delivered',  value: stats.delivered,  rate: null,                   accent: '#0ea5e9', bg: '#f0f9ff' },
+        { label: 'Opened',     value: stats.opened,     rate: `${stats.openRate}%`,   accent: '#10b981', bg: '#ecfdf5' },
+        { label: 'Clicked',    value: stats.clicked,    rate: `${stats.clickRate}%`,  accent: '#a855f7', bg: '#faf5ff' },
+        { label: 'Bounced',    value: stats.bounced,    rate: `${stats.bounceRate}%`, accent: '#ef4444', bg: '#fef2f2' },
       ];
       statBoxes.forEach((s, i) => {
         const col = i % 3, row = Math.floor(i / 3);
-        const bx = 50 + col * (BOX_W + GAP);
+        const bx = L + col * (BOX_W + GAP);
         const by = y + row * (BOX_H + GAP);
-        // box background + left accent bar
-        doc.rect(bx, by, BOX_W, BOX_H).fillColor('#f8f8f8').fill();
-        doc.rect(bx, by, 3, BOX_H).fillColor(s.accent).fill();
-        doc.rect(bx, by, BOX_W, BOX_H).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
+        doc.rect(bx, by, BOX_W, BOX_H).fillColor(s.bg).fill();
+        doc.rect(bx, by, BOX_W, BOX_H).strokeColor(s.accent + '33').lineWidth(0.5).stroke();
+        doc.rect(bx, by, 4, BOX_H).fillColor(s.accent).fill();
         // label
-        doc.fillColor('#888888').fontSize(8).font('Helvetica')
-          .text(s.label.toUpperCase(), bx + 14, by + 12, { width: BOX_W - 20, characterSpacing: 0.5 });
+        doc.fillColor(s.accent).fontSize(7.5).font('Helvetica-Bold')
+          .text(s.label.toUpperCase(), bx + 14, by + 12, { characterSpacing: 0.8 });
         // big number
-        doc.fillColor('#111111').fontSize(26).font('Helvetica-Bold')
+        doc.fillColor('#111827').fontSize(28).font('Helvetica-Bold')
           .text(String(s.value), bx + 14, by + 26);
-        // rate badge
+        // rate pill (top-right)
         if (s.rate) {
-          doc.fillColor(s.accent).fontSize(9).font('Helvetica-Bold')
-            .text(s.rate, bx + BOX_W - 42, by + 12, { width: 36, align: 'right' });
+          const rateX = bx + BOX_W - 46;
+          doc.rect(rateX, by + 10, 40, 16).fillColor(s.accent + '22').fill();
+          doc.fillColor(s.accent).fontSize(8.5).font('Helvetica-Bold')
+            .text(s.rate, rateX, by + 14, { width: 40, align: 'center' });
         }
       });
-      y += 2 * (BOX_H + GAP) + 20;
+      y += 2 * (BOX_H + GAP) + 18;
+
+      // ── Divider ──
+      doc.moveTo(L, y).lineTo(R, y).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      y += 20;
 
       // ── Rate summary row ──
-      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
-      y += 18;
-
       const rates = [
-        { label: 'Open Rate',      value: `${stats.openRate}%`   },
-        { label: 'Click Rate',     value: `${stats.clickRate}%`  },
-        { label: 'Bounce Rate',    value: `${stats.bounceRate}%` },
-        { label: 'Unsubscribed',   value: String(stats.unsubscribed) },
-        { label: 'Delivery Rate',  value: `${+(stats.delivered / (stats.sent || 1) * 100).toFixed(1)}%` },
+        { label: 'Open Rate',     value: `${stats.openRate}%`,   accent: '#10b981' },
+        { label: 'Click Rate',    value: `${stats.clickRate}%`,  accent: '#a855f7' },
+        { label: 'Bounce Rate',   value: `${stats.bounceRate}%`, accent: '#ef4444' },
+        { label: 'Unsubscribed',  value: String(stats.unsubscribed), accent: '#f59e0b' },
+        { label: 'Delivery Rate', value: `${+(stats.delivered / (stats.sent || 1) * 100).toFixed(1)}%`, accent: '#0ea5e9' },
       ];
-      const rateW = 512 / rates.length;
+      const rateW = (R - L) / rates.length;
       rates.forEach((r, i) => {
-        const rx = 50 + i * rateW;
-        doc.fillColor('#999999').fontSize(7.5).font('Helvetica')
-          .text(r.label.toUpperCase(), rx, y, { width: rateW, align: 'center' });
-        doc.fillColor('#1a1a1a').fontSize(14).font('Helvetica-Bold')
+        const rx = L + i * rateW;
+        // subtle bg
+        doc.rect(rx + 2, y - 4, rateW - 4, 44).fillColor('#fafafa').fill();
+        doc.fillColor('#9ca3af').fontSize(7).font('Helvetica')
+          .text(r.label.toUpperCase(), rx, y, { width: rateW, align: 'center', characterSpacing: 0.5 });
+        doc.fillColor(r.accent).fontSize(16).font('Helvetica-Bold')
           .text(r.value, rx, y + 12, { width: rateW, align: 'center' });
       });
-      y += 44;
+      y += 56;
 
       // ── Footer ──
-      doc.moveTo(50, y).lineTo(562, y).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
-      doc.fillColor('#bbbbbb').fontSize(7.5).font('Helvetica')
-        .text(`ProPhone CRM  ·  Generated ${new Date().toLocaleString()}`, 50, y + 10, { width: 512, align: 'center' });
+      doc.rect(0, PH - 36, PW, 36).fillColor('#0c0c14').fill();
+      doc.rect(0, PH - 36, 4, 36).fillColor('#a855f7').fill();
+      doc.fillColor('#6b7280').fontSize(7.5).font('Helvetica')
+        .text(`ProPhone CRM  ·  Generated ${new Date().toLocaleString()}`, L, PH - 22, { width: R - L, align: 'center' });
 
       doc.end();
       return;
@@ -1009,6 +1124,7 @@ export const exportCampaign = async (req, res) => {
       ['ProPhone CRM — Campaign Report'],
       [],
       ['Campaign Name', campaign.name],
+      ...(dayFilter ? [['Day Filter', `Day ${dayFilter.dayNumber}`]] : []),
       ['Status',        campaign.status],
       ['Subject',       campaign.subject || ''],
       ['From',          (campaign.fromName ? campaign.fromName + ' ' : '') + `<${campaign.fromEmail || ''}>`],
@@ -1017,6 +1133,7 @@ export const exportCampaign = async (req, res) => {
       ['Completed At',  campaign.completedAt ? new Date(campaign.completedAt).toLocaleString() : ''],
       [],
       ['Metric',        'Count', 'Rate'],
+      ['Recipients',    recipientCount,      ''],
       ['Sent',          stats.sent,          ''],
       ['Delivered',     stats.delivered,     ''],
       ['Opened',        stats.opened,        `${stats.openRate}%`],
@@ -1043,7 +1160,7 @@ export const exportCampaign = async (req, res) => {
     });
 
     const SHEET_DEFS = {
-      all:          { label: 'All Recipients', filter: () => true },
+      all:          { label: dayFilter ? `Day ${dayFilter.dayNumber}` : 'All Recipients', filter: () => true },
       sent:         { label: 'Sent',           filter: r => r.status === 'sent' },
       delivered:    { label: 'Delivered',      filter: r => r.status === 'delivered' },
       opened:       { label: 'Opened',         filter: r => r.status === 'opened' },
@@ -1090,5 +1207,32 @@ export const listPublishedTemplates = async (req, res) => {
     sendSuccess(res, enriched);
   } catch (err) {
     sendServerError(res, err, 'listPublishedTemplates');
+  }
+};
+
+// ── Dry-run send (read-only skip preview) ────────────────────────────────────
+
+export const dryRunCampaignSend = async (req, res) => {
+  const { id } = req.params;
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  try {
+    const campaign = await repo.findById(id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+    const result = await repo.dryRunSend(id, limit);
+    sendSuccess(res, result);
+  } catch (err) {
+    sendServerError(res, err, 'dryRunCampaignSend');
+  }
+};
+
+// ── Re-subscribe recipient (admin override for accidental unsubscribes) ───────
+
+export const resubscribeRecipient = async (req, res) => {
+  const { rid } = req.params;
+  try {
+    const updated = await repo.resubscribeRecipient(rid);
+    sendSuccess(res, updated);
+  } catch (err) {
+    sendServerError(res, err, 'resubscribeRecipient');
   }
 };

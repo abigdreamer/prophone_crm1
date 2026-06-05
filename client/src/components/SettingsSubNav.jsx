@@ -1,10 +1,11 @@
 import { useSearchParams } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
-import { FolderOpen, Users, ChevronRight } from "lucide-react";
+import { FolderOpen, Users, ChevronRight, Mail } from "lucide-react";
 
 const ITEMS = [
   { id: "clients", label: "Clients", Icon: FolderOpen },
   { id: "user",    label: "Users",   Icon: Users      },
+  { id: "email",   label: "Email",   Icon: Mail       },
 ];
 
 export default function SettingsSubNav() {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Mail, Filter, CheckCircle, XCircle, Loader, ChevronRight, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Mail, Filter, CheckCircle, Loader, ChevronRight, X, Zap, Clock } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
 import * as db from "../services/api";
@@ -10,8 +11,6 @@ const PRESET_DOMAINS = [
   { label: "@outlook.com", value: "outlook.com" },
   { label: "@hotmail.com", value: "hotmail.com" },
 ];
-
-// ─── Step indicators ──────────────────────────────────────────────────────────
 
 function Step({ n, label, active, done, T }) {
   return (
@@ -32,8 +31,6 @@ function Step({ n, label, active, done, T }) {
     </div>
   );
 }
-
-// ─── Campaign card ────────────────────────────────────────────────────────────
 
 function CampaignCard({ campaign, selected, onClick, T }) {
   const statusColor = {
@@ -75,24 +72,61 @@ function CampaignCard({ campaign, selected, onClick, T }) {
   );
 }
 
+function ModeCard({ icon: Icon, title, desc, selected, onClick, accentColor, T }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        padding: "16px 18px", borderRadius: 10, cursor: "pointer",
+        border: "2px solid " + (selected ? accentColor : T.border),
+        background: selected ? accentColor + "0e" : T.surface,
+        transition: "all 0.15s", display: "flex", alignItems: "flex-start", gap: 14,
+      }}
+      onMouseEnter={e => { if (!selected) e.currentTarget.style.borderColor = accentColor + "55"; }}
+      onMouseLeave={e => { if (!selected) e.currentTarget.style.borderColor = T.border; }}
+    >
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        background: (selected ? accentColor : T.muted) + "18",
+        border: "1px solid " + (selected ? accentColor : T.border),
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Icon size={18} color={selected ? accentColor : T.muted} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: selected ? accentColor : T.text, marginBottom: 4 }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.6 }}>{desc}</div>
+      </div>
+      {selected && (
+        <CheckCircle size={16} color={accentColor} style={{ flexShrink: 0, marginTop: 2 }} />
+      )}
+    </div>
+  );
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export default function CampaignSendModal({ contactIds = [], contacts = [], onClose, onSent }) {
   const T = useTheme();
   const toast = useAppToast();
+  const navigate = useNavigate();
 
-  const [step, setStep] = useState(1);           // 1=pick, 2=filter, 3=confirm, 4=done
+  // Steps: 1=pick campaign, 2=mode, 3=filter domains (manual only), 4=confirm, 5=done
+  const [step, setStep] = useState(1);
+  const [sendMode, setSendMode] = useState("manual"); // "manual" | "schedule"
+
   const [campaigns, setCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [domainFilters, setDomainFilters] = useState([]);
   const [customDomain, setCustomDomain] = useState("");
-  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
   const contactCount = contactIds.length;
 
-  // Live count: how many selected contacts match the active domain filters
   const filteredCount = domainFilters.length === 0
     ? contactCount
     : contacts.filter(c => {
@@ -108,7 +142,6 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
       .finally(() => setLoadingCampaigns(false));
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
@@ -128,29 +161,70 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
     setCustomDomain("");
   }
 
-  async function handleSend() {
+  function nextStep() {
+    if (step === 2 && sendMode === "schedule") {
+      // Skip domain filter step for schedule mode — go straight to confirm
+      setStep(4);
+    } else {
+      setStep(s => s + 1);
+    }
+  }
+
+  function prevStep() {
+    if (step === 4 && sendMode === "schedule") {
+      setStep(2);
+    } else {
+      setStep(s => s - 1);
+    }
+  }
+
+  async function handleManualSend() {
     if (!selectedCampaign) return;
-    setSending(true);
+    setLoading(true);
     try {
       const res = await db.quickSendCampaign(selectedCampaign.id, {
         contactIds,
         domainFilter: domainFilters,
       });
       setResult(res);
-      setStep(4);
+      setStep(5);
       onSent?.(res);
       toast.success(`Sent to ${res.sent} contact${res.sent !== 1 ? "s" : ""}.`);
     } catch (err) {
       toast.error(err?.message || "Send failed. Check campaign configuration.");
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   }
 
-  const activeDomains = [...domainFilters];
-  const filterLabel = activeDomains.length
-    ? activeDomains.map(d => "@" + d).join(", ")
+  async function handleScheduleAdd() {
+    if (!selectedCampaign) return;
+    setLoading(true);
+    try {
+      await db.addCampaignRecipients(selectedCampaign.id, { contactIds });
+      toast.success(`${contactCount} recipient${contactCount !== 1 ? "s" : ""} added to campaign.`);
+      onClose();
+      navigate(`/campaigns/${selectedCampaign.id}`);
+    } catch (err) {
+      toast.error(err?.message || "Failed to add recipients.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const filterLabel = domainFilters.length
+    ? domainFilters.map(d => "@" + d).join(", ")
     : "All email domains";
+
+  // Compute displayed step numbers for indicator
+  const stepLabels = sendMode === "schedule"
+    ? ["Select Campaign", "Send Mode", "Confirm"]
+    : ["Select Campaign", "Send Mode", "Filter Domains", "Confirm"];
+
+  // Map logical step to indicator index
+  const indicatorStep = sendMode === "schedule"
+    ? { 1: 1, 2: 2, 4: 3 }[step] || step
+    : step;
 
   const overlayStyle = {
     position: "fixed", inset: 0, zIndex: 9000,
@@ -191,14 +265,7 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>Send Campaign Email</div>
             <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
-              {domainFilters.length > 0 ? (
-                <>
-                  <span style={{ color: T.accent, fontWeight: 700 }}>{filteredCount.toLocaleString()}</span>
-                  <span> of {contactCount.toLocaleString()} contacts match filters</span>
-                </>
-              ) : (
-                <>{contactCount.toLocaleString()} contact{contactCount !== 1 ? "s" : ""} selected</>
-              )}
+              {contactCount.toLocaleString()} contact{contactCount !== 1 ? "s" : ""} selected
             </div>
           </div>
           <button
@@ -212,16 +279,17 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
         </div>
 
         {/* Step indicator */}
-        {step < 4 && (
+        {step < 5 && (
           <div style={{
             padding: "12px 20px", borderBottom: "1px solid " + T.border,
             display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
           }}>
-            <Step n={1} label="Select Campaign" active={step === 1} done={step > 1} T={T} />
-            <ChevronRight size={12} color={T.border} />
-            <Step n={2} label="Filter Domains" active={step === 2} done={step > 2} T={T} />
-            <ChevronRight size={12} color={T.border} />
-            <Step n={3} label="Confirm & Send" active={step === 3} done={step > 3} T={T} />
+            {stepLabels.map((label, i) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {i > 0 && <ChevronRight size={12} color={T.border} />}
+                <Step n={i + 1} label={label} active={indicatorStep === i + 1} done={indicatorStep > i + 1} T={T} />
+              </div>
+            ))}
           </div>
         )}
 
@@ -256,15 +324,41 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
             </div>
           )}
 
-          {/* Step 2 — Domain filter */}
+          {/* Step 2 — Send mode selection */}
           {step === 2 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                How do you want to send?
+              </div>
+              <ModeCard
+                icon={Zap}
+                title="Send Now (Manual)"
+                desc="Emails are sent immediately to all selected contacts. Good for small, one-off sends."
+                selected={sendMode === "manual"}
+                onClick={() => setSendMode("manual")}
+                accentColor={T.accent}
+                T={T}
+              />
+              <ModeCard
+                icon={Clock}
+                title="Schedule (Queue)"
+                desc="Contacts are added to the campaign as recipients. You then configure a daily send limit and schedule on the campaign page — the system handles the rest automatically."
+                selected={sendMode === "schedule"}
+                onClick={() => setSendMode("schedule")}
+                accentColor={T.blue || "#3b82f6"}
+                T={T}
+              />
+            </div>
+          )}
+
+          {/* Step 3 — Domain filter (manual mode only) */}
+          {step === 3 && sendMode === "manual" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     Filter by email provider
                   </div>
-                  {/* Live count badge */}
                   <div style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "4px 10px", borderRadius: 20,
@@ -287,15 +381,13 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                     const active = domainFilters.includes(value);
                     return (
                       <button
-                        key={value}
-                        onClick={() => toggleDomain(value)}
+                        key={value} onClick={() => toggleDomain(value)}
                         style={{
                           padding: "6px 14px", borderRadius: 20, fontSize: 11, fontWeight: 600,
                           cursor: "pointer", fontFamily: "inherit",
                           background: active ? T.accent + "18" : T.surface,
                           border: "1px solid " + (active ? T.accent : T.border),
-                          color: active ? T.accent : T.dim,
-                          transition: "all 0.15s",
+                          color: active ? T.accent : T.dim, transition: "all 0.15s",
                         }}
                       >
                         {active && "✓ "}{label}
@@ -305,7 +397,6 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                 </div>
               </div>
 
-              {/* Custom domain input */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
                   Add custom domain
@@ -327,13 +418,10 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                       border: "1px solid " + T.border, color: T.dim, fontSize: 12,
                       cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
                     }}
-                  >
-                    Add
-                  </button>
+                  >Add</button>
                 </div>
               </div>
 
-              {/* Active filters */}
               {domainFilters.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
@@ -341,15 +429,12 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {domainFilters.map(d => (
-                      <span
-                        key={d}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 5,
-                          padding: "4px 10px", borderRadius: 20,
-                          background: T.accent + "15", border: "1px solid " + T.accent + "40",
-                          color: T.accent, fontSize: 11, fontWeight: 600,
-                        }}
-                      >
+                      <span key={d} style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "4px 10px", borderRadius: 20,
+                        background: T.accent + "15", border: "1px solid " + T.accent + "40",
+                        color: T.accent, fontSize: 11, fontWeight: 600,
+                      }}>
                         @{d}
                         <button
                           onClick={() => setDomainFilters(prev => prev.filter(x => x !== d))}
@@ -363,20 +448,19 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
             </div>
           )}
 
-          {/* Step 3 — Confirmation */}
-          {step === 3 && selectedCampaign && (
+          {/* Step 4 — Confirm */}
+          {step === 4 && selectedCampaign && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-                  Send summary
+                  {sendMode === "schedule" ? "Queue Summary" : "Send Summary"}
                 </div>
                 {[
                   ["Campaign",  selectedCampaign.name],
                   ["Template",  selectedCampaign.template?.name || "—"],
-                  ["Recipients", domainFilters.length > 0
-                    ? `${filteredCount.toLocaleString()} of ${contactCount.toLocaleString()} contacts`
-                    : `${contactCount.toLocaleString()} contact${contactCount !== 1 ? "s" : ""}`],
-                  ["Domain filter", filterLabel],
+                  ["Recipients", `${contactCount.toLocaleString()} contact${contactCount !== 1 ? "s" : ""}`],
+                  ...(sendMode === "manual" ? [["Domain filter", filterLabel]] : []),
+                  ["Mode", sendMode === "schedule" ? "⏰ Queue (scheduled)" : "⚡ Send Now"],
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "6px 0", borderBottom: "1px solid " + T.border + "66" }}>
                     <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>{label}</span>
@@ -386,20 +470,23 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
               </div>
 
               <div style={{
-                background: T.amber + "0d", border: "1px solid " + T.amber + "30",
+                background: sendMode === "schedule" ? (T.blue || "#3b82f6") + "0d" : T.amber + "0d",
+                border: "1px solid " + (sendMode === "schedule" ? (T.blue || "#3b82f6") : T.amber) + "30",
                 borderRadius: 8, padding: "10px 14px",
                 display: "flex", gap: 8, alignItems: "flex-start",
               }}>
-                <span style={{ fontSize: 14, flexShrink: 0 }}>⚠️</span>
+                <span style={{ fontSize: 14, flexShrink: 0 }}>{sendMode === "schedule" ? "📋" : "⚠️"}</span>
                 <span style={{ fontSize: 11, color: T.dim, lineHeight: 1.6 }}>
-                  Canceled contacts are automatically excluded. Each email address will only receive one copy (deduplication applied).
+                  {sendMode === "schedule"
+                    ? "Contacts will be added as recipients. You'll be taken to the campaign page to set a daily send limit and schedule."
+                    : "Canceled contacts are automatically excluded. Each email address receives only one copy (deduplication applied)."}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Step 4 — Done */}
-          {step === 4 && result && (
+          {/* Step 5 — Done (manual only) */}
+          {step === 5 && result && (
             <div style={{ textAlign: "center", padding: "24px 0" }}>
               <div style={{
                 width: 56, height: 56, borderRadius: "50%", margin: "0 auto 16px",
@@ -415,7 +502,7 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                 <span style={{ color: T.green, fontWeight: 700, fontSize: 20 }}>{result.sent}</span>
                 {" "}email{result.sent !== 1 ? "s" : ""} sent successfully.
                 {result.skipped > 0 && (
-                  <> <span style={{ color: T.muted }}>{result.skipped} skipped</span> (no email, filtered out, or suppressed).</>
+                  <> <span style={{ color: T.muted }}>{result.skipped} skipped</span> (no email, filtered, or suppressed).</>
                 )}
               </div>
               <div style={{ fontSize: 11, color: T.muted }}>
@@ -425,12 +512,12 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
           )}
         </div>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <div style={{
           padding: "14px 20px", borderTop: "1px solid " + T.border,
           display: "flex", gap: 8, justifyContent: "flex-end", flexShrink: 0,
         }}>
-          {step === 4 ? (
+          {step === 5 ? (
             <button
               onClick={onClose}
               style={{
@@ -438,26 +525,24 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                 border: "none", color: "#fff", fontSize: 12, fontWeight: 700,
                 cursor: "pointer", fontFamily: "inherit",
               }}
-            >
-              Close
-            </button>
+            >Close</button>
           ) : (
             <>
               <button
-                onClick={step === 1 ? onClose : () => setStep(s => s - 1)}
-                disabled={sending}
+                onClick={step === 1 ? onClose : prevStep}
+                disabled={loading}
                 style={{
                   padding: "9px 18px", borderRadius: 8, background: T.surface,
                   border: "1px solid " + T.border, color: T.dim, fontSize: 12, fontWeight: 600,
-                  cursor: sending ? "not-allowed" : "pointer", fontFamily: "inherit",
+                  cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit",
                 }}
               >
                 {step === 1 ? "Cancel" : "Back"}
               </button>
 
-              {step < 3 ? (
+              {step < 4 ? (
                 <button
-                  onClick={() => setStep(s => s + 1)}
+                  onClick={nextStep}
                   disabled={step === 1 && !selectedCampaign}
                   style={{
                     padding: "9px 22px", borderRadius: 8,
@@ -472,23 +557,37 @@ export default function CampaignSendModal({ contactIds = [], contacts = [], onCl
                 >
                   Next <ChevronRight size={13} />
                 </button>
-              ) : (
+              ) : sendMode === "manual" ? (
                 <button
-                  onClick={handleSend}
-                  disabled={sending}
+                  onClick={handleManualSend}
+                  disabled={loading}
                   style={{
                     padding: "9px 22px", borderRadius: 8,
-                    background: sending ? T.accent + "88" : T.accent,
+                    background: loading ? T.accent + "88" : T.accent,
                     border: "none", color: "#fff", fontSize: 12, fontWeight: 700,
-                    cursor: sending ? "wait" : "pointer", fontFamily: "inherit",
+                    cursor: loading ? "wait" : "pointer", fontFamily: "inherit",
                     display: "flex", alignItems: "center", gap: 6,
                   }}
                 >
-                  {sending ? (
-                    <><Loader size={13} style={{ animation: "crm-spin 0.8s linear infinite" }} /> Sending…</>
-                  ) : (
-                    <><Mail size={13} /> Send Now</>
-                  )}
+                  {loading
+                    ? <><Loader size={13} style={{ animation: "crm-spin 0.8s linear infinite" }} /> Sending…</>
+                    : <><Zap size={13} /> Send Now</>}
+                </button>
+              ) : (
+                <button
+                  onClick={handleScheduleAdd}
+                  disabled={loading}
+                  style={{
+                    padding: "9px 22px", borderRadius: 8,
+                    background: loading ? (T.blue || "#3b82f6") + "88" : (T.blue || "#3b82f6"),
+                    border: "none", color: "#fff", fontSize: 12, fontWeight: 700,
+                    cursor: loading ? "wait" : "pointer", fontFamily: "inherit",
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  {loading
+                    ? <><Loader size={13} style={{ animation: "crm-spin 0.8s linear infinite" }} /> Adding…</>
+                    : <><Clock size={13} /> Add to Queue</>}
                 </button>
               )}
             </>
