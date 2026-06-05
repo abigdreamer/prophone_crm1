@@ -17,6 +17,7 @@ import domainsRoutes       from './routes/domains.routes.js';
 import emailTemplateRoutes from './routes/emailTemplates.routes.js';
 import interactiveRoutes   from './routes/interactive.routes.js';
 import campaignRoutes      from './routes/campaigns.routes.js';
+import queueRoutes         from './routes/queue.routes.js';
 import emailRoutes         from './routes/email.routes.js';
 import scoringRulesRoutes  from './routes/scoringRules.routes.js';
 import templateLinksRoutes from './routes/templateLinks.routes.js';
@@ -26,6 +27,7 @@ import posthogProjectsRoutes   from './routes/posthogProjects.routes.js';
 import redditRoutes            from './routes/reddit.routes.js';
 import udfRoutes               from './routes/udf.routes.js';
 import customOptionsRoutes     from './routes/customOptions.routes.js';
+import emailConfigRoutes       from './routes/emailConfig.routes.js';
 
 import { handleWebhook }                         from './controllers/domains.controller.js';
 import { servePage, handleRespond }              from './controllers/interactive.controller.js';
@@ -33,6 +35,7 @@ import asyncHandler                              from './utils/asyncHandler.js';
 import prisma                                    from './lib/prisma.js';
 import { updateDomainTracking }                 from './services/domainService.js';
 import { startRedditPoller }                    from './jobs/redditPoller.js';
+import { startQueueScheduler }                 from './jobs/queueScheduler.js';
 
 const app = express();
 
@@ -68,6 +71,7 @@ app.use('/api/domains',             domainsRoutes);
 app.use('/api/email-templates',     emailTemplateRoutes);
 app.use('/api/interactive/sessions', interactiveRoutes);
 app.use('/api/campaigns',           campaignRoutes);
+app.use('/api/campaigns/:id/queue', queueRoutes);
 app.use('/api/email',               emailRoutes);
 app.use('/api/scoring-rules',       scoringRulesRoutes);
 app.use('/api/tl',                  templateLinksRoutes);
@@ -77,6 +81,7 @@ app.use('/api/posthog-projects',    posthogProjectsRoutes);
 app.use('/api/reddit',              redditRoutes);
 app.use('/api/udfs',                udfRoutes);
 app.use('/api/custom-options',      customOptionsRoutes);
+app.use('/api/email-config',        emailConfigRoutes);
 
 app.use((err, req, res, _next) => {
   const status = err.status || 500;
@@ -108,6 +113,10 @@ async function disableResendTrackingForAllDomains() {
   }
 }
 
+if (!process.env.EMAIL_CONFIG_SECRET) {
+  console.warn('[startup] WARNING: EMAIL_CONFIG_SECRET is not set — email provider credentials cannot be stored via the Settings UI');
+}
+
 const PORT   = process.env.PORT || 8040;
 const server = app.listen(PORT, () => {
   console.log(`ProPhone API listening on port ${PORT}`);
@@ -116,6 +125,7 @@ const server = app.listen(PORT, () => {
   // and if the Resend tracking subdomain (e.g. track.foxtow.com) has no DNS record the link breaks.
   disableResendTrackingForAllDomains();
   startRedditPoller();
+  startQueueScheduler();
 });
 
 let _bindRetry = false;

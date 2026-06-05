@@ -117,6 +117,8 @@ export const getUdfs         = ()               => { const p = new URLSearchPara
 export const createUdf       = (data)           => request('POST',   '/api/udfs',     { ...data, clientId: _clientId || null });
 export const updateUdf       = (id, data)       => request('PATCH',  `/api/udfs/${id}`, data);
 export const deleteUdf       = (id)             => request('DELETE', `/api/udfs/${id}`);
+export const cleanupUdfs     = (clientId)       => request('POST',   '/api/udfs/cleanup', { clientId: clientId || null });
+export const seedUdfs        = (clientId)       => request('POST',   '/api/udfs/seed',    { clientId: clientId || null });
 export const getUdfValues    = (fieldKey, search = '') => { const p = new URLSearchParams({ fieldKey, search }); if (_clientId) p.set('clientId', _clientId); return request('GET', `/api/udfs/values?${p}`); };
 export const getContactUdfs    = (contactId)    => request('GET', `/api/contacts/${contactId}/udfs`);
 export const updateContactUdfs = (contactId, values) => request('PUT', `/api/contacts/${contactId}/udfs`, values);
@@ -428,6 +430,64 @@ export async function getPublishedTemplates() {
   return r.data ?? r;
 }
 
+export async function dryRunCampaignSend(id, limit = null) {
+  const q = limit ? `?limit=${limit}` : '';
+  const r = await request('GET', `/api/campaigns/${id}/send/dry-run${q}`);
+  return r.data ?? r;
+}
+
+export async function resubscribeRecipient(campaignId, recipientId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/recipients/${recipientId}/resubscribe`);
+  return r.data ?? r;
+}
+
+// ── Campaign Queue ────────────────────────────────────────────────────────────
+
+export async function getCampaignQueue(campaignId) {
+  const r = await request('GET', `/api/campaigns/${campaignId}/queue`);
+  return r.data ?? r;
+}
+
+export async function createCampaignQueue(campaignId, { clientId, dailyLimit, sendTime, timezone, sendGapSeconds }) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue`, { clientId, dailyLimit, sendTime, timezone, sendGapSeconds });
+  return r.data ?? r;
+}
+
+export async function updateCampaignQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds }) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue`, { dailyLimit, sendTime, timezone, sendGapSeconds });
+  return r.data ?? r;
+}
+
+export async function pauseCampaignQueue(campaignId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue/pause`);
+  return r.data ?? r;
+}
+
+export async function resumeCampaignQueue(campaignId) {
+  const r = await request('POST', `/api/campaigns/${campaignId}/queue/resume`);
+  return r.data ?? r;
+}
+
+export async function cancelCampaignQueue(campaignId) {
+  const r = await request('DELETE', `/api/campaigns/${campaignId}/queue`);
+  return r.data ?? r;
+}
+
+export async function exportCampaignDayBlob(campaignId, dayNumber, format = 'excel') {
+  const token = localStorage.getItem('prophone_token');
+  const qs = new URLSearchParams({ format, day: dayNumber }).toString();
+  const res = await fetch(`${API}/api/campaigns/${campaignId}/export?${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `campaign_day${dayNumber}.${ext}`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function getSettings(clientId, module) {
@@ -487,4 +547,112 @@ export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, 
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || 'Failed to fetch subscribers');
   return data;
+}
+
+// ── Client Portal Auth ────────────────────────────────────────────────────────
+
+// Separate fetch wrapper that uses the client portal token
+async function portalRequest(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const token = localStorage.getItem("prophone_client_token");
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    const error = new Error(data?.error || "Request failed");
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+export async function clientLoginUser(username, password) {
+  try {
+    const { token, user } = await request('POST', '/api/auth/client-login', { username, password });
+    localStorage.setItem('prophone_client_token', token);
+    return user;
+  } catch (err) {
+    if (err.message === 'Invalid credentials') return null;
+    throw err;
+  }
+}
+
+export async function clientGetMe() {
+  return portalRequest('GET', '/api/auth/client-me');
+}
+
+// ── Client Portal Data ────────────────────────────────────────────────────────
+
+export async function portalGetDashboard() {
+  return portalRequest('GET', '/api/portal/dashboard');
+}
+
+export async function portalGetLeads(params = {}) {
+  const q = new URLSearchParams(params).toString();
+  return portalRequest('GET', `/api/portal/leads${q ? '?' + q : ''}`);
+}
+
+export async function portalGetLead(id) {
+  return portalRequest('GET', `/api/portal/leads/${id}`);
+}
+
+export async function portalGetCampaigns() {
+  return portalRequest('GET', '/api/portal/campaigns');
+}
+
+export async function portalGetCampaign(id) {
+  return portalRequest('GET', `/api/portal/campaigns/${id}`);
+}
+
+export async function portalGetProfile() {
+  return portalRequest('GET', '/api/portal/profile');
+}
+
+export async function portalUpdateProfile(data) {
+  return portalRequest('PATCH', '/api/portal/profile', data);
+}
+
+// ── Admin: Client Portal User Management ─────────────────────────────────────
+
+export async function getClientPortalUsers(clientId) {
+  return request('GET', `/api/clients/${clientId}/portal-users`);
+}
+
+export async function createClientPortalUser(clientId, data) {
+  return request('POST', `/api/clients/${clientId}/portal-users`, data);
+}
+
+export async function updateClientPortalUser(clientId, userId, data) {
+  return request('PATCH', `/api/clients/${clientId}/portal-users/${userId}`, data);
+}
+
+export async function deleteClientPortalUser(clientId, userId) {
+  return request('DELETE', `/api/clients/${clientId}/portal-users/${userId}`);
+}
+
+// ── Email Provider Configuration ─────────────────────────────────────────────
+
+export async function getEmailConfig() {
+  return request('GET', '/api/email-config');
+}
+
+export async function saveEmailConfig(data) {
+  return request('POST', '/api/email-config', data);
+}
+
+export async function activateEmailConfig(id) {
+  return request('POST', '/api/email-config/activate', { id });
+}
+
+export async function testEmailConfig(data) {
+  return request('POST', '/api/email-config/test', data);
 }

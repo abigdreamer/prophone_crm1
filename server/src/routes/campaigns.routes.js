@@ -19,6 +19,8 @@ import {
   getCampaignAnalytics,
   exportCampaign,
   listPublishedTemplates,
+  dryRunCampaignSend,
+  resubscribeRecipient,
 } from '../controllers/campaigns.controller.js';
 
 const router = Router();
@@ -40,10 +42,12 @@ router.post('/:id/recipients',        addRecipients);
 router.delete('/:id/recipients',      removeRecipients);
 router.get('/:id/recipients/preview', previewRecipients);
 
-router.post('/:id/send',         sendCampaign);
-router.post('/:id/send-to',      sendToContacts);
-router.post('/:id/resend',       resendCampaign);
-router.get('/:id/analytics',     getCampaignAnalytics);
-router.get('/:id/export',        exportCampaign);
+router.get( '/:id/send/dry-run',                dryRunCampaignSend);
+router.post('/:id/send',                        sendCampaign);
+router.post('/:id/send-to',                     sendToContacts);
+router.post('/:id/resend',                      resendCampaign);
+router.post('/:id/recipients/:rid/resubscribe', resubscribeRecipient);
+router.get( '/:id/analytics',                   getCampaignAnalytics);
+router.get( '/:id/export',                      exportCampaign);
 
 export default router;
