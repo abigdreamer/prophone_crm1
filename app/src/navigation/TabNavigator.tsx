@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ContactsStack from './ContactsStack';
 import ProfileStack from './ProfileStack';
 import MarketingStack from './MarketingStack';
@@ -9,6 +10,7 @@ const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const { C } = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -18,8 +20,8 @@ export default function TabNavigator() {
           backgroundColor: C.surface,
           borderTopColor: C.cardBorder,
           borderTopWidth: 1,
-          height: 80,
-          paddingBottom: 16,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 6,
           paddingTop: 10,
         },
         tabBarActiveTintColor: C.primary,
