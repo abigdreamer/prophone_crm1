@@ -10,13 +10,16 @@ async function getToken(): Promise<string | null> {
 }
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_BASE_URL}${path}`);
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  let url = `${API_BASE_URL}${path}`;
+  if (params && Object.keys(params).length > 0) {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    url += `?${query}`;
   }
 
   const token = await getToken();
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
