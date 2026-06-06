@@ -38,4 +38,15 @@ export interface Contact {
   lastActivityAt: string;
   createdAt: string;
   activities?: Activity[];
+  // extended fields
+  estRevenue?: string;
+  servicesOffered?: string;
+  motorClubAffiliations?: string;
+  painPoints?: string;
+  facebook?: string;
+  instagram?: string;
+  linkedin?: string;
+  tiktok?: string;
+  notes?: string;
+  tags?: string;
 }

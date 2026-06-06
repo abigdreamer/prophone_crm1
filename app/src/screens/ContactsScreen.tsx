@@ -584,10 +584,19 @@ export default function ContactsScreen({ navigation }: Props) {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Contacts</Text>
-        <Text style={styles.headerCount}>
-          {total.toLocaleString()} total · {contacts.length.toLocaleString()} loaded
-        </Text>
+        <View>
+          <Text style={styles.headerTitle}>Contacts</Text>
+          <Text style={styles.headerCount}>
+            {total.toLocaleString()} total · {contacts.length.toLocaleString()} loaded
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('LeadForm', {})}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Client Switcher */}
@@ -788,9 +797,17 @@ function makeStyles(C: ReturnType<typeof useAppTheme>['C']) { return StyleSheet.
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 6,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
   },
   headerTitle: { fontSize: 28, fontWeight: '800', color: C.text, letterSpacing: 0.2 },
   headerCount: { fontSize: 12, color: C.textMuted, marginTop: 2 },
+  addBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: C.primary,
+    alignItems: 'center' as const, justifyContent: 'center' as const,
+  },
 
   // Limit selector
   limitRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' },

@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { Linking, Share, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { ContactsStackParamList } from '../navigation/ContactsStack';
 import type { Contact } from '../types/contact';
 import { SHADOW_SM, stageColors } from '../theme';
 import { useAppTheme } from '../context/ThemeContext';
 
-type Props = {
-  route: { params: { contact: Contact } };
-};
+type Props = NativeStackScreenProps<ContactsStackParamList, 'ContactDetail'>;
 
 type StylesType = ReturnType<typeof makeStyles>;
 
@@ -76,11 +76,24 @@ function StatItem({ value, label, styles }: { value: string | number; label: str
   );
 }
 
-export default function ContactDetailScreen({ route }: Props) {
+export default function ContactDetailScreen({ route, navigation }: Props) {
   const { C } = useAppTheme();
   const styles = useMemo(() => makeStyles(C), [C]);
 
   const c = route.params.contact;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('LeadForm', { contact: c })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ color: C.primary, fontSize: 15, fontWeight: '600' }}>Edit</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, c, C]);
   const fullName = `${c.firstName} ${c.lastName}`.trim() || c.company || '—';
   const fullAddress = [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ');
   const stage = stageColors(c.lifecycleStage);

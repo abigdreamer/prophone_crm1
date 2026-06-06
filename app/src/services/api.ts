@@ -71,6 +71,31 @@ export async function fetchContact(id: string): Promise<Contact> {
   return get<Contact>(`/contacts/${id}`);
 }
 
+async function mutate<T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+export async function createContact(data: Partial<Contact>): Promise<Contact> {
+  return mutate<Contact>('POST', '/contacts', data);
+}
+
+export async function updateContact(id: string, data: Partial<Contact>): Promise<Contact> {
+  return mutate<Contact>('PATCH', `/contacts/${id}`, data);
+}
+
 export async function fetchClients(): Promise<Client[]> {
   try {
     const data = await get<Client[] | { clients: Client[] }>('/clients');
