@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
-import { ActiveClientProvider } from './src/context/ActiveClientContext';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function AppContent() {
@@ -22,9 +21,7 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <ActiveClientProvider>
-            <AppContent />
-          </ActiveClientProvider>
+          <AppContent />
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

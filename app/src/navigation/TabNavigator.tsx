@@ -5,6 +5,7 @@ import ContactsStack from './ContactsStack';
 import ProfileStack from './ProfileStack';
 import MarketingStack from './MarketingStack';
 import { useAppTheme } from '../context/ThemeContext';
+import { ActiveClientProvider } from '../context/ActiveClientContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -13,6 +14,7 @@ export default function TabNavigator() {
   const insets = useSafeAreaInsets();
 
   return (
+    <ActiveClientProvider>
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
@@ -73,5 +75,6 @@ export default function TabNavigator() {
         }}
       />
     </Tab.Navigator>
+    </ActiveClientProvider>
   );
 }
