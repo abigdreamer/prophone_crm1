@@ -1,10 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, AUTH_TOKEN } from '../config';
 import type { Campaign, CampaignRecipient, Template, Domain } from '../types/marketing';
 
 const TOKEN_KEY = 'prophone_token';
 
 async function getToken(): Promise<string | null> {
+  if (AUTH_TOKEN) return AUTH_TOKEN;
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
