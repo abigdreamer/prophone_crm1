@@ -748,7 +748,7 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
 
               {contLoading ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20, justifyContent: "center" }}>
-                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading contacts…
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading leads…
                 </div>
               ) : filteredContacts.length === 0 ? (
                 <div style={{ textAlign: "center", padding: 24, color: T.muted, fontSize: 13 }}>
