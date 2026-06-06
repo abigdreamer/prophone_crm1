@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   FlatList,
@@ -470,6 +471,22 @@ export default function ContactsScreen({ navigation }: Props) {
       load({ clientId: activeClientId, sortBy: DEFAULT_SORT, limit: PAGE_SIZE, page: 1 }, 'init', 1);
     }
   }, [activeClientId, clientsLoading]);
+
+  // ── Refresh on focus (e.g. navigating back from create/edit) ──────────────
+
+  const reloadRef = useRef<() => void>(() => {});
+  reloadRef.current = () => {
+    if (!clientsLoading && activeClientId !== undefined) {
+      load(buildQuery(), 'silent', 1);
+    }
+  };
+  const firstFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocusRef.current) { firstFocusRef.current = false; return; }
+      reloadRef.current();
+    }, [])
+  );
 
   // ── Infinite scroll ────────────────────────────────────────────────────────
 
