@@ -88,11 +88,11 @@ async function mutate<T>(method: 'POST' | 'PATCH', path: string, body: unknown):
   return res.json();
 }
 
-export async function createContact(data: Partial<Contact>): Promise<Contact> {
+export async function createContact(data: Record<string, unknown>): Promise<Contact> {
   return mutate<Contact>('POST', '/contacts', data);
 }
 
-export async function updateContact(id: string, data: Partial<Contact>): Promise<Contact> {
+export async function updateContact(id: string, data: Record<string, unknown>): Promise<Contact> {
   return mutate<Contact>('PATCH', `/contacts/${id}`, data);
 }
 

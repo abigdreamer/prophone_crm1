@@ -39,14 +39,11 @@ export interface Contact {
   createdAt: string;
   activities?: Activity[];
   // extended fields
-  estRevenue?: string;
+  estAnnualRevenue?: string;
   servicesOffered?: string;
   motorClubAffiliations?: string;
   painPoints?: string;
-  facebook?: string;
-  instagram?: string;
-  linkedin?: string;
-  tiktok?: string;
+  socialLinks?: Record<string, string>;
   notes?: string;
-  tags?: string;
+  tags?: string[];
 }

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAppTheme } from '../context/ThemeContext';
+import { useActiveClient } from '../context/ActiveClientContext';
 import { createContact, updateContact } from '../services/api';
 import type { ContactsStackParamList } from '../navigation/ContactsStack';
 import type { Contact } from '../types/contact';
@@ -54,6 +55,7 @@ type FormState = {
 };
 
 function initForm(c?: Contact): FormState {
+  const tags = Array.isArray(c?.tags) ? c.tags.join(', ') : '';
   return {
     firstName:             c?.firstName            ?? '',
     lastName:              c?.lastName             ?? '',
@@ -70,7 +72,7 @@ function initForm(c?: Contact): FormState {
     company:               c?.company              ?? '',
     accountSize:           c?.accountSize          ?? '',
     trucks:                String(c?.trucks         ?? ''),
-    estRevenue:            c?.estRevenue           ?? '',
+    estRevenue:            c?.estAnnualRevenue      ?? '',
     contractValue:         String(c?.contractValue  ?? ''),
     yearsInBusiness:       String(c?.yearsInBusiness ?? ''),
     serviceAreaMiles:      String(c?.serviceAreaMiles ?? ''),
@@ -80,12 +82,12 @@ function initForm(c?: Contact): FormState {
     servicesOffered:       c?.servicesOffered      ?? '',
     motorClubAffiliations: c?.motorClubAffiliations ?? '',
     painPoints:            c?.painPoints           ?? '',
-    facebook:              c?.facebook             ?? '',
-    instagram:             c?.instagram            ?? '',
-    linkedin:              c?.linkedin             ?? '',
-    tiktok:                c?.tiktok               ?? '',
+    facebook:              c?.socialLinks?.facebook  ?? '',
+    instagram:             c?.socialLinks?.instagram ?? '',
+    linkedin:              c?.socialLinks?.linkedin  ?? '',
+    tiktok:                c?.socialLinks?.tiktok    ?? '',
     notes:                 c?.notes                ?? '',
-    tags:                  c?.tags                 ?? '',
+    tags,
   };
 }
 
@@ -183,6 +185,7 @@ export default function LeadFormScreen({ route, navigation }: Props) {
   const { C }   = useAppTheme();
   const insets  = useSafeAreaInsets();
   const styles  = useMemo(() => makeStyles(C), [C]);
+  const { activeClientId } = useActiveClient();
 
   const [form, setForm]               = useState<FormState>(() => initForm(contact));
   const [openSections, setOpen]       = useState<Set<string>>(new Set(['contact']));
@@ -214,7 +217,17 @@ export default function LeadFormScreen({ route, navigation }: Props) {
     if (!validate()) return;
     setSaving(true);
     try {
-      const payload: Partial<Contact> = {
+      const socialLinks: Record<string, string> = {};
+      if (form.facebook.trim())  socialLinks.facebook  = form.facebook.trim();
+      if (form.instagram.trim()) socialLinks.instagram = form.instagram.trim();
+      if (form.linkedin.trim())  socialLinks.linkedin  = form.linkedin.trim();
+      if (form.tiktok.trim())    socialLinks.tiktok    = form.tiktok.trim();
+
+      const tags = form.tags.trim()
+        ? form.tags.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
+
+      const payload: Record<string, unknown> = {
         firstName:             form.firstName.trim(),
         lastName:              form.lastName.trim(),
         title:                 form.title.trim(),
@@ -230,7 +243,7 @@ export default function LeadFormScreen({ route, navigation }: Props) {
         company:               form.company.trim(),
         accountSize:           form.accountSize.trim(),
         trucks:                Number(form.trucks) || 0,
-        estRevenue:            form.estRevenue.trim(),
+        estAnnualRevenue:      form.estRevenue.trim(),
         contractValue:         Number(form.contractValue) || 0,
         yearsInBusiness:       Number(form.yearsInBusiness) || 0,
         serviceAreaMiles:      Number(form.serviceAreaMiles) || 0,
@@ -240,12 +253,11 @@ export default function LeadFormScreen({ route, navigation }: Props) {
         servicesOffered:       form.servicesOffered.trim(),
         motorClubAffiliations: form.motorClubAffiliations.trim(),
         painPoints:            form.painPoints.trim(),
-        facebook:              form.facebook.trim(),
-        instagram:             form.instagram.trim(),
-        linkedin:              form.linkedin.trim(),
-        tiktok:                form.tiktok.trim(),
+        socialLinks,
         notes:                 form.notes.trim(),
-        tags:                  form.tags.trim(),
+        tags,
+        pool:                  activeClientId ? 'client' : 'prospect',
+        clientId:              activeClientId ?? undefined,
       };
       if (isEdit && contact?.id) {
         await updateContact(contact.id, payload);
