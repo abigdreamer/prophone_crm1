@@ -2699,7 +2699,7 @@ function TemplateList({ onOpenBuilder }) {
   }).length;
 
   return (
-    <div style={{ minHeight: "100%", background: C.bg, padding: '8px 18px 20px', fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
+    <div style={{ minHeight: "100%", background: C.bg, padding: '8px 0 20px', fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} input::placeholder{color:#94a3b8!important}`}</style>
 
       {/* Header */}
