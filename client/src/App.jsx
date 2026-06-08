@@ -954,11 +954,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
           <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 8 : isTablet ? 10 : '10px 18px', position: 'relative' }}>
             {!firstLoad && loading && <SkeletonDetailPanel />}
-            <div style={
-              isContacts ? { maxWidth: 900, margin: '0 auto' } :
-              isMarketing ? { maxWidth: 1200, margin: '0 auto', width: '100%' } :
-              undefined
-            }>
+            <div style={isContacts ? { maxWidth: 900, margin: '0 auto' } : undefined}>
               {renderCenter()}
             </div>
           </div>
