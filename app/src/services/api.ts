@@ -1,22 +1,27 @@
 import * as SecureStore from 'expo-secure-store';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, getAuthToken } from '../config';
 import type { Client } from '../types/client';
 import type { Contact } from '../types/contact';
 
 const TOKEN_KEY = 'prophone_token';
 
 async function getToken(): Promise<string | null> {
+  const mem = getAuthToken();
+  if (mem) return mem;
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_BASE_URL}${path}`);
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  let url = `${API_BASE_URL}${path}`;
+  if (params && Object.keys(params).length > 0) {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    url += `?${query}`;
   }
 
   const token = await getToken();
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -64,6 +69,31 @@ export async function fetchContacts(
 
 export async function fetchContact(id: string): Promise<Contact> {
   return get<Contact>(`/contacts/${id}`);
+}
+
+async function mutate<T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+export async function createContact(data: Record<string, unknown>): Promise<Contact> {
+  return mutate<Contact>('POST', '/contacts', data);
+}
+
+export async function updateContact(id: string, data: Record<string, unknown>): Promise<Contact> {
+  return mutate<Contact>('PATCH', `/contacts/${id}`, data);
 }
 
 export async function fetchClients(): Promise<Client[]> {

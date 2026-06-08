@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, setAuthToken } from '../config';
 
 const TOKEN_KEY = 'prophone_token';
 
@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (res.ok) {
           const me = await res.json();
+          setAuthToken(saved);
           setToken(saved);
           setUser(me);
         } else {
@@ -62,12 +63,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+    setAuthToken(data.token);
     setToken(data.token);
     setUser(data.user);
   }
 
   async function logout() {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    setAuthToken('');
     setToken(null);
     setUser(null);
   }

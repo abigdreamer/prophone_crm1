@@ -1,20 +1,25 @@
 import * as SecureStore from 'expo-secure-store';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, getAuthToken } from '../config';
 import type { Campaign, CampaignRecipient, Template, Domain } from '../types/marketing';
 
 const TOKEN_KEY = 'prophone_token';
 
 async function getToken(): Promise<string | null> {
+  const mem = getAuthToken();
+  if (mem) return mem;
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_BASE_URL}${path}`);
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  let url = `${API_BASE_URL}${path}`;
+  if (params && Object.keys(params).length > 0) {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    url += `?${query}`;
   }
   const token = await getToken();
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

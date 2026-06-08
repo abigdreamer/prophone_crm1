@@ -200,7 +200,7 @@ const THEMES: Record<string, { label: string; colors: ThemeColors }> = {
 export const THEME_LIST = Object.entries(THEMES).map(([id, { label }]) => ({ id, label }));
 
 export function getThemeColors(id: string): ThemeColors {
-  return THEMES[id]?.colors ?? THEMES.dark.colors;
+  return THEMES[id]?.colors ?? THEMES.light.colors;
 }
 
 export function isLightTheme(id: string): boolean {
@@ -214,15 +214,15 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue>({
-  themeId: 'dark',
+  themeId: 'light',
   setThemeId: () => {},
-  C: THEMES.dark.colors,
+  C: THEMES.light.colors,
 });
 
 const THEME_STORAGE_KEY = 'prophone_theme';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState('dark');
+  const [themeId, setThemeIdState] = useState('light');
 
   useEffect(() => {
     SecureStore.getItemAsync(THEME_STORAGE_KEY).then((saved) => {

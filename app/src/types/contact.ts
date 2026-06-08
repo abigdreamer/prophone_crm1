@@ -38,4 +38,12 @@ export interface Contact {
   lastActivityAt: string;
   createdAt: string;
   activities?: Activity[];
+  // extended fields
+  estAnnualRevenue?: string;
+  servicesOffered?: string;
+  motorClubAffiliations?: string;
+  painPoints?: string;
+  socialLinks?: Record<string, string>;
+  notes?: string;
+  tags?: string[];
 }
