@@ -1295,7 +1295,6 @@ export default function DomainsPage() {
         display: 'flex',
         height: '100%',
         overflow: 'hidden',
-        margin: '-20px',
       }}
     >
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
