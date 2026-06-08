@@ -417,13 +417,26 @@ function MiniEmailPreview({ template }) {
   const pageBg  = template.body?.backgroundColor || "#f4f4f4";
   const scale   = w / EMAIL_W;
 
-  // HTML template with actual output — render a scaled snapshot
+  // HTML template with actual output — render a sandboxed scaled snapshot
   if (isHtml && template.htmlOutput) {
+    const PREVIEW_H = 600;
     return (
       <div ref={wrapRef} style={{ width: "100%", height: "100%", overflow: "hidden", position: "relative", background: "#f4f4f4" }}>
-        <div
-          style={{ position: "absolute", top: 0, left: 0, width: EMAIL_W, transformOrigin: "top left", transform: `scale(${scale})`, pointerEvents: "none" }}
-          dangerouslySetInnerHTML={{ __html: template.htmlOutput }}
+        <iframe
+          srcDoc={template.htmlOutput}
+          sandbox="allow-same-origin"
+          title="Email preview"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: EMAIL_W,
+            height: PREVIEW_H,
+            border: "none",
+            transformOrigin: "top left",
+            transform: `scale(${scale})`,
+            pointerEvents: "none",
+          }}
         />
       </div>
     );
@@ -2699,7 +2712,7 @@ function TemplateList({ onOpenBuilder }) {
   }).length;
 
   return (
-    <div style={{ minHeight: "100%", background: C.bg, padding: '8px 0 20px', fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
+    <div style={{ width: "100%", background: C.bg, padding: '20px 20px 28px', display: "flex", flexDirection: "column", gap: 0, fontFamily: "'Inter','DM Sans',system-ui,sans-serif", boxSizing: "border-box" }}>
       <style>{`@keyframes _tspin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} input::placeholder{color:#94a3b8!important}`}</style>
 
       {/* Header */}
