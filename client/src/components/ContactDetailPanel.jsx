@@ -29,19 +29,20 @@ const STAGE_TYPE_MAP = {
   churned:        "Lost",
 };
 
-function stageTypeColor(label, T) {
-  switch (label) {
-    case "Prospect":  return T.muted;
-    case "Lead":      return T.blue;
-    case "Warm Lead": return T.purple;
-    case "Hot Lead":  return T.amber;
-    case "Customer":  return T.green;
-    case "Lost":      return T.red;
-    default:          return T.muted;
-  }
-}
+const SOCIAL_FIELDS = [
+  { key: "facebook",  label: "Facebook",    color: "#1877f2", placeholder: "https://facebook.com/yourpage" },
+  { key: "instagram", label: "Instagram",   color: "#e1306c", placeholder: "https://instagram.com/yourhandle" },
+  { key: "linkedin",  label: "LinkedIn",    color: "#0a66c2", placeholder: "https://linkedin.com/in/profile" },
+  { key: "twitter",   label: "Twitter / X", color: "#1da1f2", placeholder: "https://twitter.com/handle" },
+  { key: "youtube",   label: "YouTube",     color: "#ff0000", placeholder: "https://youtube.com/@channel" },
+  { key: "yelp",      label: "Yelp",        color: "#d32323", placeholder: "https://yelp.com/biz/name" },
+  { key: "pinterest", label: "Pinterest",   color: "#e60023", placeholder: "https://pinterest.com/profile" },
+  { key: "tiktok",    label: "TikTok",      color: "#010101", placeholder: "https://tiktok.com/@handle" },
+];
 
-// ─── Form helpers ─────────────────────────────────────────────────────────────
+// Module-level drag state — avoids DataTransfer.types unreliability
+let _secDragIdx = null;   // index into visibleContainers being dragged
+let _fieldDrag  = null;   // { field, fromContainerId }
 
 function contactToForm(c) {
   return {
@@ -93,24 +94,26 @@ function emptyForm(currentUser) {
   };
 }
 
-function buildPayload(f, contact, pool, clientId, currentUser) {
-  const tagsArr = f.tags ? f.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-  return {
-    ...(contact || {}), ...f,
-    id:               contact?.id || ((pool === "prospect" ? "p" : "c") + Date.now()),
-    pool:             contact?.pool    || pool,
-    clientId:         contact?.clientId || clientId,
-    tags:             tagsArr,
-    trucks:           parseInt(f.trucks)           || 0,
-    contractValue:    parseInt(f.contractValue)    || 0,
-    leadScore:        parseInt(f.leadScore)        || 0,
-    yearsInBusiness:  parseInt(f.yearsInBusiness)  || 0,
-    serviceAreaMiles: parseInt(f.serviceAreaMiles) || 0,
-    lastActivityAt:   new Date().toISOString(),
-    addedBy:          contact?.addedBy || currentUser?.name || "Unknown",
-    createdAt:        contact?.createdAt || new Date().toISOString(),
-  };
-}
+const SectionDragCtx = createContext(null);
+
+const DEFAULT_FIELD_SETTINGS = {
+  email: true, phone: true, website: true, address: true, city: true,
+  company: true, title: true, accountSize: true, source: true, campaign: true,
+  notes: true, tags: true, trucks: true, contractValue: true, leadScore: true,
+  social_facebook: true, social_instagram: true, social_linkedin: true,
+  social_twitter: true, social_youtube: true, social_yelp: true,
+  social_pinterest: true, social_tiktok: true,
+};
+
+const LEAD_STATE_OPTS = [
+  { value: "prospect",   label: "Prospect" },
+  { value: "lead",       label: "Lead" },
+  { value: "warm",       label: "Warm Lead" },
+  { value: "hot",        label: "Hot Lead" },
+  { value: "customer",   label: "Customer" },
+  { value: "backburner", label: "Backburner" },
+  { value: "lost",       label: "Lost" },
+];
 
 function fieldNav(e) {
   if (e.key !== "Enter" && e.key !== "ArrowUp") return;
@@ -121,14 +124,51 @@ function fieldNav(e) {
   if (e.key === "ArrowUp" && idx > 0) all[idx - 1].focus();
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+function fieldNavSelect(e) {
+  if (e.key !== "Enter") return;
+  const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+  const idx = all.indexOf(e.currentTarget);
+  if (idx < all.length - 1) all[idx + 1].focus();
+}
+
+function groupContainers(visible) {
+  const rows = [];
+  let i = 0;
+  while (i < visible.length) {
+    if (visible[i].width === "full") {
+      rows.push([visible[i]]);
+      i++;
+    } else {
+      const group = [visible[i]];
+      i++;
+      while (i < visible.length && visible[i].width !== "full") {
+        group.push(visible[i]);
+        i++;
+      }
+      rows.push(group);
+    }
+  }
+  return rows;
+}
+
+function mergeContainers(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_CONTAINERS;
+  const defaults = Object.fromEntries(DEFAULT_CONTAINERS.map(c => [c.id, c]));
+  const savedIds = new Set(saved.map(c => c.id));
+  const merged = saved.map(s => ({ ...(defaults[s.id] || {}), ...s }));
+  DEFAULT_CONTAINERS.forEach(def => {
+    if (!savedIds.has(def.id)) merged.push(def);
+  });
+  return merged;
+}
+
 
 export default function ContactDetailPanel({
   contact, onSave, onAction, currentUser, pool, clientId,
   onFormChange, onDirtyChange,
   editMode = false, onEditModeChange,
 }) {
-  const T     = useTheme();
+  const T = useTheme();
   const toast = useAppToast();
   const isNew = !contact;
 
@@ -243,6 +283,7 @@ export default function ContactDetailPanel({
   const sectionDragIdxRef = useRef(null);
   formRef.current         = form;
 
+  // ── Auto-save ─────────────────────────────────────────────────────────────
   const doSaveRef = useRef(null);
   doSaveRef.current = async () => {
     if (isNew || !dirtyRef.current) return;
@@ -250,7 +291,7 @@ export default function ContactDetailPanel({
     setSaveStatus("saving");
     onDirtyChange?.(true);
     try {
-      await onSave(buildPayload(formRef.current, contact, pool, clientId, currentUser));
+      await onSave(buildPayload(formRef.current));
       setSaveStatus("saved");
       onDirtyChange?.(false);
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -274,36 +315,28 @@ export default function ContactDetailPanel({
     return () => document.removeEventListener("focusout", handler);
   }, []);
 
+  // ── Reset on contact change ────────────────────────────────────────────────
   useEffect(() => {
     dirtyRef.current = false;
     const next = contact ? contactToForm(contact) : emptyForm(currentUser);
     formRef.current = next;
     setForm(next);
     setSaveStatus(null);
+    setAuditLog([]);
+    setEditMode(true);
     onDirtyChange?.(false);
     onFormChange?.(next);
   }, [contact?.id]); // eslint-disable-line
 
-  // Sync server-computed leadScore back into the form after a save,
-  // without resetting other fields the user may have in-flight.
   useEffect(() => {
-    if (!contact) return;
-    const serverScore = String(contact.leadScore ?? 0);
-    setForm(prev => {
-      if (prev.leadScore === serverScore) return prev;
-      const next = { ...prev, leadScore: serverScore };
-      formRef.current = next;
-      return next;
-    });
-  }, [contact?.leadScore]); // eslint-disable-line
-
-  useEffect(() => {
-    if (contact) return;
+    if (contact) return; // existing contacts: search bar keeps focus; user presses Enter to focus form
     const t = setTimeout(() => {
+      // Scroll the nearest scrollable ancestor to the top so the name field is visible
       let el = panelRef.current?.parentElement;
       while (el) {
         if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible") {
-          el.scrollTo({ top: 0, behavior: "smooth" }); break;
+          el.scrollTo({ top: 0, behavior: "smooth" });
+          break;
         }
         el = el.parentElement;
       }
@@ -313,15 +346,82 @@ export default function ContactDetailPanel({
   }, [contact?.id]); // eslint-disable-line
 
   useEffect(() => {
+    if (!contact?.id) return;
+    db.getContactClientActivities(contact.id).then(setAuditLog).catch(() => {});
+  }, [contact?.id]);
+
+  // ── Field visibility ──────────────────────────────────────────────────────
+  useEffect(() => {
+    db.getSettings(contact?.clientId || null, "contact_fields")
+      .then(res => {
+        if (res?.config && Object.keys(res.config).length > 0)
+          setFieldVis({ ...DEFAULT_FIELD_SETTINGS, ...res.config });
+      })
+      .catch(() => {});
+  }, [contact?.clientId]);
+
+  // ── Layout: load from backend ─────────────────────────────────────────────
+  useEffect(() => {
+    db.getSettings(clientId || null, "contact_layout")
+      .then(res => {
+        if (!Array.isArray(res?.config)) return;
+        setContainers(mergeContainers(res.config));
+      })
+      .catch(() => {});
+  }, [clientId]); // eslint-disable-line
+
+  const saveLayout = useCallback(async (conts) => {
+    try { await db.saveSettings(clientId || null, "contact_layout", conts); } catch {}
+  }, [clientId]);
+
+  const updateContainer = useCallback((id, patch) => {
+    setContainers(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...patch } : c);
+      saveLayout(next);
+      return next;
+    });
+  }, [saveLayout]);
+
+  const handleSecDrop = useCallback((srcVisIdx, dstVisIdx) => {
+    setContainers(prev => {
+      const visible = prev.filter(c => c.visible);
+      const srcId = visible[srcVisIdx]?.id;
+      const dstId = visible[dstVisIdx]?.id;
+      if (!srcId || !dstId || srcId === dstId) return prev;
+      const next = [...prev];
+      const srcAbs = next.findIndex(c => c.id === srcId);
+      const [moved] = next.splice(srcAbs, 1);
+      const dstAbs = next.findIndex(c => c.id === dstId);
+      next.splice(dstAbs, 0, moved);
+      saveLayout(next);
+      return next;
+    });
+  }, [saveLayout]);
+
+  const addContainer = useCallback(() => {
+    const title = newContTitle.trim();
+    if (!title) return;
+    const id = "custom_" + Date.now();
+    const newCont = { id, title, type: newContType, width: "full", fieldColumns: 1, collapsible: false, collapsed: false, visible: true, fields: [] };
+    setContainers(prev => { const next = [...prev, newCont]; saveLayout(next); return next; });
+    setAddingContainer(false);
+    setNewContTitle("");
+  }, [newContTitle, newContType, saveLayout]);
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  useEffect(() => {
     const handler = (e) => {
       if (e.key === "Enter" && !isNew) {
-        if (panelRef.current?.contains(document.activeElement)) return;
+        const isInsidePanel = panelRef.current?.contains(document.activeElement);
+        if (isInsidePanel) return;
         e.preventDefault();
+        if (!editModeRef.current) setEditMode(true);
         setTimeout(() => {
           let el = panelRef.current?.parentElement;
           while (el) {
             if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible") {
-              el.scrollTo({ top: 0, behavior: "smooth" }); break;
+              el.scrollTo({ top: 0, behavior: "smooth" });
+              break;
             }
             el = el.parentElement;
           }
@@ -339,9 +439,13 @@ export default function ContactDetailPanel({
       if (isNew) {
         e.stopImmediatePropagation();
         handleAddNew();
-      } else if (dirtyRef.current) {
+      } else if (layoutModeRef.current) {
         e.stopImmediatePropagation();
-        doSaveRef.current?.();
+        setLayoutMode(false);
+      } else if (editModeRef.current) {
+        e.stopImmediatePropagation();
+        if (dirtyRef.current) doSaveRef.current?.();
+        setEditMode(false);
       }
       document.activeElement?.blur?.();
     };
@@ -379,7 +483,7 @@ export default function ContactDetailPanel({
   async function handleAddNew() {
     setSaveStatus("saving");
     try {
-      await onSave(buildPayload(formRef.current, null, pool, clientId, currentUser));
+      await onSave(buildPayload());
       setSaveStatus("saved");
       onDirtyChange?.(false);
       setTimeout(() => setSaveStatus(null), 2000);
@@ -389,20 +493,31 @@ export default function ContactDetailPanel({
     }
   }
 
+  // ── Derived display values ────────────────────────────────────────────────
+  const personName    = [form.firstName, form.lastName].filter(Boolean).join(" ").trim();
+  const heroName      = personName || form.company || "";
+  const heroEmpty     = !heroName;
+  const avatarLetter  = personName
+    ? ((form.firstName?.[0] || "") + (form.lastName?.[0] || "")).toUpperCase()
+    : (form.company?.[0] || form.email?.[0] || (isNew ? "+" : "?")).toUpperCase();
+  const d             = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
+  const avatarColor   = (d.color === T.muted || d.color === T.dim) ? T.accent : d.color;
+  const enabledSocials = SOCIAL_FIELDS.filter(({ key }) => show(`social_${key}`));
+  const parsedTags    = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+
   const numKey = (e) => {
     if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
-    if (!/^\d$/.test(e.key)) e.preventDefault();
+    if (!/^[\d()]$/.test(e.key)) e.preventDefault();
   };
   const phoneKey = (e) => {
     if (["Backspace","Delete","ArrowLeft","ArrowRight","Tab","Home","End"].includes(e.key)) return;
     if (!/^[\d()\-+ ]$/.test(e.key)) e.preventDefault();
   };
 
-  const leadType      = STAGE_TYPE_MAP[form.lifecycleStage] || "Prospect";
-  const leadTypeColor = stageTypeColor(leadType, T);
-  const parsedTags    = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-
-
+  // name_role fields (firstName, lastName, title) live directly in the header card now
+  const visibleContainers = containers.filter(c => c.visible && c.id !== "name_role");
+  const hiddenContainers  = containers.filter(c => !c.visible && c.id !== "name_role");
+  const rows              = groupContainers(visibleContainers);
 
   return (
     <EditCtx.Provider value={editCtx}>
@@ -599,33 +714,384 @@ export default function ContactDetailPanel({
         }}>
           {[
             ["Canceled By", contact.canceledBy || "—"],
-            ["Canceled At", contact.canceledAt ? new Date(contact.canceledAt).toLocaleDateString() : "—"],
-            ["Reason",      contact.cancelReason || "—"],
+            ["Canceled At", fmt.date(contact.canceledAt)],
+            ["Reason", contact.cancelReason || "—"],
           ].map(([label, value], i, arr) => (
             <div key={label} style={{ padding: "10px 16px", borderRight: i < arr.length - 1 ? "1px solid " + T.red + "25" : "none" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: T.red + "aa", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.red + "aa", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
               <div style={{ fontSize: 12, color: T.dim, fontWeight: 500 }}>{value}</div>
             </div>
           ))}
         </div>
       )}
-
     </div>
     </EditCtx.Provider>
   );
 }
 
-// ─── Grid row ────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// ContainerBlock — polymorphic container renderer + layout controls
+// ══════════════════════════════════════════════════════════════════════════════
 
-function G({ cols, children, gap = "10px 14px", mb = 12 }) {
+function ContainerBlock({
+  container, layoutMode, editMode,
+  form, set, setSocial, show, numKey, phoneKey,
+  enabledSocials, noteClicked, setNoteClicked, parsedTags,
+  firstNameRef, onUpdate, onHide, onFieldReorder,
+}) {
+  const T = useTheme();
+  const dragCtx = useContext(SectionDragCtx);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleVal, setTitleVal]         = useState(container.title);
+
+  useEffect(() => { setTitleVal(container.title); }, [container.title]);
+
+  const isCollapsed = container.collapsible && container.collapsed;
+
+  const taStyle = {
+    width: "100%", marginTop: 4,
+    background: T.surface, border: "1px solid " + T.border,
+    borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
+    outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+  };
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const header = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 7,
+      padding: "12px 20px 4px",
+      minHeight: 32,
+    }}>
+      {/* Drag grip — only visible in layout mode */}
+      {layoutMode && dragCtx && (
+        <span
+          draggable
+          onDragStart={dragCtx.onDragStart}
+          onDragEnd={dragCtx.onDragEnd}
+          style={{
+            fontSize: 15, color: T.muted, cursor: "grab",
+            userSelect: "none", flexShrink: 0, lineHeight: 1, touchAction: "none",
+            opacity: 0.8,
+          }}
+        >⠿</span>
+      )}
+
+      {/* Title — inline editable in layout mode */}
+      {layoutMode && editingTitle ? (
+        <input
+          autoFocus
+          value={titleVal}
+          onChange={e => setTitleVal(e.target.value)}
+          onBlur={() => {
+            setEditingTitle(false);
+            const t = titleVal.trim();
+            if (t && t !== container.title) onUpdate({ title: t });
+            else setTitleVal(container.title);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") e.target.blur();
+            if (e.key === "Escape") { setTitleVal(container.title); setEditingTitle(false); }
+          }}
+          style={{
+            flex: 1, background: T.surface, border: "1px solid " + T.accent + "60",
+            borderRadius: 4, padding: "2px 7px", color: T.text, fontSize: 10,
+            fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+            outline: "none", fontFamily: "inherit",
+          }}
+        />
+      ) : (
+        <span
+          onDoubleClick={layoutMode ? () => setEditingTitle(true) : undefined}
+          title={layoutMode ? "Double-click to rename" : undefined}
+          style={{
+            fontSize: 10, fontWeight: 700, color: T.muted,
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            cursor: layoutMode ? "text" : "default", flex: 1,
+          }}
+        >
+          {container.title}
+        </span>
+      )}
+
+      {/* Collapse toggle (always visible if collapsible) */}
+      {container.collapsible && (
+        <button
+          onClick={() => onUpdate({ collapsed: !container.collapsed })}
+          style={{
+            padding: "0 4px", background: "none", border: "none", color: T.muted,
+            cursor: "pointer", fontSize: 11, lineHeight: 1,
+            transform: container.collapsed ? "rotate(-90deg)" : "none",
+            transition: "transform 0.15s", flexShrink: 0,
+          }}
+        >▾</button>
+      )}
+
+      {/* Layout mode controls */}
+      {layoutMode && !editingTitle && (
+        <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+          {/* Column count — fields type only */}
+          {container.type === "fields" && (
+            <div style={{ display: "flex", gap: 0, background: T.surface, borderRadius: 4, border: "1px solid " + T.border, overflow: "hidden" }}>
+              {[1, 2, 3].map(n => (
+                <button
+                  key={n}
+                  onClick={() => onUpdate({ fieldColumns: n })}
+                  title={`${n} column${n > 1 ? "s" : ""}`}
+                  style={{
+                    padding: "2px 7px", border: "none",
+                    background: container.fieldColumns === n ? T.accent : "transparent",
+                    color: container.fieldColumns === n ? "#fff" : T.muted,
+                    cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 600,
+                    borderRight: n < 3 ? "1px solid " + T.border : "none",
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Width toggle */}
+          <button
+            onClick={() => onUpdate({ width: container.width === "full" ? "half" : "full" })}
+            title={container.width === "full" ? "Switch to half-width" : "Switch to full-width"}
+            style={{
+              padding: "2px 7px", borderRadius: 4, border: "1px solid " + T.border,
+              background: T.surface, color: T.dim, cursor: "pointer", fontSize: 10, fontFamily: "inherit",
+            }}
+          >
+            {container.width === "full" ? "⟺ Full" : "⟩ Half"}
+          </button>
+          {/* Collapsible toggle */}
+          <button
+            onClick={() => onUpdate({ collapsible: !container.collapsible })}
+            title={container.collapsible ? "Remove collapse" : "Make collapsible"}
+            style={{
+              padding: "2px 7px", borderRadius: 4,
+              border: "1px solid " + (container.collapsible ? T.accent + "50" : T.border),
+              background: container.collapsible ? T.accent + "15" : T.surface,
+              color: container.collapsible ? T.accent : T.muted,
+              cursor: "pointer", fontSize: 10, fontFamily: "inherit",
+            }}
+          >↕</button>
+          {/* Hide */}
+          <button
+            onClick={onHide}
+            title="Hide container"
+            style={{
+              padding: "2px 7px", borderRadius: 4, border: "1px solid " + T.border,
+              background: T.surface, color: T.muted, cursor: "pointer", fontSize: 11, fontFamily: "inherit",
+            }}
+          >✕</button>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Body ──────────────────────────────────────────────────────────────────
+  let body = null;
+  if (!isCollapsed) {
+    switch (container.type) {
+
+      case "pipeline":
+        body = (
+          <div style={{ padding: "14px 20px 6px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {editMode ? (
+              <>
+                <LeadStateSelect value={form.leadState} onChange={v => set("leadState", v)} />
+                <InlineStageSelect label="Lead Stage" value={form.lifecycleStage} onChange={v => set("lifecycleStage", v)} />
+              </>
+            ) : (
+              <>
+                <ViewRow label="Lead State" value={LEAD_STATE_OPTS.find(o => o.value === (form.leadState || "prospect"))?.label || "Prospect"} />
+                <ViewRow label="Lead Stage" value={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).label} color={(STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new).color} />
+              </>
+            )}
+          </div>
+        );
+        break;
+
+      case "fields": {
+        const fieldObjs = (container.fields || []).map(k => FIELD_DEFS[k]).filter(Boolean);
+        body = (
+          <div style={{ padding: "14px 20px 0" }}>
+            <DraggableFieldList
+              containerId={container.id}
+              fields={fieldObjs}
+              columns={container.fieldColumns || 1}
+              editMode={editMode}
+              layoutMode={layoutMode}
+              form={form}
+              set={set}
+              show={show}
+              numKey={numKey}
+              phoneKey={phoneKey}
+              firstFieldRef={container.id === "name_role" ? firstNameRef : undefined}
+              onReorder={onFieldReorder}
+            />
+          </div>
+        );
+        break;
+      }
+
+      case "notes":
+        body = show("notes") ? (
+          <div style={{ padding: "14px 20px 14px" }}>
+            {editMode ? (
+              <div onContextMenu={e => { e.preventDefault(); setNoteClicked(v => !v); }} style={{ position: "relative" }}>
+                {noteClicked && (
+                  <div style={{ fontSize: 9, color: T.muted, fontWeight: 600, marginBottom: 5, letterSpacing: "0.03em" }}>
+                    {(() => {
+                      const now = new Date();
+                      const mm = String(now.getMonth() + 1).padStart(2, "0");
+                      const dd = String(now.getDate()).padStart(2, "0");
+                      const yy = String(now.getFullYear()).slice(2);
+                      const day = now.toLocaleDateString("en-US", { weekday: "short" });
+                      const h = String(now.getHours()).padStart(2, "0");
+                      const m = String(now.getMinutes()).padStart(2, "0");
+                      return `${mm}/${dd}/${yy} ${day} ${h}:${m}`;
+                    })()}
+                  </div>
+                )}
+                <textarea
+                  data-field-nav
+                  value={form.notes}
+                  onChange={e => set("notes", e.target.value)}
+                  onFocus={e => (e.target.style.borderColor = T.accent)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+                      const idx = all.indexOf(e.currentTarget);
+                      if (idx < all.length - 1) { e.preventDefault(); all[idx + 1].focus(); }
+                    } else if (e.key === "ArrowUp") {
+                      const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+                      const idx = all.indexOf(e.currentTarget);
+                      if (idx > 0) { e.preventDefault(); all[idx - 1].focus(); }
+                    }
+                  }}
+                  placeholder="Add notes about this contact…"
+                  style={{ ...taStyle, minHeight: 80 }}
+                />
+              </div>
+            ) : (
+              form.notes
+                ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form.notes}</div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No notes</div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "social":
+        body = enabledSocials.length > 0 ? (
+          <div style={{ padding: "14px 20px 0" }}>
+            {editMode ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                {enabledSocials.map(({ key, label, color, placeholder }) => (
+                  <InlineInput key={key} label={label} value={form.socialLinks?.[key] || ""} onChange={v => setSocial(key, v)} placeholder={placeholder} color={color} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                {enabledSocials.map(({ key, label, color }) => {
+                  const val = form.socialLinks?.[key];
+                  return (
+                    <div key={key} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: T.dim, marginBottom: 5 }}>{label}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, opacity: val ? 1 : 0.35 }} />
+                        <span style={{ fontSize: 13, color: val ? color : T.muted, fontStyle: val ? "normal" : "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {val || "Not set"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "tags":
+        body = show("tags") ? (
+          <div style={{ padding: "14px 20px 14px" }}>
+            {editMode ? (
+              <>
+                <input
+                  data-field-nav
+                  type="text"
+                  value={form.tags}
+                  onChange={e => set("tags", e.target.value)}
+                  onFocus={e => (e.target.style.borderColor = T.accent)}
+                  onBlur={e => (e.target.style.borderColor = T.border)}
+                  onKeyDown={fieldNav}
+                  placeholder="tag1, tag2, tag3  (comma-separated)"
+                  style={{
+                    width: "100%", background: T.surface, border: "1px solid " + T.border,
+                    borderRadius: 6, padding: "8px 11px", color: T.text, fontSize: 12,
+                    outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                  }}
+                />
+                {parsedTags.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+                    {parsedTags.map(tag => (
+                      <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              parsedTags.length > 0
+                ? <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {parsedTags.map(tag => (
+                    <span key={tag} style={{ padding: "4px 11px", borderRadius: 12, fontSize: 11, background: T.accent + "15", color: T.accent, border: "1px solid " + T.accent + "30", fontWeight: 500 }}>{tag}</span>
+                  ))}
+                </div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>No tags</div>
+            )}
+          </div>
+        ) : null;
+        break;
+
+      case "custom":
+        body = (
+          <div style={{ padding: "4px 20px 16px" }}>
+            {editMode ? (
+              <textarea
+                value={form[container.id] || ""}
+                onChange={e => set(container.id, e.target.value)}
+                onFocus={ev => (ev.target.style.borderColor = T.accent)}
+                onBlur={ev => (ev.target.style.borderColor = T.border)}
+                onKeyDown={e => e.stopPropagation()}
+                placeholder={`Enter ${container.title}…`}
+                style={{ ...taStyle, minHeight: 60 }}
+              />
+            ) : (
+              form[container.id]
+                ? <div style={{ fontSize: 13, color: T.dim, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{form[container.id]}</div>
+                : <div style={{ fontSize: 12, color: T.muted, fontStyle: "italic" }}>Empty</div>
+            )}
+          </div>
+        );
+        break;
+
+      default: break;
+    }
+  }
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: cols, gap, marginBottom: mb }}>
-      {children}
+    <div style={{
+      background: T.card,
+      border: "1px solid " + T.border,
+      borderRadius: 10,
+      overflow: "hidden",
+    }}>
+      {header}
+      {body}
     </div>
   );
 }
-
-// ─── Section card ─────────────────────────────────────────────────────────────
 
 function Section({ icon: Icon, title, children, T, sectionKey }) {
   const ctx = useContext(EditCtx);
@@ -715,7 +1181,9 @@ function Section({ icon: Icon, title, children, T, sectionKey }) {
   );
 }
 
-// ─── Field wrapper ────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Primitive sub-components
+// ══════════════════════════════════════════════════════════════════════════════
 
 function F({ label, children, fieldKey }) {
   const T   = useTheme();
@@ -866,115 +1334,203 @@ function FTextarea({ value, onChange, placeholder, rows = 3 }) {
 
 // ─── InlineStageSelect ────────────────────────────────────────────────────────
 
-function InlineStageSelect({ value, onChange }) {
+function CustomSelect({ label, value, onChange, options, getColor, outerStyle }) {
   const T = useTheme();
   const [open, setOpen] = useState(false);
-  const [pos,  setPos]  = useState({ top: 0, left: 0, width: 120 });
+  const [focused, setFocused] = useState(false);
+  const [rect, setRect] = useState(null);
   const triggerRef = useRef(null);
-  const dropRef    = useRef(null);
+  const dropRef = useRef(null);
+
+  function openMenu() {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) setRect(r);
+    setOpen(true);
+  }
 
   useEffect(() => {
     if (!open) return;
     function close(e) {
-      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-    function reposition() {
-      const r = triggerRef.current?.getBoundingClientRect();
-      if (r) setPos({ top: r.bottom + 4, left: r.left, width: r.width });
+      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target)) setOpen(false);
     }
     document.addEventListener("mousedown", close);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      window.removeEventListener("scroll", reposition, true);
-    };
+    document.addEventListener("scroll", () => setOpen(false), { capture: true, once: true });
+    return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
-  const d = STAGE_DEF[value] || STAGE_DEF.new;
+  const selected = options.find(o => o.value === value) || options[0];
+  const selColor = getColor ? getColor(value) : T.text;
 
-  function toggle() {
-    if (open) { setOpen(false); return; }
-    const r = triggerRef.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 4, left: r.left, width: r.width });
-    setOpen(true);
+  function pick(val) {
+    onChange(val);
+    setOpen(false);
+    const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+    const idx = all.indexOf(triggerRef.current);
+    if (idx < all.length - 1) setTimeout(() => all[idx + 1].focus(), 30);
   }
 
-  const dropdown = open && createPortal(
-    <div ref={dropRef} style={{
-      position: "fixed", top: pos.top, left: pos.left, width: Math.max(pos.width, 200),
-      zIndex: 99999, background: T.card, border: "1px solid " + T.border,
-      borderRadius: 8, boxShadow: "0 10px 32px rgba(0,0,0,0.32)", overflow: "hidden",
-    }}>
-      <div style={{ padding: "8px 12px 6px", borderBottom: "1px solid " + T.border + "66" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: "0.07em", textTransform: "uppercase" }}>Select Stage</span>
-      </div>
-      {ALL_STAGES.map(s => {
-        const sd = STAGE_DEF[s];
-        const active = s === value;
-        return (
-          <div
-            key={s}
-            onMouseDown={e => { e.preventDefault(); if (!active) { onChange(s, ""); setOpen(false); } }}
-            style={{
-              padding: "9px 14px", cursor: active ? "default" : "pointer",
-              fontSize: 13, color: sd.color, fontFamily: "inherit",
-              background: active ? sd.color + "14" : "transparent",
-              fontWeight: active ? 700 : 400,
-              display: "flex", alignItems: "center", gap: 9,
-              opacity: active ? 0.6 : 1,
-            }}
-            onMouseEnter={e => { if (!active) e.currentTarget.style.background = sd.color + "12"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = active ? sd.color + "14" : "transparent"; }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: sd.color, flexShrink: 0, display: "inline-block" }} />
-            {sd.label}
-            {active && <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.05em" }}>CURRENT</span>}
-          </div>
-        );
-      })}
-    </div>,
-    document.body
-  );
+  function handleKeyDown(e) {
+    if (e.key === "Enter") {
+      fieldNav(e);
+    } else if (e.key === " ") {
+      e.preventDefault();
+      open ? setOpen(false) : openMenu();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const idx = options.findIndex(o => o.value === value);
+      if (idx < options.length - 1) onChange(options[idx + 1].value);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const idx = options.findIndex(o => o.value === value);
+      if (idx > 0) {
+        onChange(options[idx - 1].value);
+      } else {
+        const all = Array.from(document.querySelectorAll("[data-field-nav]"));
+        const i = all.indexOf(triggerRef.current);
+        if (i > 0) all[i - 1].focus();
+      }
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      setOpen(false);
+    }
+  }
+
+  const dropStyle = rect ? {
+    position: "fixed",
+    top: rect.bottom + 4,
+    left: rect.left,
+    width: rect.width,
+    zIndex: 99999,
+    background: T.card,
+    border: "1px solid " + T.border,
+    borderRadius: 8,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+    overflow: "hidden",
+  } : null;
 
   return (
-    <>
+    <div style={{ marginBottom: 14, ...outerStyle }}>
+      <label style={{ fontSize: 11, fontWeight: 500, color: focused ? T.accent : T.dim, display: "block", marginBottom: 5, transition: "color 0.15s" }}>{label}</label>
       <button
         ref={triggerRef}
         data-field-nav
         type="button"
-        onClick={toggle}
-        onFocus={e => { e.target.style.borderColor = T.accent; e.target.style.boxShadow = `0 0 0 3px ${T.accent}22`; }}
-        onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
-        onKeyDown={e => {
-          if (e.key === "Enter") { fieldNav(e); return; }
-          if (e.key === " ") { e.preventDefault(); toggle(); }
-          if (e.key === "Escape") setOpen(false);
+        onClick={openMenu}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={e => {
+          setFocused(false);
+          if (!dropRef.current?.contains(e.relatedTarget)) setOpen(false);
         }}
         style={{
-          width: "100%", padding: "8px 11px", boxSizing: "border-box",
-          background: T.surface, border: "1px solid " + T.border,
-          borderRadius: 5, fontSize: 13, fontFamily: "inherit",
-          outline: "none", minHeight: 36,
-          transition: "border-color 0.15s, box-shadow 0.15s",
-          textAlign: "left", display: "flex", alignItems: "center",
-          justifyContent: "space-between", cursor: "pointer",
+          width: "100%", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: T.surface, border: "1.5px solid " + (focused ? T.accent : T.border),
+          borderRadius: 8, padding: "8px 11px", color: selColor,
+          fontSize: 13, fontFamily: "inherit", cursor: "pointer", fontWeight: 600,
+          outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
+          boxShadow: focused ? "0 0 0 3px " + T.accent + "14" : "none",
         }}
       >
-        <span style={{ display: "flex", alignItems: "center", gap: 8, color: d.color, fontWeight: 700 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: d.color, flexShrink: 0, display: "inline-block" }} />
-          {d.label}
-        </span>
-        <ChevronDown size={14} color={d.color} style={{ opacity: 0.5, flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+        <span>{selected?.label}</span>
+        <span style={{ opacity: 0.45, fontSize: 10, marginLeft: 4, display: "inline-block", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
       </button>
-      {dropdown}
-    </>
+      {open && dropStyle && (
+        <div ref={dropRef} style={dropStyle}>
+          {options.map(opt => {
+            const c = getColor ? getColor(opt.value) : T.text;
+            const active = opt.value === value;
+            return (
+              <div
+                key={opt.value}
+                onMouseDown={e => { e.preventDefault(); pick(opt.value); }}
+                style={{
+                  padding: "9px 13px", cursor: "pointer", fontSize: 13,
+                  color: c, fontFamily: "inherit",
+                  background: active ? T.accent + "18" : "transparent",
+                  fontWeight: active ? 700 : 400,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = T.accent + "10"}
+                onMouseLeave={e => e.currentTarget.style.background = active ? T.accent + "18" : "transparent"}
+              >
+                {opt.label}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
-// ─── Keep for external use ────────────────────────────────────────────────────
+function LeadStateSelect({ value, onChange }) {
+  return (
+    <CustomSelect
+      label="Lead State"
+      value={value || "prospect"}
+      options={LEAD_STATE_OPTS}
+      onChange={onChange}
+    />
+  );
+}
 
+function InlineStageSelect({ label = "Stage", value, onChange }) {
+  return (
+    <CustomSelect
+      label={label}
+      value={value}
+      options={ALL_STAGES.map(s => ({ value: s, label: STAGE_DEF[s].label }))}
+      onChange={onChange}
+      getColor={v => (STAGE_DEF[v] || STAGE_DEF.new).color}
+    />
+  );
+}
+
+function ViewRow({ label, value, color }) {
+  const T = useTheme();
+  if (!value && value !== 0) return null;
+  return (
+    <div style={{ padding: "7px 0", borderBottom: "1px solid " + T.border + "33" }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 13, color: color || T.text, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+    </div>
+  );
+}
+
+function InlineInput({ label, value, onChange, placeholder, type = "text", color, onKeyDown, onBlur, inputRef }) {
+  const T = useTheme();
+  const [focused, setFocused] = useState(false);
+  const handleKeyDown = (e) => {
+    fieldNav(e);
+    if (e.key !== "Enter" && e.key !== "ArrowUp") onKeyDown?.(e);
+  };
+  return (
+    <div style={{ padding: "5px 0", borderBottom: "1px solid " + T.border + "44" }}>
+      <label style={{ fontSize: 10, color: focused ? T.accent : T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 3, transition: "color 0.15s" }}>{label}</label>
+      <input
+        ref={inputRef}
+        data-field-nav
+        type={type === "number" ? "text" : type}
+        inputMode={type === "number" ? "numeric" : undefined}
+        value={value || ""}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={e => { setFocused(false); onBlur?.(e); }}
+        placeholder={placeholder || "—"}
+        style={{
+          width: "100%", background: focused ? T.surface : "transparent",
+          border: "1px solid " + (focused ? T.accent + "80" : "transparent"),
+          borderRadius: 5, padding: focused ? "5px 9px" : "3px 0",
+          color: color || T.text, fontSize: 12, fontFamily: "inherit",
+          outline: "none", boxSizing: "border-box",
+          transition: "all 0.15s ease",
+          boxShadow: focused ? "0 0 0 2px " + T.accent + "18" : "none",
+        }}
+      />
+    </div>
+  );
+}
+
+// Keep for any potential external use
 export const FieldInput = forwardRef(function FieldInput({ label, value, onChange, placeholder, type = "text", onKeyDown }, ref) {
   const T = useTheme();
   const [focused, setFocused] = useState(false);
@@ -1002,7 +1558,7 @@ export const FieldInput = forwardRef(function FieldInput({ label, value, onChang
         style={{
           background: focused ? T.bg : T.surface,
           border: "1.5px solid " + (focused ? T.accent : T.border),
-          borderRadius: 10, padding: "9px 12px", color: T.text, fontSize: 12,
+          borderRadius: 7, padding: "9px 12px", color: T.text, fontSize: 12,
           outline: "none", fontFamily: "inherit",
           boxShadow: focused ? "0 0 0 3px " + T.accent + "18" : "none",
           transition: "all 0.15s ease",
@@ -1011,3 +1567,13 @@ export const FieldInput = forwardRef(function FieldInput({ label, value, onChang
     </div>
   );
 });
+
+function MetricCard({ label, children }) {
+  const T = useTheme();
+  return (
+    <div style={{ background: T.card, border: "1px solid " + T.border, borderRadius: 8, padding: "12px 16px" }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>{label}</div>
+      {children}
+    </div>
+  );
+}

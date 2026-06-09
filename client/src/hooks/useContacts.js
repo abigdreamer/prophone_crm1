@@ -39,15 +39,14 @@ export function useContacts(currentUser, serverFilters = {}) {
     getContactCounts().then(setContactCounts).catch(() => {});
   }, [currentUser]);
 
-  // Keep sidebar count badge in sync
+  // Keep counts in sync with the currently loaded pool
   useEffect(() => {
     if (!currentUser || loading) return;
-    const count = total || contacts.length;
     setContactCounts(prev => {
-      if (pool === "prospect") return { ...prev, prospect: count };
-      return { ...prev, clients: { ...prev.clients, [clientId]: count } };
+      if (pool === "prospect") return { ...prev, prospect: contacts.length };
+      return { ...prev, clients: { ...prev.clients, [clientId]: contacts.length } };
     });
-  }, [contacts, total, pool, clientId, currentUser, loading]);
+  }, [contacts, pool, clientId, currentUser, loading]);
 
   // Clear stale contacts before paint when pool/client changes (prevents flicker)
   useLayoutEffect(() => {
