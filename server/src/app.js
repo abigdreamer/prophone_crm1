@@ -117,7 +117,7 @@ if (!process.env.EMAIL_CONFIG_SECRET) {
   console.warn('[startup] WARNING: EMAIL_CONFIG_SECRET is not set — email provider credentials cannot be stored via the Settings UI');
 }
 
-const PORT   = process.env.PORT || 8040;
+const PORT   = process.env.PORT || 8080;
 const server = app.listen(PORT, () => {
   console.log(`ProPhone API listening on port ${PORT}`);
   // Immediately remove Resend's own click/open tracking from all verified domains.
