@@ -2230,7 +2230,7 @@ function EmailBuilder({ templateId, onBack, onSaved }) {
 }
 
 // ─── HTML email builder ───────────────────────────────────────────────────────
-function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
+function HtmlEmailBuilder({ templateId, onBack, onSaved, viewOnly = false }) {
   const C = useContext(CCtx);
   const [name,          setName]          = useState("Untitled");
   const [subject,       setSubject]       = useState("");
@@ -2254,6 +2254,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
   const autoSaveTimer = useRef(null);
   const didLoadRef    = useRef(false);
   const tidRef        = useRef(tid);
+  const sharedAt      = useRef(viewOnly ? new Date() : null);
   const toast         = useAppToast();
 
   useEffect(() => { tidRef.current = tid; }, [tid]);
@@ -2409,39 +2410,64 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
 
       {/* ── Header (matches EmailBuilder header style exactly) ── */}
       <div style={{ height: 52, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0, zIndex: 10 }}>
-        <button onClick={onBack}
-          style={{ background: "none", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 7, fontFamily: "inherit" }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.text; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = C.sub; }}>
-          <ChevronLeft size={13} /> Back
-        </button>
-        <div style={{ width: 1, height: 20, background: C.border }} />
+        {!viewOnly && (
+          <>
+            <button onClick={onBack}
+              style={{ background: "none", border: `1px solid ${C.border}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.sub, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 7, fontFamily: "inherit" }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.color = C.text; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = C.sub; }}>
+              <ChevronLeft size={13} /> Back
+            </button>
+            <div style={{ width: 1, height: 20, background: C.border }} />
+          </>
+        )}
 
-        {editingName ? (
+        {editingName && !viewOnly ? (
           <input autoFocus value={name} onChange={e => setName(e.target.value)}
             onBlur={() => setEditingName(false)}
             onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingName(false); }}
             style={{ fontSize: 14, fontWeight: 700, color: C.text, background: "none", border: `1.5px solid ${C.accent}`, borderRadius: 7, padding: "3px 9px", outline: "none", fontFamily: "inherit", minWidth: 160 }} />
         ) : (
-          <button onClick={() => setEditingName(true)}
-            style={{ fontSize: 14, fontWeight: 700, color: C.text, background: "none", border: "none", cursor: "pointer", padding: "3px 7px", borderRadius: 7, fontFamily: "inherit" }}
-            onMouseEnter={e => { e.currentTarget.style.background = C.bg; }}
+          <button onClick={() => !viewOnly && setEditingName(true)}
+            style={{ fontSize: 14, fontWeight: 700, color: C.text, background: "none", border: "none", cursor: viewOnly ? "default" : "pointer", padding: "3px 7px", borderRadius: 7, fontFamily: "inherit" }}
+            onMouseEnter={e => { if (!viewOnly) e.currentTarget.style.background = C.bg; }}
             onMouseLeave={e => { e.currentTarget.style.background = "none"; }}>
             {name}
           </button>
         )}
 
-        {/* HTML mode badge */}
-        <div style={{ background: "#1a2236", border: "1px solid #2e3a50", borderRadius: 6, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}>
-          <Code2 size={11} color="#8b949e" />
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#8b949e" }}>HTML</span>
-        </div>
+        {/* HTML mode badge — hidden in view mode */}
+        {!viewOnly && (
+          <div style={{ background: "#1a2236", border: "1px solid #2e3a50", borderRadius: 6, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}>
+            <Code2 size={11} color="#8b949e" />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#8b949e" }}>HTML</span>
+          </div>
+        )}
+
+        {/* View Only badge — only in view mode */}
+        {viewOnly && (
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+            color: "#6366f1", background: "#6366f115", border: "1px solid #6366f135",
+            borderRadius: 5, padding: "2px 8px",
+          }}>
+            <Eye size={10} /> VIEW ONLY
+          </span>
+        )}
 
         <div style={{ flex: 1 }} />
 
         {/* Auto-save indicator */}
-        {autoSaved && (
+        {!viewOnly && autoSaved && (
           <span style={{ fontSize: 11, color: C.green, display: "flex", alignItems: "center", gap: 4, opacity: 0.85 }}>✓ Saved</span>
+        )}
+
+        {/* Shared at label — only in view mode */}
+        {viewOnly && sharedAt.current && (
+          <span style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>
+            Shared {sharedAt.current.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+          </span>
         )}
 
         {/* Device toggle */}
@@ -2454,79 +2480,109 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
           ))}
         </div>
 
-        <button onClick={() => handleSave({ status: "published" })} disabled={saving}
-          style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "6px 18px", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(99,102,241,0.28)", opacity: saving ? 0.7 : 1 }}>
-          {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Publishing…</> : <><Send size={13} /> Publish</>}
-        </button>
+        {/* Publish button — hidden in view mode */}
+        {!viewOnly && (
+          <button onClick={() => handleSave({ status: "published" })} disabled={saving}
+            style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 9, padding: "6px 18px", fontSize: 13, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(99,102,241,0.28)", opacity: saving ? 0.7 : 1 }}>
+            {saving ? <><LoaderCircle size={13} style={{ animation: "_tspin 0.8s linear infinite" }} /> Publishing…</> : <><Send size={13} /> Publish</>}
+          </button>
+        )}
       </div>
+
+      {/* ── View-only banner ── */}
+      {viewOnly && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+          padding: "8px 16px",
+          background: "linear-gradient(90deg, #6366f10d 0%, #818cf808 100%)",
+          borderBottom: "1px solid #6366f120",
+        }}>
+          <div style={{
+            width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+            background: "#6366f118", border: "1px solid #6366f130",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Eye size={13} color="#6366f1" />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1" }}>Read-only view</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>This is a shared snapshot. No changes can be made.</div>
+          </div>
+        </div>
+      )}
 
       {/* ── Body: editor left 50% | preview right 50% ── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* Left 50%: HTML code editor (always dark) */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", borderRight: "1px solid #21262d", overflow: "hidden" }}>
-          {/* Editor sub-header */}
-          <div style={{ background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }}>
-            <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 14px", gap: 8 }}>
-            <Code2 size={13} color="#8b949e" />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
-            <div style={{ flex: 1 }} />
+        {/* Left 50%: HTML code editor (always dark) — hidden in view mode */}
+        {!viewOnly && (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0d1117", borderRight: "1px solid #21262d", overflow: "hidden" }}>
+            {/* Editor sub-header */}
+            <div style={{ background: "#161b22", borderBottom: "1px solid #30363d", flexShrink: 0 }}>
+              <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 14px", gap: 8 }}>
+              <Code2 size={13} color="#8b949e" />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#8b949e" }}>HTML Editor</span>
+              <div style={{ flex: 1 }} />
 
-            <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
-            <button onClick={() => fileRef.current?.click()} disabled={importing}
-              style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: importing ? "#484f58" : "#c9d1d9", cursor: importing ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: importing ? 0.7 : 1 }}>
-              {importing ? <><LoaderCircle size={11} style={{ animation: "_tspin 0.8s linear infinite" }} /> Importing…</> : "⬆ Import .html"}
-            </button>
-
-            <div ref={tagsRef} style={{ position: "relative" }}>
-              <button onClick={() => setTagsOpen(p => !p)}
-                style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
-                🏷 Merge Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+              <input ref={fileRef} type="file" accept=".html,.htm" style={{ display: "none" }} onChange={handleImport} />
+              <button onClick={() => fileRef.current?.click()} disabled={importing}
+                style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: importing ? "#484f58" : "#c9d1d9", cursor: importing ? "not-allowed" : "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, opacity: importing ? 0.7 : 1 }}>
+                {importing ? <><LoaderCircle size={11} style={{ animation: "_tspin 0.8s linear infinite" }} /> Importing…</> : "⬆ Import .html"}
               </button>
-              {tagsOpen && (
-                <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
-                  {MERGE_TAGS.map(tag => (
-                    <button key={tag.value} onClick={() => { insertAtCursor(tag.value); setTagsOpen(false); }}
-                      style={{ width: "100%", background: "transparent", border: "none", padding: "8px 14px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "#21262d")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                      <span style={{ fontSize: 12, color: "#c9d1d9" }}>{tag.label}</span>
-                      <code style={{ fontSize: 10, color: "#8b949e", background: "#0d1117", padding: "1px 5px", borderRadius: 4 }}>{tag.value}</code>
-                    </button>
+
+              <div ref={tagsRef} style={{ position: "relative" }}>
+                <button onClick={() => setTagsOpen(p => !p)}
+                  style={{ background: "#21262d", border: "1px solid #30363d", borderRadius: 7, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#c9d1d9", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 4 }}>
+                  🏷 Merge Tags <ChevronDown size={10} style={{ opacity: 0.6, transform: tagsOpen ? "rotate(180deg)" : "none", transition: "transform 0.12s" }} />
+                </button>
+                {tagsOpen && (
+                  <div style={{ position: "absolute", top: "calc(100% + 5px)", right: 0, background: "#161b22", border: "1px solid #30363d", borderRadius: 9, zIndex: 600, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.6)", padding: "4px 0", overflow: "hidden" }}>
+                    {MERGE_TAGS.map(tag => (
+                      <button key={tag.value} onClick={() => { insertAtCursor(tag.value); setTagsOpen(false); }}
+                        style={{ width: "100%", background: "transparent", border: "none", padding: "8px 14px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#21262d")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                        <span style={{ fontSize: 12, color: "#c9d1d9" }}>{tag.label}</span>
+                        <code style={{ fontSize: 10, color: "#8b949e", background: "#0d1117", padding: "1px 5px", borderRadius: 4 }}>{tag.value}</code>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              </div>
+
+              {/* Validation bar — shown after a file is imported */}
+              {validation && (
+                <div style={{ borderTop: "1px solid #21262d", padding: "4px 14px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 10, color: "#8b949e" }}>🔗 <strong style={{ color: "#c9d1d9" }}>{validation.linkCount}</strong> links</span>
+                  <span style={{ fontSize: 10, color: "#8b949e" }}>🖼 <strong style={{ color: "#c9d1d9" }}>{validation.imageCount}</strong> images</span>
+                  <span style={{ fontSize: 10, color: "#8b949e" }}>📄 <strong style={{ color: "#c9d1d9" }}>{validation.sizeKb}</strong> KB</span>
+                  {validation.warnings.map((w, i) => (
+                    <span key={i} style={{ fontSize: 10, color: "#f97316" }}>⚠ {w}</span>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Code area */}
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              <CodeEditor ref={editorRef} value={htmlCode} onChange={setHtmlCode} />
             </div>
-
-            {/* Validation bar — shown after a file is imported */}
-            {validation && (
-              <div style={{ borderTop: "1px solid #21262d", padding: "4px 14px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 10, color: "#8b949e" }}>🔗 <strong style={{ color: "#c9d1d9" }}>{validation.linkCount}</strong> links</span>
-                <span style={{ fontSize: 10, color: "#8b949e" }}>🖼 <strong style={{ color: "#c9d1d9" }}>{validation.imageCount}</strong> images</span>
-                <span style={{ fontSize: 10, color: "#8b949e" }}>📄 <strong style={{ color: "#c9d1d9" }}>{validation.sizeKb}</strong> KB</span>
-                {validation.warnings.map((w, i) => (
-                  <span key={i} style={{ fontSize: 10, color: "#f97316" }}>⚠ {w}</span>
-                ))}
-              </div>
-            )}
           </div>
+        )}
 
-          {/* Code area */}
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-            <CodeEditor ref={editorRef} value={htmlCode} onChange={setHtmlCode} />
-          </div>
-        </div>
-
-        {/* Right 50%: Email preview */}
+        {/* Right side: Email preview — full width in view mode */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.card, overflow: "hidden" }}>
-          {/* Preview sub-header with FROM + SUBJECT */}
+          {/* Preview sub-header — hidden in view mode */}
+          {!viewOnly && (
           <div style={{ height: 44, background: C.surface, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", padding: "0 16px", gap: 7, flexShrink: 0 }}>
             <Eye size={13} color={C.muted} />
             <span style={{ fontSize: 12, fontWeight: 700, color: C.sub }}>Email Preview</span>
           </div>
+          )}
 
-          {/* FROM */}
+          {/* FROM — hidden in view mode */}
+          {!viewOnly && (
           <div ref={fromRef} style={{ position: "relative", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             <div onClick={() => domains.length > 0 && setFromOpen(p => !p)}
               style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 40, cursor: domains.length > 0 ? "pointer" : "default" }}>
@@ -2552,8 +2608,10 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
               </div>
             )}
           </div>
+          )}
 
-          {/* SUBJECT */}
+          {/* SUBJECT — hidden in view mode */}
+          {!viewOnly && (
           <div style={{ borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", padding: "0 16px", minHeight: 40 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, width: 60, flexShrink: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>SUBJECT</span>
@@ -2561,6 +2619,7 @@ function HtmlEmailBuilder({ templateId, onBack, onSaved }) {
                 style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 13, color: C.text, padding: "10px 0", fontFamily: "inherit" }} />
             </div>
           </div>
+          )}
 
           {/* Iframe preview — fills remaining height */}
           <div style={{ flex: 1, overflow: "hidden", background: "#f4f4f4" }}>
@@ -2886,7 +2945,7 @@ function TemplateList({ onOpenBuilder }) {
       {shareTarget && (
         <ShareLinkModal
           title={`Share "${shareTarget.name}"`}
-          url={`${window.location.origin}/templates?open=${shareTarget.id}&mode=${shareTarget.body?.editorMode || 'visual'}`}
+          url={`${window.location.origin}/templates?open=${shareTarget.id}&mode=view`}
           onClose={() => setShareTarget(null)}
         />
       )}
@@ -2902,11 +2961,13 @@ export default function TemplatesPage({ onEditingChange }) {
   // view: "list" | "choose" | "builder-visual" | "builder-html"
   const [view,          setView]          = useState("list");
   const [editingId,     setEditingId]     = useState(null);
+  const [viewOnly,      setViewOnly]      = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const toast = useAppToast();
 
   const enterBuilder = (id, mode) => {
     setEditingId(id || null);
+    setViewOnly(false);
     setView(mode === "html" ? "builder-html" : "builder-visual");
     if (id) setSearchParams({ id, mode: mode || "visual" }, { replace: true });
     onEditingChange?.(true);
@@ -2917,7 +2978,13 @@ export default function TemplatesPage({ onEditingChange }) {
     const openId  = searchParams.get("open");
     const editId  = searchParams.get("id");
     const editMode = searchParams.get("mode") || "visual";
-    if (openId) {
+    const targetId = openId || editId;
+    if (targetId && editMode === "view") {
+      setEditingId(targetId);
+      setViewOnly(true);
+      setView("builder-html");
+      onEditingChange?.(true);
+    } else if (openId) {
       enterBuilder(openId, editMode);
     } else if (editId) {
       enterBuilder(editId, editMode);
@@ -2971,6 +3038,7 @@ export default function TemplatesPage({ onEditingChange }) {
           templateId={editingId}
           onBack={exitBuilder}
           onSaved={(status) => { if (status === "published") exitBuilder(); }}
+          viewOnly={viewOnly}
         />
       </CCtx.Provider>
     );
