@@ -5,6 +5,7 @@ import {
   Navigate,
   useNavigate,
   useLocation,
+  useSearchParams,
 } from 'react-router-dom';
 import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
@@ -48,6 +49,7 @@ import { PageLoader, ContentLoader, SkeletonDetailPanel } from './components/ui/
 import { useAppToast } from './context/ToastContext';
 import * as db from './services/api';
 
+import PublicTemplateView from './pages/PublicTemplateView';
 import ClientLoginPage from './pages/ClientLoginPage';
 import ClientPortalLayout from './components/portal/ClientPortalLayout';
 import ClientPortalDashboard from './pages/portal/ClientPortalDashboard';
@@ -55,6 +57,20 @@ import ClientPortalLeads from './pages/portal/ClientPortalLeads';
 import ClientPortalCampaigns from './pages/portal/ClientPortalCampaigns';
 import ClientPortalReports from './pages/portal/ClientPortalReports';
 import ClientPortalProfile from './pages/portal/ClientPortalProfile';
+
+function PublicOrAuth({ currentUser, onSignOut }) {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  if (
+    location.pathname === '/templates' &&
+    searchParams.get('mode') === 'view' &&
+    (searchParams.get('open') || searchParams.get('id'))
+  ) {
+    return <PublicTemplateView />;
+  }
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return <AppLayout currentUser={currentUser} onSignOut={onSignOut} />;
+}
 
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
@@ -106,7 +122,7 @@ export default function App() {
       {/* Admin app */}
       <Route
         path="/*"
-        element={currentUser ? <AppLayout currentUser={currentUser} onSignOut={signOut} /> : <Navigate to="/login" replace />}
+        element={<PublicOrAuth currentUser={currentUser} onSignOut={signOut} />}
       />
     </Routes>
   );
