@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { analytics } from "../services/analytics";
 import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, Plus, Loader2, ChevronRight, CheckCircle2,
   Search, Trash2, Activity, X, Clock, Pencil, Ban, RotateCcw, Download,
-  CalendarClock, Pause, Play, Settings2, BarChart2, List,
+  CalendarClock, Pause, Play, Settings2, BarChart2, List, Eye,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useAppToast } from "../context/ToastContext";
@@ -1568,6 +1568,9 @@ export default function CampaignDetailPage() {
   const toast = useAppToast();
   const { id }   = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const viewOnly = searchParams.get("mode") === "view";
+  const sharedAt = useRef(viewOnly ? new Date() : null);
 
   const [campaign,          setCampaign]          = useState(null);
   const [analytics,         setAnalytics]         = useState(null);
@@ -1825,19 +1828,23 @@ export default function CampaignDetailPage() {
         padding: "12px 16px", marginBottom: 16,
         background: T.card, border: "1px solid " + T.border, borderRadius: 12,
       }}>
-        <button
-          onClick={() => navigate("/campaigns")}
-          style={{
-            display: "flex", alignItems: "center", gap: 5,
-            padding: "6px 12px", borderRadius: 7, border: "1px solid " + T.border,
-            background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-            flexShrink: 0,
-          }}
-        >
-          <ArrowLeft size={13} /> Back
-        </button>
+        {!viewOnly && (
+          <>
+            <button
+              onClick={() => navigate("/campaigns")}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "6px 12px", borderRadius: 7, border: "1px solid " + T.border,
+                background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
 
-        <div style={{ width: 1, height: 22, background: T.border, flexShrink: 0 }} />
+            <div style={{ width: 1, height: 22, background: T.border, flexShrink: 0 }} />
+          </>
+        )}
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: T.text, whiteSpace: "nowrap" }}>{campaign.name}</span>
@@ -1849,131 +1856,176 @@ export default function CampaignDetailPage() {
               borderRadius: 3, padding: "2px 6px",
             }}>A/B</span>
           )}
+          {viewOnly && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+              color: "#6366f1", background: "#6366f115", border: "1px solid #6366f135",
+              borderRadius: 5, padding: "2px 8px",
+            }}>
+              <Eye size={10} /> VIEW ONLY
+            </span>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
-          {isSending && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.amber, fontSize: 12 }}>
-              <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
-            </div>
-          )}
-          {/* Add Recipients — available for all non-canceled campaigns */}
-          {!campaign.isCanceled && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border,
-                background: T.surface, color: T.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Plus size={13} /> Add Recipients
-            </button>
-          )}
-          {canSend && (
-            <button
-              onClick={() => setShowSendModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 16px", borderRadius: 7, border: "none",
-                background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Send size={12} /> Send Campaign
-            </button>
-          )}
-          {isSent && (
-            <button
-              onClick={() => setShowResendModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 16px", borderRadius: 7, border: "none",
-                background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Send size={12} /> Resend Campaign
-            </button>
-          )}
-          {(!queue || queue.status === "cancelled") && campaign.recipientsCount > 0 && (
-            <button
-              onClick={() => setShowQueueModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 14px", borderRadius: 7,
-                border: "1px solid " + (T.blue || "#3b82f6") + "55",
-                background: (T.blue || "#3b82f6") + "12",
-                color: T.blue || "#3b82f6", fontSize: 12, fontWeight: 600,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <CalendarClock size={12} /> Set Up Queue
-            </button>
-          )}
-          {(() => {
-            const activeDayRun = selectedDayRunId ? queueRuns.find(r => r.id === selectedDayRunId) : null;
-            const dayLabel = activeDayRun ? ` · Day ${activeDayRun.dayNumber}` : "";
-            const activeStyle = activeDayRun ? { borderColor: (T.blue || "#3b82f6") + "55", color: T.blue || "#3b82f6" } : {};
-            return (
-              <>
-                <button
-                  onClick={async () => {
-                    if (activeDayRun) {
-                      await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'excel');
-                    } else {
-                      setShowExcelModal(true);
-                    }
-                  }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-                    background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
-                    fontFamily: "inherit", ...activeStyle,
-                  }}
-                >
-                  <Download size={13} /> Excel{dayLabel}
-                </button>
-                <button
-                  disabled={pdfExporting}
-                  onClick={async () => {
-                    setPdfExporting(true);
-                    try {
+        {viewOnly && sharedAt.current && (
+          <span style={{ fontSize: 11, color: T.muted, fontWeight: 500, flexShrink: 0 }}>
+            Shared {sharedAt.current.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+          </span>
+        )}
+
+        {!viewOnly && (
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+            {isSending && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.amber, fontSize: 12 }}>
+                <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Sending…
+              </div>
+            )}
+            {/* Add Recipients — available for all non-canceled campaigns */}
+            {!campaign.isCanceled && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "7px 14px", borderRadius: 7, border: "1px solid " + T.border,
+                  background: T.surface, color: T.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Plus size={13} /> Add Leads
+              </button>
+            )}
+            {canSend && (
+              <button
+                onClick={() => setShowSendModal(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "7px 16px", borderRadius: 7, border: "none",
+                  background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Send size={12} /> Send Campaign
+              </button>
+            )}
+            {isSent && (
+              <button
+                onClick={() => setShowResendModal(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "7px 16px", borderRadius: 7, border: "none",
+                  background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <Send size={12} /> Resend Campaign
+              </button>
+            )}
+            {(!queue || queue.status === "cancelled") && campaign.recipientsCount > 0 && (
+              <button
+                onClick={() => setShowQueueModal(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "7px 14px", borderRadius: 7,
+                  border: "1px solid " + (T.blue || "#3b82f6") + "55",
+                  background: (T.blue || "#3b82f6") + "12",
+                  color: T.blue || "#3b82f6", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                <CalendarClock size={12} /> Set Up Queue
+              </button>
+            )}
+            {(() => {
+              const activeDayRun = selectedDayRunId ? queueRuns.find(r => r.id === selectedDayRunId) : null;
+              const dayLabel = activeDayRun ? ` · Day ${activeDayRun.dayNumber}` : "";
+              const activeStyle = activeDayRun ? { borderColor: (T.blue || "#3b82f6") + "55", color: T.blue || "#3b82f6" } : {};
+              return (
+                <>
+                  <button
+                    onClick={async () => {
                       if (activeDayRun) {
-                        await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'pdf');
+                        await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'excel');
                       } else {
-                        await exportCampaignBlob(campaign.id, 'pdf');
+                        setShowExcelModal(true);
                       }
-                    } catch { /* ignore */ }
-                    finally { setPdfExporting(false); }
-                  }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
-                    background: T.surface, fontSize: 12, fontFamily: "inherit",
-                    color: pdfExporting ? T.muted : (activeDayRun ? (T.blue || "#3b82f6") : T.dim),
-                    borderColor: activeDayRun ? (T.blue || "#3b82f6") + "55" : T.border,
-                    cursor: pdfExporting ? "not-allowed" : "pointer",
-                    opacity: pdfExporting ? 0.6 : 1,
-                  }}
-                >
-                  <Download size={13} /> {pdfExporting ? "Generating…" : `PDF${dayLabel}`}
-                </button>
-              </>
-            );
-          })()}
-          <RefreshBtn onClick={load} loading={loading} />
-        </div>
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+                      background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer",
+                      fontFamily: "inherit", ...activeStyle,
+                    }}
+                  >
+                    <Download size={13} /> Excel{dayLabel}
+                  </button>
+                  <button
+                    disabled={pdfExporting}
+                    onClick={async () => {
+                      setPdfExporting(true);
+                      try {
+                        if (activeDayRun) {
+                          await exportCampaignDayBlob(campaign.id, activeDayRun.dayNumber, 'pdf');
+                        } else {
+                          await exportCampaignBlob(campaign.id, 'pdf');
+                        }
+                      } catch { /* ignore */ }
+                      finally { setPdfExporting(false); }
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      padding: "7px 12px", borderRadius: 7, border: "1px solid " + T.border,
+                      background: T.surface, fontSize: 12, fontFamily: "inherit",
+                      color: pdfExporting ? T.muted : (activeDayRun ? (T.blue || "#3b82f6") : T.dim),
+                      borderColor: activeDayRun ? (T.blue || "#3b82f6") + "55" : T.border,
+                      cursor: pdfExporting ? "not-allowed" : "pointer",
+                      opacity: pdfExporting ? 0.6 : 1,
+                    }}
+                  >
+                    <Download size={13} /> {pdfExporting ? "Generating…" : `PDF${dayLabel}`}
+                  </button>
+                </>
+              );
+            })()}
+            <RefreshBtn onClick={load} loading={loading} />
+          </div>
+        )}
       </div>
 
-      {/* ── Queue Status Banner ── */}
-      {queue && queue.status !== "cancelled" && (
+      {/* ── View-only banner ── */}
+      {viewOnly && (
         <div style={{
-          background: T.card, border: "1px solid " + (queue.status === "active" ? T.blue + "50" : T.border),
-          borderRadius: 12, padding: "14px 18px", marginBottom: 16,
-          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "9px 16px", marginBottom: 4,
+          background: "linear-gradient(90deg, #6366f10d 0%, #818cf808 100%)",
+          border: "1px solid #6366f122", borderRadius: 10,
         }}>
-          {/* Icon */}
+          <div style={{
+            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+            background: "#6366f118", border: "1px solid #6366f130",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Eye size={14} color="#6366f1" />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#6366f1" }}>Read-only view</div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>This is a shared snapshot. No changes can be made.</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Queue Status Strip ── */}
+      {queue && queue.status !== "cancelled" && (() => {
+        const qColor    = queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green;
+        const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
+        const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
+        const sentPct   = queue.totalRecipients > 0
+          ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100)) : 0;
+        const liveSent  = analytics?.totals?.sent ?? queue.totalSent ?? 0;
+        const remaining = Math.max(0, queue.totalRecipients - liveSent);
+        const todaySent = Math.max(0, liveSent - (queue.totalSent ?? 0));
+        const todayLimit = queue.dailyLimit ?? 0;
+        const dot = <span style={{ color: T.border, margin: "0 6px" }}>·</span>;
+        return (
           <div style={{
             width: 38, height: 38, borderRadius: 10, flexShrink: 0,
             background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",

@@ -1176,7 +1176,7 @@ export default function CampaignsPage() {
       {shareTarget && (
         <ShareLinkModal
           title={`Share "${shareTarget.name}"`}
-          url={`${window.location.origin}/campaigns/${shareTarget.id}`}
+          url={`${window.location.origin}/campaigns/${shareTarget.id}?mode=view`}
           onClose={() => setShareTarget(null)}
         />
       )}
