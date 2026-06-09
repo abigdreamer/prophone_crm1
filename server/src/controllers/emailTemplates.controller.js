@@ -61,19 +61,6 @@ export const listTemplates = async (req, res) => {
   }
 };
 
-export const getTemplatePublic = async (req, res) => {
-  try {
-    const row = await templateRepo.findById(req.params.id);
-    if (!row) return sendError(res, 'Template not found', 404);
-    sendSuccess(res, {
-      id: row.id, name: row.name, subject: row.subject,
-      htmlOutput: row.htmlOutput, body: row.body, status: row.status,
-    });
-  } catch (err) {
-    sendServerError(res, err, 'getTemplatePublic');
-  }
-};
-
 export const getTemplate = async (req, res) => {
   try {
     const row = await templateRepo.findById(req.params.id);

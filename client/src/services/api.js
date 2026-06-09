@@ -254,13 +254,6 @@ export async function getTemplateById(id) {
   return r.data ?? r;
 }
 
-export async function getTemplatePublic(id) {
-  const res = await fetch(`${API}/api/email-templates/${id}/public`);
-  if (!res.ok) throw new Error('Not found');
-  const r = await res.json();
-  return r.data ?? r;
-}
-
 export async function createTemplate(data) {
   const { clientId } = getActivePool();
   const r = await request('POST', '/api/email-templates', { clientId: clientId || null, ...data });

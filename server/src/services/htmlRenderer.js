@@ -247,33 +247,27 @@ export function applyTracking(html, campaignId, recipientId, trackingBaseUrl) {
 
   const SKIP_RE = /^(mailto:|tel:|#|$)/i;
 
-  // 1. Rewrite every href regardless of quote style or optional spaces around '='.
-  //    CSS inlining (juice) HTML-encodes bare '&' in attribute values to '&amp;'.
-  //    Decode HTML entities before encodeURIComponent so the click destination is correct.
+  // 1. Rewrite every href regardless of quote style (double or single).
+  //    Skips non-navigable targets and already-wrapped tracking URLs.
   const rewritten = html.replace(
-    /href\s*=\s*(["'])(.*?)\1/gi,
+    /href=(["'])(.*?)\1/gi,
     (match, quote, url) => {
       const trimmed = url.trim();
-      if (SKIP_RE.test(trimmed))              return match; // non-navigable
-      if (!trimmed.startsWith('http'))         return match; // relative or protocol-less — skip
-      if (trimmed.startsWith(trackingBaseUrl)) return match; // already wrapped
-      const decoded = trimmed
-        .replace(/&amp;/gi,  '&')
-        .replace(/&lt;/gi,   '<')
-        .replace(/&gt;/gi,   '>')
-        .replace(/&quot;/gi, '"');
-      const clickUrl = `${trackingBaseUrl}/api/email/track/click?recipientId=${recipientId}&url=${encodeURIComponent(decoded)}`;
+      if (SKIP_RE.test(trimmed))                    return match; // non-navigable
+      if (!trimmed.startsWith('http'))               return match; // relative — skip
+      if (trimmed.startsWith(trackingBaseUrl))       return match; // already wrapped
+      const clickUrl = `${trackingBaseUrl}/api/email/track/click?recipientId=${recipientId}&url=${encodeURIComponent(trimmed)}`;
       return `href="${clickUrl}"`;
     },
   );
 
-  // 2. Inject open-tracking pixel before </body> (case-insensitive) or at end.
+  // 2. Inject open-tracking pixel before </body> or at end.
   // Do NOT use display:none — many clients refuse to load hidden images.
+  // Use a 1×1 transparent cell with overflow:hidden so it takes no visual space.
   const pixel = `<img src="${trackingBaseUrl}/api/email/track/open?recipientId=${recipientId}" width="1" height="1" border="0" alt="" style="height:1px!important;min-height:1px;max-height:1px;width:1px!important;min-width:1px;max-width:1px;overflow:hidden;mso-hide:all;" />`;
 
-  const bodyCloseRe = /<\/body\s*>/i;
-  if (bodyCloseRe.test(rewritten)) {
-    return rewritten.replace(bodyCloseRe, `${pixel}</body>`);
+  if (rewritten.includes('</body>')) {
+    return rewritten.replace('</body>', `${pixel}</body>`);
   }
   return rewritten + pixel;
 }

@@ -143,21 +143,11 @@ export async function addRecipients(campaignId, contactIds) {
 }
 
 // Upsert recipients for re-send flows: resets status to 'pending' if the row already exists
-// so the contact can be sent to again. Old tracking events are purged so campaign stats
-// reflect only the new send cycle, not the previous one. Uniqueness within a batch is
-// enforced by the caller.
+// so the contact can be sent to again. Uniqueness within a batch is enforced by the caller.
 export async function upsertRecipients(campaignId, contactIds) {
   await Promise.all(
-    contactIds.map(async (contactId) => {
-      // Look up any existing recipient so we can purge its events before re-send.
-      const existing = await prisma.campaignRecipient.findUnique({
-        where:  { campaignId_contactId: { campaignId, contactId } },
-        select: { id: true },
-      });
-      if (existing) {
-        await prisma.campaignRecipientEvent.deleteMany({ where: { recipientId: existing.id } });
-      }
-      return prisma.campaignRecipient.upsert({
+    contactIds.map(contactId =>
+      prisma.campaignRecipient.upsert({
         where:  { campaignId_contactId: { campaignId, contactId } },
         create: { campaignId, contactId, status: 'pending' },
         update: {
@@ -169,8 +159,8 @@ export async function upsertRecipients(campaignId, contactIds) {
           clickedAt: null,
           bouncedAt: null,
         },
-      });
-    })
+      })
+    )
   );
   const count = await prisma.campaignRecipient.count({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
@@ -348,6 +338,7 @@ export async function applyEmailEvent(messageId, event) {
     case 'delivered':
       if (recipient.deliveredAt) {
         console.log(`[applyEmailEvent] Skipping delivered — already delivered`);
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
         return;
       }
       recipientData.deliveredAt = now;
@@ -356,7 +347,10 @@ export async function applyEmailEvent(messageId, event) {
       }
       break;
     case 'opened':
-      if (recipient.openedAt) return; // already recorded — no duplicate event
+      if (recipient.openedAt) {
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
+        return;
+      }
       if ((STATUS_RANK[recipient.status] ?? 0) < STATUS_RANK.opened) {
         recipientData.status = 'opened';
       }
@@ -364,10 +358,13 @@ export async function applyEmailEvent(messageId, event) {
       if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'clicked':
-      if (recipient.clickedAt) return; // already recorded — no duplicate event
+      if (recipient.clickedAt) {
+        await logEvent(recipient.id, recipient.campaignId, event).catch(() => {});
+        return;
+      }
       recipientData.status    = 'clicked';
       recipientData.clickedAt = now;
-      if (!recipient.openedAt)    recipientData.openedAt   = now;
+      if (!recipient.openedAt)   recipientData.openedAt   = now;
       if (!recipient.deliveredAt) recipientData.deliveredAt = now;
       break;
     case 'bounced':

@@ -4,7 +4,6 @@ import {
   checkSchema,
   listTemplates,
   getTemplate,
-  getTemplatePublic,
   createTemplate,
   updateTemplate,
   deleteTemplate,
@@ -17,9 +16,8 @@ import {
 
 const router = Router();
 
-// Public routes — no auth required
+// check-schema is public (used during app boot before user logs in)
 router.get('/check-schema', checkSchema);
-router.get('/:id/public',   getTemplatePublic);
 
 router.use(requireAuth);
 
