@@ -8,7 +8,6 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "db:push": "prisma db push",
-    "db:dedup": "prisma db execute --file prisma/scripts/dedup-events.sql",
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "node prisma/seed.js",
     "db:seed:sorts": "node prisma/seed-sorts.js",
