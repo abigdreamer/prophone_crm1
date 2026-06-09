@@ -37,7 +37,6 @@ function Checkbox({ checked, indeterminate, onChange, color }) {
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate ?? false;
   }, [indeterminate]);
-
   return (
     <div
       onClick={e => { e.stopPropagation(); onChange?.(); }}
@@ -60,23 +59,17 @@ function Checkbox({ checked, indeterminate, onChange, color }) {
     </div>
   );
 }
-import ScoreBar from "./ui/ScoreBar";
-import { useTheme } from "../context/ThemeContext";
-import { useClientById } from "../context/ClientsContext";
-import { STAGE_DEF, LEAD_STAGES, CUSTOMER_STAGES, LOST_STAGES, ALL_STAGES } from "../data/stages";
-import { VIEW_MODE, STATUS, STAGE_GROUPS } from "../constants/index";
-import fmt from "../utils/format";
 
-const VIEW_MODE_OPTIONS = [
-  { mode: VIEW_MODE.ALL,        label: "All",        colorKey: "dim"    },
-  { mode: VIEW_MODE.PROSPECTS,  label: "Prospects",  colorKey: "amber"  },
-  { mode: VIEW_MODE.LEADS,      label: "Leads",      colorKey: "blue"   },
-  { mode: VIEW_MODE.WARM,       label: "Warm",       colorKey: "orange" },
-  { mode: VIEW_MODE.HOT,        label: "Hot",        colorKey: "red"    },
-  { mode: VIEW_MODE.CUSTOMER,   label: "Customer",   colorKey: "green"  },
-  { mode: VIEW_MODE.BACKBURNER, label: "Backburner", colorKey: "purple" },
-  { mode: VIEW_MODE.LOST,       label: "Lost",       colorKey: "muted"  },
-  { mode: VIEW_MODE.CANCELED,   label: "Canceled",   colorKey: "red"    },
+const VIEW_MODE_TABS = [
+  { mode: VIEW_MODE.ALL,        label: "All",        Icon: List,          colorKey: "dim"    },
+  { mode: VIEW_MODE.PROSPECTS,  label: "Prospects",  Icon: UserPlus,      colorKey: "amber"  },
+  { mode: VIEW_MODE.LEADS,      label: "Leads",      Icon: Users,         colorKey: "blue"   },
+  { mode: VIEW_MODE.WARM,       label: "Warm",       Icon: Flame,         colorKey: "orange" },
+  { mode: VIEW_MODE.HOT,        label: "Hot",        Icon: Zap,           colorKey: "red"    },
+  { mode: VIEW_MODE.CUSTOMER,   label: "Customer",   Icon: Star,          colorKey: "green"  },
+  { mode: VIEW_MODE.BACKBURNER, label: "Backburner", Icon: Clock,         colorKey: "purple" },
+  { mode: VIEW_MODE.LOST,       label: "Lost",       Icon: AlertTriangle, colorKey: "muted"  },
+  { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
 ];
 
 
@@ -212,10 +205,13 @@ function contactDisplayName(c, rules, udfs) {
 export default function Sidebar({
   pool, clientId,
   viewMode, onViewModeChange,
-  selected, onSelect, onAddNew, onEditInline, onImport,
+  selected, onSelect, onEditInline,
   search, setSearch, searchRef,
   contacts, setContacts, currentUser,
   selectedIds, onToggleSelect, onToggleSelectAll, onSelectBulk,
+  hasMore, loadMore, loadingMore, loading, firstLoad, total,
+  filterOpen: filterOpenProp, onFilterToggle,
+  onFiltersChange,
 }) {
   const T = useTheme();
   const { udfs, setUdfs } = useUdfs();
@@ -267,8 +263,13 @@ export default function Sidebar({
 
   const [isFocused,    setIsFocused]    = useState(false);
   const [displayLimit, setDisplayLimit] = useState(150);
-  const listRef = useRef(null);
+
+  const listRef        = useRef(null);
   const filteredLenRef = useRef(0);
+  const filterPanelRef = useRef(null);
+  const hasMoreRef     = useRef(false);
+  const loadMoreRef    = useRef(null);
+  const loadingMoreRef = useRef(false);
 
   const client = useClientById(clientId);
   const col = pool === "prospect" ? T.accent : (client?.color || T.accent);
@@ -511,8 +512,7 @@ export default function Sidebar({
     setDisplayLimit(150);
   }, [viewMode]);
 
-  // Reset scroll-based display limit when any filter/sort/limit changes
-  useEffect(() => { setDisplayLimit(limitF || 150); }, [viewMode, stageF, statusF, search, sortF, limitF]);
+  useEffect(() => { setDisplayLimit(150); }, [search, sortF, checkedModes, checkedStatuses, scoreFrom, scoreTo]);
 
   // Push filter changes to the server via parent callback
   useEffect(() => {
@@ -537,51 +537,45 @@ export default function Sidebar({
   loadMoreRef.current    = loadMore    ?? null;
   loadingMoreRef.current = loadingMore ?? false;
 
-  // Infinite scroll — disabled when a hard cap (limitF) is active
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     function onScroll() {
-      if (limitFRef.current > 0) return; // hard cap set — don't grow
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
-        setDisplayLimit(prev => {
-          const next = prev + 150;
-          return next > filteredLenRef.current ? filteredLenRef.current : next;
-        });
+      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
+      if (!nearBottom) return;
+      setDisplayLimit(prev => {
+        const next = prev + 150;
+        return next > filteredLenRef.current ? filteredLenRef.current : next;
+      });
+      if (hasMoreRef.current && !loadingMoreRef.current && loadMoreRef.current) {
+        loadMoreRef.current();
       }
     }
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []); // eslint-disable-line — intentional: attach once, refs keep values fresh
-
-  const stageOpts = STAGE_GROUPS[viewMode] || ALL_STAGES;
-  const viewModeStages = STAGE_GROUPS[viewMode]; // undefined = ALL, [] = backburner
+  }, []);
 
   // Search, stages, sort, and score are all handled server-side.
   // Status filter stays client-side (server only supports a single status value).
   const filtered = contacts
     .filter(c => {
-      // Filter by viewMode's stage group
-      if (viewModeStages !== undefined && viewModeStages.length > 0) {
-        if (!viewModeStages.includes(c.lifecycleStage)) return false;
+      if (checkedStatuses.size > 0) {
+        const s = c.status || (c.isCanceled ? STATUS.CANCELED : STATUS.ACTIVE);
+        if (!checkedStatuses.has(s)) return false;
       }
       return true;
     });
 
-  // Keep ref in sync so infinite-scroll handler reads current length
   filteredLenRef.current = filtered.length;
 
-  // Live-select first result as the user types so center panel stays in sync
   useEffect(() => {
     if (!search.trim() || filtered.length === 0) return;
     if (filtered[0].id !== selected?.id) onSelect(filtered[0]);
-  }, [search]); // eslint-disable-line — intentionally only re-run when search changes
+  }, [search]); // eslint-disable-line
 
   function handleSearchKeyDown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
-      // Use the currently selected contact if it's in the filtered list (user may have
-      // navigated with arrow keys), otherwise fall back to the first filtered result.
       const inFiltered = selected && filtered.some(c => c.id === selected.id);
       const target = inFiltered ? selected : filtered[0];
       if (target && onEditInline) { onSelect(target); onEditInline(target); }
@@ -617,55 +611,51 @@ export default function Sidebar({
     });
   }
 
-  const selStyle = {
-    background: T.bg, border: "1px solid " + T.border, borderRadius: 6,
-    padding: "4px 7px", color: T.dim, fontSize: 10, outline: "none", cursor: "pointer",
-    fontFamily: "inherit",
-  };
+  function CbBox({ checked, color }) {
+    return (
+      <div style={{
+        width: 14, height: 14, borderRadius: 3.5, flexShrink: 0,
+        border: "1.5px solid " + (checked ? color : T.border),
+        background: checked ? color : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "all 0.15s",
+        boxShadow: checked ? `0 0 5px ${color}44` : "none",
+      }}>
+        {checked && (
+          <svg viewBox="0 0 10 8" width={8} height={6} fill="none">
+            <polyline points="1,4 3.5,6.5 9,1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div style={{
-      width: "100%", height: "100%",
-      background: T.surface,
-      display: "flex", flexDirection: "column", overflow: "hidden",
-    }}>
-      {/* Pool header */}
+    <div style={{ width: "100%", height: "100%", background: T.surface, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* ── Pool Header ──────────────────────────────────────────────────────── */}
       <div style={{
-        padding: "12px 14px", background: col + "0D", borderBottom: "1px solid " + T.border,
         flexShrink: 0,
+        height: 38, flexShrink: 0, boxSizing: "border-box",
+        borderBottom: "1px solid " + T.border,
+        borderLeft: "3px solid " + col,
+        padding: "0 10px",
+        display: "flex", alignItems: "center", gap: 8,
+        background: `linear-gradient(90deg, ${col}10 0%, transparent 70%)`,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 9, height: 9, borderRadius: "50%", background: col, boxShadow: `0 0 8px ${col}66`, flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: col, letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
-            </div>
-            <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>
-              {limitF > 0 && filtered.length > limitF
-                ? <><span style={{ color: col, fontWeight: 700 }}>{Math.min(limitF, filtered.length).toLocaleString()}</span> of {filtered.length.toLocaleString()} leads</>
-                : <>{filtered.length.toLocaleString()} leads</>
-              }
-              {selEnabled && (() => {
-                const totalSelected = filtered.filter(c => selectedIds?.has(c.id)).length;
-                return totalSelected > 0
-                  ? <span style={{ color: col, fontWeight: 700, marginLeft: 6 }}>· {totalSelected.toLocaleString()} selected</span>
-                  : null;
-              })()}
-            </div>
-          </div>
-          {selEnabled && (() => {
-            const someChecked = filtered.some(c => selectedIds?.has(c.id));
-            const allChecked = filtered.length > 0 && filtered.every(c => selectedIds?.has(c.id));
-            return (
-              <Checkbox
-                checked={allChecked}
-                indeterminate={someChecked && !allChecked}
-                onChange={() => onToggleSelectAll?.(filtered.map(c => c.id))}
-                color={col}
-              />
-            );
-          })()}
-        </div>
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: col, boxShadow: `0 0 5px ${col}`, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: col, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, letterSpacing: "0.01em" }}>
+          {pool === "prospect" ? "Prospect Pool" : (client?.name || "Client")}
+        </span>
+        <span style={{
+          fontSize: 9, fontWeight: 700, flexShrink: 0,
+          color: col, background: col + "18",
+          border: "1px solid " + col + "35",
+          borderRadius: 20, padding: "1px 7px",
+          letterSpacing: "0.02em",
+        }}>
+          {total > contacts.length ? total.toLocaleString() : filtered.length.toLocaleString()}
+        </span>
       </div>
 
       {/* ── Search + Filter ──────────────────────────────────────────────────── */}
@@ -673,12 +663,8 @@ export default function Sidebar({
         {/* Row 1: search input full width */}
         <div style={{ position: "relative", marginBottom: 6 }} ref={searchGearRef}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{
-              position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
-              width: 14, height: 14, color: (isFocused || search) ? col : T.muted, pointerEvents: "none",
-            }}>
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: (isFocused || search) ? col : T.muted, pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
             ref={searchRef} value={search} onChange={e => setSearch(e.target.value)}
@@ -691,6 +677,7 @@ export default function Sidebar({
               border: "1px solid " + ((isFocused || search) ? col : T.border),
               borderRadius: 7, padding: "7px 50px 7px 28px", color: T.text,
               fontSize: 12, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+              transition: "border-color 0.15s",
             }}
           />
           {search && (
@@ -1291,7 +1278,7 @@ export default function Sidebar({
               )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── List header: select-all + count + card display gear ─────────────── */}
@@ -1443,26 +1430,23 @@ export default function Sidebar({
 
       {/* ── Contact list ─────────────────────────────────────────────────────── */}
       <div ref={listRef} style={{ flex: 1, overflowY: "auto" }}>
-        {filtered.length === 0 ? (
+        {(loading || firstLoad) && filtered.length === 0 ? (
+          // Skeleton rows while initial data is loading
+          Array.from({ length: 12 }).map((_, i) => <SkeletonRow key={i} T={T} />)
+        ) : filtered.length === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.3 }}>
-              {search ? "🔍" : "👥"}
-            </div>
+            <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.3 }}>{search ? "🔍" : "👥"}</div>
             <div style={{ fontSize: 12, fontWeight: 600, color: T.dim, marginBottom: 4 }}>
               {search ? "No results" : "No contacts"}
             </div>
             <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
-              {search
-                ? `Nothing matched "${search}"`
-                : viewMode !== VIEW_MODE.ALL
-                  ? "No contacts in this stage group"
-                  : "Add a contact to get started"}
+              {search ? `Nothing matched "${search}"` : viewMode !== VIEW_MODE.ALL ? "No contacts in this stage group" : "Add a contact to get started"}
             </div>
           </div>
         ) : (
           filtered.slice(0, displayLimit).map(c => {
-            const sd = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
-            const isSel = selected?.id === c.id;
+            const sd       = STAGE_DEF[c.lifecycleStage] || STAGE_DEF.new;
+            const isSel    = selected?.id === c.id;
             const isChecked = selEnabled && selectedIds?.has(c.id);
             const displayName = contactDisplayName(c, displayNameRules, udfs);
             return (
@@ -1471,21 +1455,20 @@ export default function Sidebar({
                 data-contact-id={c.id}
                 onClick={() => onSelect(c)}
                 style={{
-                  padding: "11px 14px", borderBottom: "1px solid " + T.border,
+                  padding: "10px 12px",
+                  borderBottom: "1px solid " + T.border,
                   cursor: "pointer",
-                  background: isChecked ? col + "0d" : isSel ? col + "14" : "transparent",
-                  borderLeft: `4px solid ${isSel ? col : "transparent"}`,
+                  background: isSel ? col + "16" : isChecked ? col + "0d" : "transparent",
+                  borderLeft: `3px solid ${isSel ? col : "transparent"}`,
                   transition: "background 0.1s",
                   display: "flex", alignItems: "flex-start", gap: 8,
                 }}
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = col + "0a"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = isSel ? col + "16" : isChecked ? col + "0d" : "transparent"; }}
               >
                 {selEnabled && (
                   <div style={{ paddingTop: 2, flexShrink: 0 }}>
-                    <Checkbox
-                      checked={isChecked}
-                      onChange={() => onToggleSelect?.(c.id)}
-                      color={col}
-                    />
+                    <Checkbox checked={isChecked} onChange={() => onToggleSelect?.(c.id)} color={col} />
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1494,11 +1477,15 @@ export default function Sidebar({
                     <div style={{ fontWeight: 700, fontSize: 12, color: isSel ? col : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                       <Hi text={displayName} q={search} />
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: T.text, flexShrink: 0 }}>
-                      {c.leadScore}
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, flexShrink: 0,
+                      color: sd.color, background: sd.color + "18",
+                      padding: "2px 6px", borderRadius: 4,
+                      border: "1px solid " + sd.color + "30",
+                    }}>
+                      {sd.label.toUpperCase()}
                     </span>
                   </div>
-                )}
 
                   {/* Configurable display fields */}
                   {displayFields.map(key => (
@@ -1509,21 +1496,20 @@ export default function Sidebar({
                   <div style={{ textAlign: "right" }}>
                     <span style={{ fontSize: 9, color: T.muted }}>{fmt.ago(c.lastActivityAt || c.createdAt)}</span>
                   </div>
-                  <span style={{ fontSize: 9, color: T.muted, flexShrink: 0 }}>
-                    {fmt.ago(c.lastActivityAt || c.createdAt)}
-                  </span>
-                </div>
                 </div>
               </div>
             );
           })
         )}
-        {filtered.length > 0 && displayLimit < filtered.length && (
-          <div style={{ padding: "14px 16px", textAlign: "center", fontSize: 10, borderTop: "1px solid " + T.border, color: limitF > 0 ? col : T.muted }}>
-            {limitF > 0
-              ? <>Showing first {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — change limit to see more</>
-              : <>Showing {displayLimit.toLocaleString()} of {filtered.length.toLocaleString()} — scroll to load more</>
-            }
+
+        {loadingMore && (
+          <div style={{ padding: "12px 16px", textAlign: "center", fontSize: 10, color: T.muted, borderTop: "1px solid " + T.border }}>
+            <span style={{
+              display: "inline-block", width: 12, height: 12, borderRadius: "50%",
+              border: "2px solid " + T.border, borderTopColor: col,
+              animation: "crm-spin 0.65s linear infinite", verticalAlign: "middle", marginRight: 6,
+            }} />
+            Loading…
           </div>
         )}
       </div>

@@ -88,6 +88,9 @@ function formatContact(c) {
 
 async function listContacts(req, res) {
   const { pool, clientId, status } = req.query;
+  const page  = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit) || 1000, 5000);
+  const skip  = (page - 1) * limit;
 
   if (pool && !VALID_POOLS.includes(pool)) {
     return res.status(400).json({ error: 'Invalid pool' });
