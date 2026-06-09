@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check, List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';

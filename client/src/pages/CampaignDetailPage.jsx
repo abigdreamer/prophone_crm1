@@ -2027,6 +2027,10 @@ export default function CampaignDetailPage() {
         const dot = <span style={{ color: T.border, margin: "0 6px" }}>·</span>;
         return (
           <div style={{
+            display: "flex", alignItems: "center", gap: 14, padding: "10px 16px",
+            background: T.surface, border: "1px solid " + T.border, borderRadius: 10, marginBottom: 12,
+          }}>
+          <div style={{
             width: 38, height: 38, borderRadius: 10, flexShrink: 0,
             background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
             border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
@@ -2176,7 +2180,8 @@ export default function CampaignDetailPage() {
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
 
       {/* ── Campaign Summary Cards ── */}

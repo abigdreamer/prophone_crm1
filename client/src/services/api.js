@@ -539,6 +539,26 @@ export async function getRedditStats(clientId) {
   return request('GET', `/api/reddit/stats?${params}`);
 }
 
+// ── Reddit Filters ───────────────────────────────────────────────────────────
+
+export async function getRedditFilters(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  return request('GET', `/api/reddit/filters?${params}`);
+}
+
+export async function createRedditFilter(data) {
+  return request('POST', '/api/reddit/filters', data);
+}
+
+export async function updateRedditFilter(id, data) {
+  return request('PATCH', `/api/reddit/filters/${id}`, data);
+}
+
+export async function deleteRedditFilter(id) {
+  return request('DELETE', `/api/reddit/filters/${id}`);
+}
+
 // ── Foxtow External API ───────────────────────────────────────────────────────
 
 export async function getFoxtowNewsletterSubscribers({ active = true, page = 1, limit = 50 } = {}) {

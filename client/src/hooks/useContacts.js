@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react
 import { getContacts, getContactCounts } from "../services/api";
 import { usePool } from "../context/PoolContext";
 
-export function useContacts(currentUser) {
+export function useContacts(currentUser, serverFilters = {}) {
   const { pool, clientId } = usePool();
   const [contacts,      setContacts]      = useState([]);
   const [contactCounts, setContactCounts] = useState({ prospect: 0, clients: {} });
