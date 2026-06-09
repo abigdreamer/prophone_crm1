@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { analytics } from "../services/analytics";
-import { getContactsForCampaign } from "../services/api";
 import {
   ArrowLeft, Send, Users, Mail, MousePointerClick, AlertCircle,
   UserMinus, Plus, Loader2, ChevronRight, CheckCircle2,
@@ -14,11 +13,12 @@ import {
   getCampaign, getCampaignRecipients, addCampaignRecipients,
   removeCampaignRecipients, sendCampaign, resendCampaign, updateCampaign,
   cancelCampaign, restoreCampaign,
-  getCampaignAnalytics, previewCampaignRecipients, getContact, getPublishedTemplates,
+  getCampaignAnalytics, getContact, getPublishedTemplates,
   exportCampaignBlob, dryRunCampaignSend, resubscribeRecipient,
   getCampaignQueue, createCampaignQueue, updateCampaignQueue,
   pauseCampaignQueue, resumeCampaignQueue, cancelCampaignQueue,
-  exportCampaignDayBlob,
+  exportCampaignDayBlob, searchCampaignLeads,
+  getNextRunRecipients, manageNextRunRecipients,
 } from "../services/api";
 import CampaignGraphView from "../components/CampaignGraphView";
 import { ACT_DEF } from "../data/activities";
@@ -37,9 +37,9 @@ function fmtCountdown(targetIso) {
   const h = Math.floor((totalSec % 86400) / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  if (d > 0) return `${d}d ${h}h ${String(m).padStart(2,"0")}m ${String(s).padStart(2,"0")}s`;
+  if (h > 0) return `${h}h ${String(m).padStart(2,"0")}m ${String(s).padStart(2,"0")}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2,"0")}s`;
   return `${s}s`;
 }
 
@@ -534,254 +534,694 @@ function RecipientsTable({ campaignId, statusFilter, search, isAbTest, refreshKe
   );
 }
 
-// ── Add Recipients Modal ──────────────────────────────────────────────────────
+// ── Scheduled Batch Section ──────────────────────────────────────────────────
 
-function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
+function ScheduledBatchSection({ campaignId, queueRuns, onAddLeads, onRefresh }) {
   const T = useTheme();
-  // mode: "stage" | "search"
-  const [mode,       setMode]       = useState("stage");
-  const [step,       setStep]       = useState(1);
-  const [filter,     setFilter]     = useState("all");
-  const [preview,    setPreview]    = useState(null);
-  const [loading,    setLoading]    = useState(false);
-  const [adding,     setAdding]     = useState(false);
-  const [error,      setError]      = useState(null);
+  const toast = useAppToast();
 
-  // Search/select state
-  const [contacts,    setContacts]    = useState([]);
-  const [contLoading, setContLoading] = useState(false);
-  const [searchQ,     setSearchQ]     = useState("");
-  const [selected,    setSelected]    = useState(new Set());
-  const searchRef = useRef(null);
+  const nextRun = queueRuns.find(r => r.status === "pending");
 
-  // Load all contacts for the search tab
-  useEffect(() => {
-    if (mode !== "search") return;
-    setContLoading(true);
-    getContactsForCampaign(clientId)
-      .then(data => setContacts(Array.isArray(data) ? data : []))
-      .catch(() => setContacts([]))
-      .finally(() => setContLoading(false));
-  }, [mode, clientId]);
+  const [data,      setData]      = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [search,    setSearch]    = useState("");
+  const [selected,  setSelected]  = useState(new Set());
+  const [acting,    setActing]    = useState(false);
+  const [countdown, setCountdown] = useState("");
 
-  const filteredContacts = contacts.filter(c => {
-    if (!searchQ) return true;
-    const q = searchQ.toLowerCase();
-    return (
-      (c.firstName || "").toLowerCase().includes(q) ||
-      (c.lastName  || "").toLowerCase().includes(q) ||
-      (c.email     || "").toLowerCase().includes(q) ||
-      (c.company   || "").toLowerCase().includes(q)
-    );
-  });
-
-  const toggleContact = id => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-
-  const toggleAll = () => {
-    if (selected.size === filteredContacts.length && filteredContacts.length > 0) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(filteredContacts.map(c => c.id)));
-    }
-  };
-
-  const loadPreview = useCallback(async f => {
+  const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const data = await previewCampaignRecipients(campaignId, f);
-      setPreview(data);
+      const d = await getNextRunRecipients(campaignId);
+      setData(d);
     } catch {
-      setPreview({ count: 0, sample: [] });
+      setData(null);
     } finally {
       setLoading(false);
     }
   }, [campaignId]);
 
-  const handleNext = async () => {
-    if (mode === "stage") { setStep(2); await loadPreview(filter); }
-    else { setStep(2); }
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!nextRun?.scheduledAt) return;
+    const update = () => setCountdown(fmtCountdown(nextRun.scheduledAt));
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [nextRun?.scheduledAt]);
+
+  if (!nextRun) return null;
+
+  const isStarted = !!data?.startedAt;
+  const contacts  = data?.contacts ?? [];
+  const filtered  = search.trim()
+    ? contacts.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        c.email.toLowerCase().includes(search.toLowerCase()))
+    : contacts;
+  const allSel = filtered.length > 0 && filtered.every(c => selected.has(c.recipientId));
+
+  const toggleRow = (id) => setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleAll = () => {
+    if (allSel) setSelected(prev => { const s = new Set(prev); filtered.forEach(c => s.delete(c.recipientId)); return s; });
+    else        setSelected(prev => { const s = new Set(prev); filtered.forEach(c => s.add(c.recipientId));    return s; });
   };
+
+  const act = async (action, ids) => {
+    setActing(true);
+    try {
+      await manageNextRunRecipients(campaignId, { action, recipientIds: ids });
+      setSelected(new Set());
+      await load();
+      onRefresh?.();
+    } catch (err) {
+      toast.error(err?.message || "Action failed");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const thStyle = {
+    padding: "8px 14px", textAlign: "left",
+    fontSize: 10, fontWeight: 700, color: T.muted,
+    letterSpacing: "0.06em", textTransform: "uppercase",
+    borderBottom: "1px solid " + T.border, background: T.surface,
+    userSelect: "none",
+  };
+  const tdStyle = { padding: "9px 14px", borderBottom: "1px solid " + T.border + "70", fontSize: 12 };
+
+  return (
+    <div style={{ background: T.card, border: "1px solid " + T.blue + "45", borderRadius: 12, marginBottom: 16, overflow: "hidden" }}>
+      {/* Header row */}
+      <div
+        onClick={() => setCollapsed(o => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", cursor: "pointer", background: T.blue + "08", borderBottom: collapsed ? "none" : "1px solid " + T.border }}
+      >
+        <CalendarClock size={14} color={T.blue} style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+            Scheduled for Day {data?.dayNumber ?? nextRun.dayNumber} — {fmtLocalTime(nextRun.scheduledAt)}
+          </span>
+          {isStarted ? (
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.amber, marginLeft: 10 }}>Batch in progress — cannot modify</span>
+          ) : (
+            <span style={{ fontSize: 11, color: T.muted, marginLeft: 10 }}>
+              {loading ? "Loading…" : `${contacts.length.toLocaleString()} contacts`}
+              {!loading && countdown && <> · Starts in <strong style={{ color: T.blue }}>{countdown}</strong></>}
+            </span>
+          )}
+        </div>
+        <ChevronRight size={14} color={T.muted} style={{ flexShrink: 0, transform: collapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform 0.15s" }} />
+      </div>
+
+      {!collapsed && (
+        <div style={{ padding: "14px 18px" }}>
+          {loading ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: "20px 0", justifyContent: "center" }}>
+              <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading scheduled contacts…
+            </div>
+          ) : contacts.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0", color: T.muted, fontSize: 13 }}>
+              No contacts scheduled for this batch yet.
+              {!isStarted && (
+                <button onClick={onAddLeads} style={{ marginLeft: 10, fontSize: 12, color: T.accent, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit", fontWeight: 600 }}>Add leads</button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Toolbar */}
+              {!isStarted && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative", flex: 1, minWidth: 160 }}>
+                    <Search size={12} color={T.muted} style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+                    <input
+                      value={search} onChange={e => setSearch(e.target.value)}
+                      placeholder="Search by name or email…"
+                      style={{ width: "100%", boxSizing: "border-box", paddingLeft: 28, paddingRight: 8, paddingTop: 7, paddingBottom: 7, borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                      onFocus={e => e.target.style.borderColor = T.blue}
+                      onBlur={e => e.target.style.borderColor = T.border}
+                    />
+                  </div>
+                  {selected.size > 0 && (
+                    <button
+                      onClick={() => act("remove", Array.from(selected))} disabled={acting}
+                      style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid " + T.red + "50", background: T.red + "15", color: T.red, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}
+                    >
+                      <Trash2 size={12} /> Remove {selected.size} from batch
+                    </button>
+                  )}
+                  <button
+                    onClick={onAddLeads}
+                    style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.dim, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}
+                  >
+                    <Plus size={12} /> Add more leads
+                  </button>
+                </div>
+              )}
+
+              {/* Table */}
+              <div style={{ border: "1px solid " + T.border, borderRadius: 8, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {!isStarted && (
+                        <th style={{ ...thStyle, width: 36, textAlign: "center", padding: "8px 12px" }}>
+                          <div onClick={toggleAll} style={{ width: 14, height: 14, borderRadius: 3, margin: "0 auto", cursor: "pointer", border: "1.5px solid " + (allSel ? T.blue : T.border), background: allSel ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {allSel && <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                        </th>
+                      )}
+                      <th style={{ ...thStyle, width: 40 }}>#</th>
+                      <th style={thStyle}>Contact</th>
+                      <th style={thStyle}>Email</th>
+                      <th style={thStyle}>Company</th>
+                      {!isStarted && <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((c, i) => {
+                      const isSel = selected.has(c.recipientId);
+                      return (
+                        <tr key={c.recipientId} style={{ background: isSel ? T.blue + "08" : i % 2 !== 0 ? T.surface + "55" : "transparent" }}>
+                          {!isStarted && (
+                            <td style={{ ...tdStyle, textAlign: "center", padding: "9px 12px" }}>
+                              <div onClick={() => toggleRow(c.recipientId)} style={{ width: 14, height: 14, borderRadius: 3, margin: "0 auto", cursor: "pointer", border: "1.5px solid " + (isSel ? T.blue : T.border), background: isSel ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                {isSel && <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </div>
+                            </td>
+                          )}
+                          <td style={{ ...tdStyle, color: T.muted }}>{c.sendOrder}</td>
+                          <td style={tdStyle}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: T.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
+                                {(c.name?.[0] || "?").toUpperCase()}
+                              </div>
+                              <span style={{ fontWeight: 600, color: T.text }}>{c.name || "—"}</span>
+                            </div>
+                          </td>
+                          <td style={{ ...tdStyle, color: T.dim }}>{c.email || "—"}</td>
+                          <td style={{ ...tdStyle, color: T.dim }}>{c.company || "—"}</td>
+                          {!isStarted && (
+                            <td style={{ ...tdStyle, textAlign: "right" }}>
+                              <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                                <button onClick={() => act("move_top", [c.recipientId])} disabled={acting} title="Move to top" style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid " + T.border, background: T.surface, color: T.dim, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>↑ Top</button>
+                                <button onClick={() => act("move_bottom", [c.recipientId])} disabled={acting} title="Move to bottom" style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid " + T.border, background: T.surface, color: T.dim, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>↓ Bot</button>
+                                <button onClick={() => act("remove", [c.recipientId])} disabled={acting} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid " + T.red + "40", background: T.red + "10", color: T.red, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Remove</button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filtered.length < contacts.length && (
+                <div style={{ fontSize: 11, color: T.muted, textAlign: "center", marginTop: 8 }}>
+                  Showing {filtered.length} of {contacts.length} (filtered by search)
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add Recipients Modal ──────────────────────────────────────────────────────
+
+const IMPORT_ORDER_OPTIONS = [
+  { value: "name_asc",      label: "Name A→Z" },
+  { value: "name_desc",     label: "Name Z→A" },
+  { value: "email_asc",     label: "Email A→Z" },
+  { value: "email_desc",    label: "Email Z→A" },
+  { value: "created_asc",   label: "Oldest First" },
+  { value: "created_desc",  label: "Newest First" },
+];
+
+const ALPHA_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+const BULK_PRESETS = [
+  { label: "500",    value: 500 },
+  { label: "1k",    value: 1000 },
+  { label: "2k",    value: 2000 },
+  { label: "3k",    value: 3000 },
+  { label: "Custom", value: "custom" },
+  { label: "All",   value: null },
+];
+
+// Compute alphabet range summary string for display
+function alphaSummary(sel) {
+  if (!sel.length) return null;
+  const sorted = [...sel].sort((a, b) => ALPHA_LETTERS.indexOf(a) - ALPHA_LETTERS.indexOf(b));
+  const ranges = [];
+  let start = sorted[0], prev = sorted[0];
+  for (let i = 1; i <= sorted.length; i++) {
+    const cur = sorted[i];
+    if (cur && ALPHA_LETTERS.indexOf(cur) === ALPHA_LETTERS.indexOf(prev) + 1) {
+      prev = cur;
+    } else {
+      ranges.push(start === prev ? start : `${start}–${prev}`);
+      start = prev = cur;
+    }
+  }
+  return ranges.join(", ") + " selected";
+}
+
+function AddRecipientsModal({ campaignId, clientId, queueDailyLimit, onClose, onAdded }) {
+  const T = useTheme();
+  const toast = useAppToast();
+  const [step,            setStep]           = useState(1);
+  const [adding,          setAdding]         = useState(false);
+  const [error,           setError]          = useState(null);
+  const [importOrderMode, setImportOrderMode] = useState("name_asc");
+
+  // Filters
+  const [searchQ,   setSearchQ]   = useState("");
+  const [selStages, setSelStages] = useState([]);
+  const [letterSel, setLetterSel] = useState([]); // string[]
+  const [stageOpen,    setStageOpen]    = useState(false);
+  const stageRef    = useRef(null);
+  const lastLetterRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const dragStartRef  = useRef(null);
+  useEffect(() => {
+    const h = e => { if (stageRef.current && !stageRef.current.contains(e.target)) setStageOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // Bulk preset
+  const [customInput,       setCustomInput]       = useState("");
+  const [bulkLoadingPreset, setBulkLoadingPreset] = useState(null);
+  const [bulkRange,         setBulkRange]         = useState({ first: "", last: "" });
+  const [customOpen,        setCustomOpen]        = useState(false);
+
+  // Results
+  const [contacts,    setContacts]    = useState([]);
+  const [total,       setTotal]       = useState(0);
+  const [totalExcl,   setTotalExcl]   = useState(0); // excludes already-added
+  const [page,        setPage]        = useState(1);
+  const [hasMore,     setHasMore]     = useState(false);
+  const [loading,     setLoading]     = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hideAdded,   setHideAdded]   = useState(false);
+
+  // Selection state
+  const [selMode,     setSelMode]     = useState("manual"); // "manual" | "bulk"
+  const [sel,         setSel]         = useState(new Map()); // manual: Map<id, contact>
+  const [bulkIds,     setBulkIds]     = useState(new Set()); // bulk: Set<id>
+  const [origBulkCnt, setOrigBulkCnt] = useState(0);
+
+  const prevSearchRef = useRef(searchQ);
+  const prevLetterRef = useRef(letterSel);
+  const timerRef      = useRef(null);
+  const sentinelRef   = useRef(null);
+
+  const buildParams = useCallback(() => ({
+    q:              searchQ,
+    stages:         selStages,
+    nameStartsWith: letterSel.join(","),
+    order:          importOrderMode,
+  }), [searchQ, selStages, letterSel, importOrderMode]);
+
+  const fetchLeads = useCallback(async (pg, append, params, pSize = 500) => {
+    const setter = append ? setLoadingMore : setLoading;
+    setter(true);
+    try {
+      const data = await searchCampaignLeads(campaignId, { ...params, page: pg, pageSize: pSize });
+      if (append) {
+        setContacts(prev => [...prev, ...data.contacts]);
+      } else {
+        setContacts(data.contacts);
+      }
+      setTotal(data.total);
+      setTotalExcl(data.totalExcludingAlreadyAdded ?? data.total);
+      setHasMore(data.hasMore);
+      setPage(pg);
+    } catch {
+      if (!append) setContacts([]);
+    } finally {
+      setter(false);
+    }
+  }, [campaignId]);
+
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    const letterChanged = prevLetterRef.current !== letterSel;
+    const delay = prevSearchRef.current !== searchQ ? 400 : letterChanged ? 300 : 0;
+    prevSearchRef.current = searchQ;
+    prevLetterRef.current = letterSel;
+    timerRef.current = setTimeout(() => fetchLeads(1, false, buildParams()), delay);
+    return () => clearTimeout(timerRef.current);
+  }, [searchQ, selStages, letterSel, importOrderMode, fetchLeads, buildParams]);
+
+  // Infinite scroll
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loading && !loadingMore)
+        fetchLeads(page + 1, true, buildParams());
+    }, { threshold: 0.1 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, loading, loadingMore, page, fetchLeads, buildParams]);
+
+  // Alphabet range selection handlers
+  const handleLetterClick = (l, e) => {
+    if (e.shiftKey && lastLetterRef.current && lastLetterRef.current !== l) {
+      const ai = ALPHA_LETTERS.indexOf(lastLetterRef.current);
+      const bi = ALPHA_LETTERS.indexOf(l);
+      const [lo, hi] = ai < bi ? [ai, bi] : [bi, ai];
+      const range = ALPHA_LETTERS.slice(lo, hi + 1);
+      setLetterSel(prev => { const s = new Set(prev); range.forEach(x => s.add(x)); return [...s]; });
+    } else {
+      setLetterSel(prev => prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l]);
+    }
+    lastLetterRef.current = l;
+  };
+
+  const handleLetterMouseDown = (l, e) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    dragStartRef.current = l;
+    setLetterSel(prev => prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l]);
+  };
+
+  const handleLetterMouseEnter = (l) => {
+    if (!isDraggingRef.current) return;
+    const ai = ALPHA_LETTERS.indexOf(dragStartRef.current);
+    const bi = ALPHA_LETTERS.indexOf(l);
+    const [lo, hi] = ai < bi ? [ai, bi] : [bi, ai];
+    const range = ALPHA_LETTERS.slice(lo, hi + 1);
+    setLetterSel(prev => { const s = new Set(prev); range.forEach(x => s.add(x)); return [...s]; });
+  };
+
+  const handleLetterMouseUp = () => { isDraggingRef.current = false; };
+
+  // Bulk card fetch
+  const fetchBulkIds = async (preset) => {
+    setBulkLoadingPreset(preset === null ? "all" : preset);
+    const p = buildParams();
+    try {
+      const limitVal = preset === "custom" ? (parseInt(customInput, 10) || null) : preset;
+      const params = { ...p, idsOnly: "true", ...(limitVal != null ? { limit: limitVal } : {}) };
+      const data = await searchCampaignLeads(campaignId, params);
+      if (selMode === "manual" && sel.size > 0) toast.success("Manual selection cleared");
+      setSel(new Map());
+      setBulkIds(new Set(data.ids));
+      setOrigBulkCnt(data.ids.length);
+      setBulkRange({ first: data.firstContact || "", last: data.lastContact || "" });
+      setSelMode("bulk");
+    } catch {
+      toast.error("Failed to load bulk selection");
+    } finally {
+      setBulkLoadingPreset(null);
+    }
+  };
+
+  const switchToManual = () => {
+    setBulkIds(new Set());
+    setOrigBulkCnt(0);
+    setBulkRange({ first: "", last: "" });
+    setCustomOpen(false);
+    setSelMode("manual");
+  };
+
+  // Selection helpers
+  const isSelected = (c) => selMode === "bulk" ? bulkIds.has(c.id) : sel.has(c.id);
+
+  const toggleSel = (c) => {
+    if (c.alreadyAdded) return;
+    if (selMode === "bulk") {
+      setBulkIds(prev => { const s = new Set(prev); s.has(c.id) ? s.delete(c.id) : s.add(c.id); return s; });
+    } else {
+      setSel(prev => { const m = new Map(prev); m.has(c.id) ? m.delete(c.id) : m.set(c.id, c); return m; });
+    }
+  };
+
+  const selectAll = () => {
+    const avail = contacts.filter(c => !c.alreadyAdded);
+    if (selMode === "bulk") {
+      setBulkIds(prev => { const s = new Set(prev); avail.forEach(c => s.add(c.id)); return s; });
+    } else {
+      setSel(prev => { const m = new Map(prev); avail.forEach(c => m.set(c.id, c)); return m; });
+    }
+  };
+
+  const deselectAll = () => {
+    if (selMode === "bulk") setBulkIds(new Set());
+    else setSel(new Map());
+  };
+
+  const selectedCount = selMode === "bulk" ? bulkIds.size : sel.size;
+  const removedFromBulk = selMode === "bulk" ? Math.max(0, origBulkCnt - bulkIds.size) : 0;
+  const availableContacts = contacts.filter(c => !c.alreadyAdded);
+  const allLoaded = availableContacts.length > 0 && availableContacts.every(c => isSelected(c));
+  const canNext = selectedCount > 0;
+
+  // Progress bar
+  const pct = totalExcl > 0 ? Math.round(selectedCount / totalExcl * 100) : 0;
+  const pctColor = pct < 25 ? T.border : pct < 75 ? (T.accent || "#6366f1") : "#22c55e";
 
   const handleAdd = async () => {
     setAdding(true);
     setError(null);
     try {
-      const payload = mode === "search"
-        ? { contactIds: Array.from(selected) }
-        : { filter };
-      const updated = await addCampaignRecipients(campaignId, payload);
+      const ids = selMode === "bulk" ? Array.from(bulkIds) : Array.from(sel.keys());
+      const updated = await addCampaignRecipients(campaignId, { contactIds: ids, importOrderMode });
       onAdded(updated);
     } catch (err) {
-      setError(err.message || "Failed to add recipients. Please try again.");
+      setError(err.message || "Failed to add leads. Please try again.");
     } finally {
       setAdding(false);
     }
   };
 
-  const confirmCount = mode === "search" ? selected.size : (preview?.count ?? 0);
-  const canConfirm   = mode === "search" ? selected.size > 0 : (preview?.count > 0);
+  const confirmList  = selMode === "bulk"
+    ? contacts.filter(c => bulkIds.has(c.id))
+    : Array.from(sel.values());
+  const confirmCount = selectedCount;
+  const isBulkMode   = selMode === "bulk";
+  const STAGE_OPTIONS = STAGE_FILTERS.filter(f => f.id !== "all");
+  const alphaSumLabel = alphaSummary(letterSel);
+
+  // Quick-select card subtext helper
+  const cardSubtext = (n) => {
+    if (!queueDailyLimit || !n || n === "custom") return null;
+    const days = Math.ceil(n / queueDailyLimit);
+    return `~${days} day${days !== 1 ? "s" : ""} at ${queueDailyLimit.toLocaleString()}/day`;
+  };
+
+  const visibleContacts = hideAdded ? contacts.filter(c => !c.alreadyAdded) : contacts;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }} onClick={onClose}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: T.card, border: "1px solid " + T.border, borderRadius: 14,
-        width: step === 1 && mode === "search" ? 520 : 480,
-        maxWidth: "95vw", maxHeight: "90vh", display: "flex", flexDirection: "column",
+        width: 600, maxWidth: "95vw", maxHeight: "92vh",
+        display: "flex", flexDirection: "column",
         boxShadow: "0 24px 80px rgba(0,0,0,0.8)",
       }}>
+
         {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "18px 24px 14px", borderBottom: "1px solid " + T.border, flexShrink: 0,
-        }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>
-            {step === 1 ? "Add Recipients" : "Confirm Recipients"}
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 14px", borderBottom: "1px solid " + T.border, flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{step === 1 ? "Add Leads" : "Confirm Leads"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: T.muted, fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
-
-        {/* Mode tabs (step 1 only) */}
-        {step === 1 && (
-          <div style={{ display: "flex", gap: 0, padding: "12px 24px 0", flexShrink: 0 }}>
-            {[["stage", "By Stage"], ["search", "By Search"]].map(([m, label]) => (
-              <button key={m} onClick={() => { setMode(m); setError(null); }}
-                style={{
-                  padding: "7px 18px", border: "none", borderRadius: "7px 7px 0 0",
-                  background: mode === m ? T.surface : "transparent",
-                  borderBottom: mode === m ? "2px solid " + T.accent : "2px solid transparent",
-                  color: mode === m ? T.accent : T.muted,
-                  fontWeight: mode === m ? 700 : 500, fontSize: 13,
-                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-                }}
-              >{label}</button>
-            ))}
-          </div>
-        )}
 
         {/* Body */}
         <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto" }}>
 
-          {/* ── BY STAGE ── */}
-          {step === 1 && mode === "stage" && (
+          {step === 1 && (
             <>
-              <div style={{ fontSize: 12, color: T.muted, marginBottom: 12 }}>
-                {clientId ? "Filter contacts by lifecycle stage. Only contacts in this client will be added." : "Filter contacts by lifecycle stage."}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {STAGE_FILTERS.map(f => {
-                  const sel = filter === f.id;
-                  return (
-                    <div key={f.id} onClick={() => setFilter(f.id)} style={{
-                      display: "flex", alignItems: "center", gap: 12,
-                      padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                      border: "1px solid " + (sel ? T.accent : T.border),
-                      background: sel ? T.accent + "10" : T.surface,
-                      transition: "border-color 0.1s, background 0.1s",
-                    }}>
-                      <div style={{
-                        width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                        border: "2px solid " + (sel ? T.accent : T.border),
-                        background: sel ? T.accent : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        {sel && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#fff" }} />}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{f.label}</div>
-                        <div style={{ fontSize: 11, color: T.muted }}>{f.desc}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {/* ── BY SEARCH ── */}
-          {step === 1 && mode === "search" && (
-            <>
+              {/* ── Search bar ── */}
               <div style={{ position: "relative", marginBottom: 10 }}>
                 <Search size={13} color={T.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
                 <input
-                  ref={searchRef}
-                  autoFocus
-                  value={searchQ}
+                  autoFocus value={searchQ}
                   onChange={e => setSearchQ(e.target.value)}
                   placeholder="Search by name, email, or company…"
-                  style={{
-                    width: "100%", boxSizing: "border-box", paddingLeft: 32, paddingRight: 12,
-                    paddingTop: 9, paddingBottom: 9,
-                    borderRadius: 8, border: "1px solid " + T.border,
-                    background: T.surface, color: T.text, fontSize: 13,
-                    fontFamily: "inherit", outline: "none",
-                  }}
+                  style={{ width: "100%", boxSizing: "border-box", paddingLeft: 32, paddingRight: 12, paddingTop: 9, paddingBottom: 9, borderRadius: 8, border: "1px solid " + T.border, background: T.surface, color: T.text, fontSize: 13, fontFamily: "inherit", outline: "none" }}
                   onFocus={e => e.target.style.borderColor = T.accent}
                   onBlur={e => e.target.style.borderColor = T.border}
                 />
               </div>
 
-              {/* Select all row */}
-              {!contLoading && filteredContacts.length > 0 && (
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "6px 2px", marginBottom: 4,
-                }}>
-                  <span style={{ fontSize: 11, color: T.muted }}>
-                    {selected.size > 0 ? `${selected.size} selected` : `${filteredContacts.length} contacts`}
-                  </span>
-                  <button onClick={toggleAll} style={{
-                    fontSize: 11, color: T.accent, background: "none", border: "none",
-                    cursor: "pointer", fontFamily: "inherit", padding: 0,
-                  }}>
-                    {selected.size === filteredContacts.length && filteredContacts.length > 0 ? "Deselect all" : "Select all"}
+              {/* ── Filter row: Stage | Status | Import Order ── */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {/* Stage */}
+                <div ref={stageRef} style={{ position: "relative" }}>
+                  <button onClick={() => setStageOpen(o => !o)} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid " + (selStages.length ? T.accent : T.border), background: selStages.length ? T.accent + "18" : T.surface, color: selStages.length ? T.accent : T.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                    Stage {selStages.length ? `(${selStages.length})` : "▾"}
                   </button>
+                  {stageOpen && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200, background: T.card, border: "1px solid " + T.border, borderRadius: 9, boxShadow: "0 8px 30px rgba(0,0,0,0.4)", width: 200, maxHeight: 260, overflowY: "auto" }}>
+                      <div style={{ padding: "8px 12px", borderBottom: "1px solid " + T.border, display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>Filter by stage</span>
+                        {selStages.length > 0 && <button onClick={() => setSelStages([])} style={{ fontSize: 11, color: T.accent, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Clear</button>}
+                      </div>
+                      {STAGE_OPTIONS.map(s => {
+                        const active = selStages.includes(s.id);
+                        return (
+                          <div key={s.id} onClick={() => setSelStages(prev => active ? prev.filter(x => x !== s.id) : [...prev, s.id])} style={{ padding: "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: active ? T.accent + "18" : "transparent", color: active ? T.accent : T.text, fontSize: 12 }}>
+                            <div style={{ width: 14, height: 14, borderRadius: 3, border: "1.5px solid " + (active ? T.accent : T.border), background: active ? T.accent : "transparent", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {active && <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </div>
+                            {s.label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Import Order — moved from bottom */}
+                <select value={importOrderMode} onChange={e => setImportOrderMode(e.target.value)} style={{ flex: 1, minWidth: 140, padding: "6px 10px", borderRadius: 7, border: "1px solid " + T.border, background: T.surface, color: T.muted, fontSize: 12, fontFamily: "inherit", cursor: "pointer", outline: "none" }}>
+                  {IMPORT_ORDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+
+              {/* ── Quick select cards ── */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 8, letterSpacing: "0.03em" }}>Quick select</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                  {BULK_PRESETS.map(p => {
+                    const isLoading = bulkLoadingPreset === (p.value === null ? "all" : p.value);
+                    const isActive  = p.value === "custom" ? customOpen : selMode === "bulk" && (
+                      p.value === null ? bulkIds.size === totalExcl : origBulkCnt === p.value
+                    );
+                    const labelText = isLoading ? "…"
+                      : p.value === null ? (totalExcl > 0 ? `All (${totalExcl.toLocaleString()})` : "All")
+                      : p.value === "custom" ? "Custom"
+                      : p.value >= 1000 ? `${p.value / 1000}k`
+                      : p.value.toLocaleString();
+                    return (
+                      <button
+                        key={p.label}
+                        onClick={() => p.value === "custom" ? setCustomOpen(o => !o) : fetchBulkIds(p.value)}
+                        disabled={isLoading}
+                        style={{
+                          padding: "8px 10px", borderRadius: 8, cursor: isLoading ? "default" : "pointer",
+                          border: "1px solid " + (isActive ? T.accent : T.border),
+                          background: isActive ? T.accent + "18" : T.surface,
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+                          transition: "all 0.12s", fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{
+                          width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                          border: "1.5px solid " + (isActive ? T.accent : T.border),
+                          background: isActive ? T.accent : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {isActive && <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3L3 5L7 1" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? T.accent : T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {labelText}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Custom input — shown only when Custom card is toggled open */}
+                {customOpen && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <input
+                      autoFocus
+                      type="number" min="1"
+                      value={customInput}
+                      placeholder="Custom number…"
+                      onChange={e => setCustomInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && customInput && fetchBulkIds("custom")}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, background: T.surface, border: "1px solid " + T.border, color: T.text, fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                      onFocus={e => e.target.style.borderColor = T.accent}
+                      onBlur={e => e.target.style.borderColor = T.border}
+                    />
+                    <button
+                      onClick={() => customInput && fetchBulkIds("custom")}
+                      disabled={!customInput || bulkLoadingPreset !== null}
+                      style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: customInput ? T.accent : T.border, color: customInput ? "#fff" : T.muted, fontSize: 12, fontWeight: 600, cursor: customInput ? "pointer" : "default", fontFamily: "inherit" }}
+                    >
+                      Select
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Bulk mode banner ── */}
+              {isBulkMode && bulkIds.size > 0 && (
+                <div style={{ background: T.accent + "12", border: "1px solid " + T.accent + "30", borderRadius: 8, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+                      {bulkIds.size.toLocaleString()} contacts selected
+                      {removedFromBulk > 0 && <span style={{ fontSize: 11, color: T.muted, fontWeight: 400 }}> ({removedFromBulk} manually removed)</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>
+                      Top {origBulkCnt.toLocaleString()} results · {IMPORT_ORDER_OPTIONS.find(o => o.value === importOrderMode)?.label}
+                    </div>
+                    {bulkRange.first && bulkRange.last && (
+                      <div style={{ marginTop: 5, display: "inline-flex", alignItems: "center", gap: 6, background: T.accent + "18", border: "1px solid " + T.accent + "30", borderRadius: 6, padding: "3px 10px" }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: T.accent }}>{bulkRange.first}</span>
+                        <span style={{ fontSize: 10, color: T.muted }}>→</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: T.accent }}>{bulkRange.last}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+                    <button onClick={() => { setBulkIds(prev => { const s = new Set(prev); contacts.filter(c => !c.alreadyAdded && !s.has(c.id)).forEach(c => { /* no restore needed */ }); return new Set(Array.from({ length: origBulkCnt }, (_, i) => i)); }); }} style={{ display: "none" }} />
+                    <button onClick={switchToManual} style={{ fontSize: 11, color: T.muted, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Clear</button>
+                  </div>
                 </div>
               )}
 
-              {contLoading ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20, justifyContent: "center" }}>
-                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading contacts…
+              {/* ── Count line + hide-added toggle + select all ── */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: T.muted }}>
+                    {loading
+                      ? "Loading…"
+                      : contacts.length < total
+                      ? `Showing ${contacts.length.toLocaleString()} of ${total.toLocaleString()}`
+                      : `${total.toLocaleString()} found`}
+                  </span>
+                  {contacts.some(c => c.alreadyAdded) && (
+                    <button onClick={() => setHideAdded(h => !h)} style={{ fontSize: 11, color: T.muted, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                      {hideAdded ? "Show all" : `Hide added (${contacts.filter(c => c.alreadyAdded).length})`}
+                    </button>
+                  )}
                 </div>
-              ) : filteredContacts.length === 0 ? (
-                <div style={{ textAlign: "center", padding: 24, color: T.muted, fontSize: 13 }}>
-                  {searchQ ? "No contacts match your search." : "No contacts found for this campaign."}
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {selectedCount > 0 && !isBulkMode && <span style={{ fontSize: 11, color: T.accent, fontWeight: 600 }}>{selectedCount} selected</span>}
+                  {availableContacts.length > 0 && (
+                    <button onClick={allLoaded ? deselectAll : selectAll} style={{ fontSize: 11, color: T.accent, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, fontWeight: 600 }}>
+                      {allLoaded ? "Deselect all" : "Select all"}
+                    </button>
+                  )}
                 </div>
+              </div>
+
+              {/* ── Contact list ── */}
+              {loading ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 24, justifyContent: "center" }}>
+                  <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading…
+                </div>
+              ) : visibleContacts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 28, color: T.muted, fontSize: 13 }}>No leads found.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 320, overflowY: "auto" }}>
-                  {filteredContacts.map(c => {
-                    const sel = selected.has(c.id);
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 240, overflowY: "auto", background: isBulkMode ? T.accent + "05" : "transparent", borderRadius: 8 }}>
+                  {visibleContacts.map(c => {
+                    const isSel  = isSelected(c);
+                    const dimmed = c.alreadyAdded;
                     return (
-                      <div key={c.id} onClick={() => toggleContact(c.id)} style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "9px 12px", borderRadius: 8, cursor: "pointer",
-                        border: "1px solid " + (sel ? T.accent + "60" : T.border),
-                        background: sel ? T.accent + "0e" : T.surface,
-                        transition: "all 0.12s",
-                      }}>
-                        {/* Checkbox */}
-                        <div style={{
-                          width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                          border: "2px solid " + (sel ? T.accent : T.border),
-                          background: sel ? T.accent : "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          {sel && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      <div key={c.id} onClick={() => !dimmed && toggleSel(c)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, cursor: dimmed ? "default" : "pointer", border: "1px solid " + (isSel ? T.accent + "60" : T.border), background: isSel ? T.accent + "0e" : T.surface, opacity: dimmed ? 0.45 : 1, transition: "all 0.12s" }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0, border: "2px solid " + (isSel ? T.accent : T.border), background: isSel ? T.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: dimmed ? "none" : "auto" }}>
+                          {isSel && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                         </div>
-                        {/* Avatar */}
-                        <div style={{
-                          width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                          background: T.accent + "22",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 11, fontWeight: 700, color: T.accent,
-                        }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0, background: T.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: T.accent }}>
                           {(c.firstName?.[0] || "?").toUpperCase()}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -792,83 +1232,58 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
                             {c.email}{c.company ? " · " + c.company : ""}
                           </div>
                         </div>
+                        {dimmed && (
+                          <span style={{ fontSize: 10, color: T.muted, background: T.border, borderRadius: 4, padding: "2px 6px", flexShrink: 0, fontWeight: 600 }}>Added</span>
+                        )}
                       </div>
                     );
                   })}
+                  <div ref={sentinelRef} style={{ height: 1 }} />
+                  {loadingMore && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.muted, fontSize: 12, padding: "8px 0", justifyContent: "center" }}>
+                      <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+                      Loading… ({contacts.length.toLocaleString()} of {total.toLocaleString()})
+                    </div>
+                  )}
                 </div>
               )}
             </>
           )}
 
-          {/* ── CONFIRM STEP ── */}
           {step === 2 && (
-            loading && mode === "stage" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.muted, fontSize: 13, padding: 20 }}>
-                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> Loading preview…
-              </div>
-            ) : (
-              <>
-                <div style={{
-                  background: T.accent + "10", border: "1px solid " + T.accent + "30",
-                  borderRadius: 8, padding: "14px 16px", marginBottom: 16,
-                  display: "flex", alignItems: "center", gap: 10,
-                }}>
-                  <Users size={16} color={T.accent} />
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{confirmCount} contact{confirmCount !== 1 ? "s" : ""}</div>
-                    <div style={{ fontSize: 11, color: T.muted }}>
-                      {mode === "search"
-                        ? "Selected manually"
-                        : `Stage: ${STAGE_FILTERS.find(f => f.id === filter)?.label}`}
-                    </div>
-                  </div>
+            <>
+              <div style={{ background: T.accent + "10", border: "1px solid " + T.accent + "30", borderRadius: 8, padding: "14px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                <Users size={16} color={T.accent} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>Adding {confirmCount.toLocaleString()} contacts</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Import order: {IMPORT_ORDER_OPTIONS.find(o => o.value === importOrderMode)?.label}</div>
+                  {isBulkMode && <div style={{ fontSize: 11, color: T.muted }}>Selected using quick select — top {origBulkCnt.toLocaleString()} by {IMPORT_ORDER_OPTIONS.find(o => o.value === importOrderMode)?.label}</div>}
                 </div>
-
-                {mode === "stage" && preview?.sample?.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: T.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Sample (first {preview.sample.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 300, overflowY: "auto" }}>
+                {confirmList.slice(0, 10).map(c => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
+                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
+                      {(c.firstName?.[0] || "?").toUpperCase()}
                     </div>
-                    {preview.sample.map(c => (
-                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
-                          {(c.firstName?.[0] || "?").toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{c.firstName} {c.lastName}</div>
-                          <div style={{ fontSize: 10, color: T.muted }}>{c.email || c.company}</div>
-                        </div>
-                      </div>
-                    ))}
-                    {preview.count > preview.sample.length && (
-                      <div style={{ fontSize: 11, color: T.muted, textAlign: "center", padding: "4px 0" }}>
-                        +{preview.count - preview.sample.length} more
-                      </div>
-                    )}
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{[c.firstName, c.lastName].filter(Boolean).join(" ") || c.email}</div>
+                      <div style={{ fontSize: 10, color: T.muted }}>{c.email}</div>
+                    </div>
+                  </div>
+                ))}
+                {isBulkMode && confirmCount > contacts.length && (
+                  <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "6px 0" }}>
+                    + {(confirmCount - Math.min(confirmList.length, 10)).toLocaleString()} more (not yet loaded)
                   </div>
                 )}
-
-                {mode === "search" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 240, overflowY: "auto" }}>
-                    {contacts.filter(c => selected.has(c.id)).map(c => (
-                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 7, background: T.surface }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: T.accent + "22", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: T.accent }}>
-                          {(c.firstName?.[0] || "?").toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{[c.firstName, c.lastName].filter(Boolean).join(" ")}</div>
-                          <div style={{ fontSize: 10, color: T.muted }}>{c.email}</div>
-                        </div>
-                      </div>
-                    ))}
+                {!isBulkMode && confirmList.length > 10 && (
+                  <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "6px 0" }}>
+                    and {confirmList.length - 10} more
                   </div>
                 )}
-
-                {!canConfirm && (
-                  <div style={{ textAlign: "center", padding: 20, color: T.muted, fontSize: 13 }}>No contacts to add.</div>
-                )}
-              </>
-            )
+              </div>
+            </>
           )}
         </div>
 
@@ -878,62 +1293,46 @@ function AddRecipientsModal({ campaignId, clientId, onClose, onAdded }) {
           </div>
         )}
 
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "16px 24px", borderTop: "1px solid " + T.border, flexShrink: 0,
-        }}>
-          {step === 1 ? (
-            <>
-              <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
-                Cancel
-              </button>
-              <button
-                onClick={handleNext}
-                disabled={mode === "search" && selected.size === 0}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 18px", borderRadius: 7, border: "none",
-                  background: (mode === "search" && selected.size === 0) ? T.border : T.accent,
-                  color: (mode === "search" && selected.size === 0) ? T.muted : "#fff",
-                  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                {mode === "search" && selected.size > 0
-                  ? `Add ${selected.size} Contact${selected.size !== 1 ? "s" : ""}`
-                  : "Next"
-                } <ChevronRight size={13} />
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => { setStep(1); setError(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
-                ← Back
-              </button>
-              <button
-                onClick={handleAdd}
-                disabled={adding || !canConfirm || loading}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 18px", borderRadius: 7, border: "none",
-                  background: canConfirm && !adding ? T.accent : T.border,
-                  color: canConfirm && !adding ? "#fff" : T.muted,
-                  fontSize: 13, fontWeight: 600,
-                  cursor: canConfirm && !adding ? "pointer" : "default",
-                  fontFamily: "inherit",
-                }}
-              >
-                {adding
-                  ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Adding…</>
-                  : <><Plus size={13} /> Add {confirmCount} Recipient{confirmCount !== 1 ? "s" : ""}</>
-                }
-              </button>
-            </>
+        {/* ── Footer ── */}
+        <div style={{ padding: "12px 24px 16px", borderTop: "1px solid " + T.border, flexShrink: 0 }}>
+          {step === 1 && canNext && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: T.muted }}>
+                  {selectedCount.toLocaleString()} of {totalExcl.toLocaleString()} contacts selected ({pct}%)
+                </span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: T.border, overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 2, background: pctColor, width: `${Math.min(100, pct)}%`, transition: "width 0.3s, background 0.3s" }} />
+              </div>
+            </div>
           )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {step === 1 ? (
+              <>
+                <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                <button onClick={() => setStep(2)} disabled={!canNext} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: canNext ? T.accent : T.border, color: canNext ? "#fff" : T.muted, fontSize: 13, fontWeight: 600, cursor: canNext ? "pointer" : "default", fontFamily: "inherit" }}>
+                  Next ({selectedCount.toLocaleString()}) <ChevronRight size={13} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setStep(1); setError(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid " + T.border, background: "transparent", color: T.text, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>← Back</button>
+                <button onClick={handleAdd} disabled={adding || !canNext} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 7, border: "none", background: canNext && !adding ? T.accent : T.border, color: canNext && !adding ? "#fff" : T.muted, fontSize: 13, fontWeight: 600, cursor: canNext && !adding ? "pointer" : "default", fontFamily: "inherit" }}>
+                  {adding
+                    ? <><Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> Adding…</>
+                    : <><Plus size={13} /> Add {confirmCount.toLocaleString()} Lead{confirmCount !== 1 ? "s" : ""}</>
+                  }
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // ── Edit Campaign Modal ───────────────────────────────────────────────────────
 
@@ -1819,7 +2218,7 @@ export default function CampaignDetailPage() {
   const rates  = analytics?.rates  ?? {};
 
   return (
-    <div style={{ width: "100%" }}>
+    <div style={{ width: "100%", padding: "20px 20px 28px" }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* ── Header bar ── */}
@@ -2015,177 +2414,106 @@ export default function CampaignDetailPage() {
 
       {/* ── Queue Status Strip ── */}
       {queue && queue.status !== "cancelled" && (() => {
-        const qColor    = queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green;
-        const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
-        const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
-        const sentPct   = queue.totalRecipients > 0
+        const qColor     = queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green;
+        const nextRun    = queueRuns.find(r => r.status === "pending" || r.status === "running");
+        const totalDays  = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
+        const sentPct    = queue.totalRecipients > 0
           ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100)) : 0;
-        const liveSent  = analytics?.totals?.sent ?? queue.totalSent ?? 0;
-        const remaining = Math.max(0, queue.totalRecipients - liveSent);
-        const todaySent = Math.max(0, liveSent - (queue.totalSent ?? 0));
+        const liveSent   = analytics?.totals?.sent ?? queue.totalSent ?? 0;
+        const remaining  = Math.max(0, queue.totalRecipients - liveSent);
+        const todaySent  = Math.max(0, liveSent - (queue.totalSent ?? 0));
         const todayLimit = queue.dailyLimit ?? 0;
-        const dot = <span style={{ color: T.border, margin: "0 6px" }}>·</span>;
+        const countdown  = nextRun?.status === "pending" && nextRun?.scheduledAt ? fmtCountdown(nextRun.scheduledAt) : null;
+
+        const StatBlock = ({ label, value, valueColor }) => (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: valueColor ?? T.text, whiteSpace: "nowrap" }}>{value}</span>
+          </div>
+        );
+
         return (
           <div style={{
-            display: "flex", alignItems: "center", gap: 14, padding: "10px 16px",
-            background: T.surface, border: "1px solid " + T.border, borderRadius: 10, marginBottom: 12,
+            background: T.surface, border: "1px solid " + T.border,
+            borderRadius: 10, padding: "10px 16px", marginBottom: 10,
+            display: "flex", alignItems: "center", gap: 14,
           }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
-            border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <CalendarClock size={16} color={queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green} />
-          </div>
-
-          {/* Info */}
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Queue</span>
+            {/* Status badge */}
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+              <CalendarClock size={14} color={qColor} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.dim }}>Queue</span>
               <span style={{
-                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-                textTransform: "uppercase", letterSpacing: "0.05em",
-                color: queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green,
-                background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
-                border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
+                fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 4,
+                textTransform: "uppercase", letterSpacing: "0.07em",
+                color: qColor, background: qColor + "18", border: "1px solid " + qColor + "40",
               }}>
                 {queue.status === "active" ? "Active" : queue.status === "paused" ? "Paused" : "Completed"}
               </span>
             </div>
-            {(() => {
-              const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
-              const countdown = nextRun ? fmtCountdown(nextRun.scheduledAt) : null;
-              const localTime = nextRun ? fmtLocalTime(nextRun.scheduledAt) : null;
-              const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
-              const sentPct   = queue.totalRecipients > 0
-                ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100))
-                : 0;
-              const barColor  = queue.status === "completed" ? T.green : T.blue;
 
-              return (
-                <div>
-                  {/* Progress row */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
-                      {queue.totalSent?.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>of</span> {queue.totalRecipients?.toLocaleString()} sent
-                    </span>
-                    <div style={{ flex: 1, height: 5, borderRadius: 4, background: T.border, overflow: "hidden", minWidth: 60 }}>
-                      <div style={{ height: "100%", borderRadius: 4, background: barColor, width: sentPct + "%", transition: "width 0.4s ease" }} />
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: barColor, whiteSpace: "nowrap" }}>{sentPct}%</span>
-                  </div>
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: T.border, flexShrink: 0 }} />
 
-                  {/* Meta row */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: T.muted }}>
-                      Day <strong style={{ color: T.text }}>{queue.currentDay}</strong> of <strong style={{ color: T.text }}>{totalDays}</strong>
-                    </span>
+            {/* Progress */}
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 160 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
+                {queue.totalSent?.toLocaleString()}
+                <span style={{ fontWeight: 400, color: T.muted, fontSize: 11 }}> / {queue.totalRecipients?.toLocaleString()}</span>
+              </span>
+              <div style={{ flex: 1, height: 5, borderRadius: 99, background: T.border, overflow: "hidden", minWidth: 60 }}>
+                <div style={{ height: "100%", borderRadius: 99, background: sentPct === 100 ? T.green : T.blue, width: sentPct + "%", transition: "width 0.5s ease" }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: sentPct === 100 ? T.green : T.blue, whiteSpace: "nowrap" }}>{sentPct}%</span>
+            </div>
 
-                    {nextRun && queue.status === "active" && (
-                      nextRun.status === "running"
-                        ? <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Sending now…</span>
-                        : <span style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}>
-                            <Clock size={10} />
-                            Next in <strong style={{ color: T.blue }}>{countdown}</strong>
-                            <span style={{ color: T.border }}>·</span>
-                            {localTime}
-                          </span>
-                    )}
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: T.border, flexShrink: 0 }} />
 
-                    {queue.status === "paused" && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Paused</span>
-                    )}
-
-                    {queue.estimatedEndAt && queue.status === "active" && (
-                      <span style={{ fontSize: 11, color: T.muted }}>
-                        Ends <strong style={{ color: T.text }}>{new Date(queue.estimatedEndAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Live stats — visible when queue is active */}
-                  {queue.status === "active" && (() => {
-                    const liveSent      = analytics?.totals?.sent ?? queue.totalSent ?? 0;
-                    const remaining     = Math.max(0, queue.totalRecipients - liveSent);
-                    const todayLimit    = queue.dailyLimit ?? 0;
-                    const prevSent      = queue.totalSent ?? 0;
-                    const todaySent     = Math.max(0, liveSent - prevSent);
-                    const todayLeft     = Math.max(0, todayLimit - todaySent);
-                    const gapSec        = queue.sendGapSeconds ?? 5;
-                    const estMinToday   = Math.round(todayLeft * gapSec / 60);
-                    return (
-                      <div style={{
-                        display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap",
-                      }}>
-                        {[
-                          { label: "Remaining", value: remaining.toLocaleString(), color: T.blue },
-                          { label: "Today's batch", value: `${todaySent.toLocaleString()} / ${todayLimit.toLocaleString()}`, color: T.text },
-                          ...(nextRun?.status === "running" && estMinToday > 0
-                            ? [{ label: "Est. time left today", value: estMinToday >= 60 ? `~${Math.round(estMinToday/60)}h ${estMinToday%60}m` : `~${estMinToday}m`, color: T.amber }]
-                            : []),
-                        ].map(({ label, value, color }) => (
-                          <div key={label} style={{
-                            background: T.surface, border: "1px solid " + T.border,
-                            borderRadius: 6, padding: "4px 10px",
-                            display: "flex", alignItems: "center", gap: 6,
-                          }}>
-                            <span style={{ fontSize: 10, color: T.muted }}>{label}</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color }}>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
+            {/* Stat blocks */}
+            <div style={{ display: "flex", alignItems: "center", gap: 18, flex: 1 }}>
+              <StatBlock label="Day" value={<>{queue.currentDay} <span style={{ fontWeight: 400, color: T.muted }}>/ {totalDays}</span></>} />
+              {queue.estimatedEndAt && queue.status !== "completed" && (
+                <StatBlock label="Ends" value={new Date(queue.estimatedEndAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} />
+              )}
+              <StatBlock label="Remaining" value={remaining.toLocaleString()} valueColor={T.blue} />
+              <StatBlock
+                label="Today"
+                value={<>{todaySent.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>/ {todayLimit.toLocaleString()}</span></>}
+              />
+              {countdown && (
+                <StatBlock label="Next Run" value={countdown} valueColor={T.amber} />
+              )}
+              {nextRun?.status === "running" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.amber, display: "inline-block", boxShadow: "0 0 0 3px " + T.amber + "30" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Sending now…</span>
                 </div>
-              );
-            })()}
-          </div>
+              )}
+            </div>
 
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {queue.status === "active" && (
-              <button
-                onClick={handleQueuePause} disabled={queueActing}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                  borderRadius: 7, border: "1px solid " + T.amber + "60", background: T.amber + "12",
-                  color: T.amber, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <Pause size={12} /> Pause
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              {queue.status === "active" && (
+                <button onClick={handleQueuePause} disabled={queueActing} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.amber + "60", background: T.amber + "12", color: T.amber, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Pause size={11} /> Pause
+                </button>
+              )}
+              {queue.status === "paused" && (
+                <button onClick={handleQueueResume} disabled={queueActing} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.green + "60", background: T.green + "12", color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Play size={11} /> Resume
+                </button>
+              )}
+              <button onClick={() => setShowQueueModal(true)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.border, background: "transparent", color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                <Settings2 size={11} /> Settings
               </button>
-            )}
-            {queue.status === "paused" && (
-              <button
-                onClick={handleQueueResume} disabled={queueActing}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                  borderRadius: 7, border: "1px solid " + T.green + "60", background: T.green + "12",
-                  color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <Play size={12} /> Resume
-              </button>
-            )}
-            <button
-              onClick={() => setShowQueueModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                borderRadius: 7, border: "1px solid " + T.border, background: T.surface,
-                color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Settings2 size={12} /> Settings
-            </button>
+            </div>
           </div>
-        </div>
         );
       })()}
 
 
       {/* ── Campaign Summary Cards ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 5, marginBottom: 8, flexWrap: "wrap" }}>
         {[
           {
             key:   "all",
@@ -2257,28 +2585,29 @@ export default function CampaignDetailPage() {
               key={key}
               onClick={() => setStatusFilter(f => f === key ? (key === "all" ? "all" : "all") : key)}
               style={{
-                flex: "1 1 120px",
+                flex: "1 1 80px",
                 background: isActive ? color + "14" : T.card,
                 border: "1px solid " + (isActive ? color + "55" : T.border),
-                borderRadius: 12,
-                padding: "16px 18px",
+                borderRadius: 8,
+                padding: "7px 10px",
                 cursor: "pointer",
                 transition: "border-color 0.12s, background 0.12s",
               }}
               onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor = color + "40"; e.currentTarget.style.background = T.surface; } }}
               onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.card; } }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, color: isActive ? color : T.muted }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3, color: isActive ? color : T.muted }}>
                 {icon}
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</span>
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: isActive ? color : T.text, lineHeight: 1, letterSpacing: "-0.02em", marginBottom: 8 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: isActive ? color : T.text, lineHeight: 1, letterSpacing: "-0.01em", marginBottom: 2 }}>
                 {value}
               </div>
-              <div style={{ fontSize: 11, color: T.muted }}>
-                {rate !== null ? <span style={{ fontWeight: 700, color: value > 0 ? color : T.muted }}>{rate}%</span> : null}
-                {rate !== null ? " " : ""}{rateLabel}
-              </div>
+              {rate !== null && (
+                <div style={{ fontSize: 9, color: T.muted }}>
+                  <span style={{ fontWeight: 700, color: value > 0 ? color : T.muted }}>{rate}%</span> {rateLabel}
+                </div>
+              )}
             </div>
           );
         })}
@@ -2431,7 +2760,7 @@ export default function CampaignDetailPage() {
               <Users size={40} color={T.border} style={{ marginBottom: 14 }} />
               <div style={{ fontSize: 14, fontWeight: 600, color: T.muted, marginBottom: 6 }}>No recipients yet</div>
               <div style={{ fontSize: 12, color: T.muted, marginBottom: 18 }}>
-                Click "Add Recipients" to get started.
+                Click "Add Leads" to get started.
               </div>
               <button
                 onClick={() => setShowAddModal(true)}
@@ -2442,7 +2771,7 @@ export default function CampaignDetailPage() {
                   cursor: "pointer", fontFamily: "inherit",
                 }}
               >
-                <Plus size={13} /> Add Recipients
+                <Plus size={13} /> Add Leads
               </button>
             </div>
           ) : viewMode === "graph" ? (
@@ -2487,6 +2816,7 @@ export default function CampaignDetailPage() {
         <AddRecipientsModal
           campaignId={id}
           clientId={campaign.clientId}
+          queueDailyLimit={campaign?.queue?.dailyLimit ?? null}
           onClose={() => setShowAddModal(false)}
           onAdded={handleAdded}
         />
@@ -2584,15 +2914,29 @@ const DAY_LIST = [
   { label: "Sun", value: 0 },
 ];
 
+const SEND_ORDER_OPTIONS = [
+  { value: "import_order",  label: "Use Import Order" },
+  { value: "name_asc",      label: "Name A→Z" },
+  { value: "name_desc",     label: "Name Z→A" },
+  { value: "email_asc",     label: "Email A→Z" },
+  { value: "email_desc",    label: "Email Z→A" },
+  { value: "created_asc",   label: "Oldest First" },
+  { value: "created_desc",  label: "Newest First" },
+];
+
 function QueueSettingsModal({ queue, onClose, onSave, saving }) {
   const T = useTheme();
   const [dailyLimit,     setDailyLimit]     = useState(String(queue?.dailyLimit || 500));
   const [sendTime,       setSendTime]       = useState(queue?.sendTime || "09:00");
   const [timezone,       setTimezone]       = useState(queue?.timezone || "UTC");
   const [sendGapSeconds, setSendGapSeconds] = useState(String(queue?.sendGapSeconds ?? 5));
-  const [sendDays,       setSendDays]       = useState(
-    Array.isArray(queue?.sendDays) && queue.sendDays.length ? queue.sendDays : [0,1,2,3,4,5,6]
-  );
+  const [sendDays,       setSendDays]       = useState(() => {
+    if (Array.isArray(queue?.sendDays) && queue.sendDays.length) {
+      return queue.sendDays.map(Number).filter(d => d >= 0 && d <= 6);
+    }
+    return [0, 1, 2, 3, 4, 5, 6];
+  });
+  const [sendOrderMode,  setSendOrderMode]  = useState(queue?.sendOrderMode || "import_order");
 
   const toggleDay = (val) => {
     setSendDays(prev =>
@@ -2614,7 +2958,7 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
     const limit = parseInt(dailyLimit, 10);
     const gap   = Math.max(0, parseInt(sendGapSeconds, 10) || 0);
     if (!limit || limit < 1) return;
-    onSave({ dailyLimit: limit, sendTime, timezone, sendGapSeconds: gap, sendDays });
+    onSave({ dailyLimit: limit, sendTime, timezone, sendGapSeconds: gap, sendDays, sendOrderMode });
   };
 
   return (
@@ -2749,6 +3093,23 @@ function QueueSettingsModal({ queue, onClose, onSave, saving }) {
             </div>
             <div style={{ fontSize: 10, color: T.muted, marginTop: 5 }}>
               The queue will only run on selected days. At least one day must remain active.
+            </div>
+          </div>
+
+          {/* Send Order */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: T.dim, marginBottom: 6, letterSpacing: "0.03em" }}>
+              Send Order
+            </div>
+            <select
+              value={sendOrderMode}
+              onChange={e => setSendOrderMode(e.target.value)}
+              style={{ ...inputStyle, cursor: "pointer" }}
+            >
+              {SEND_ORDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>
+              Determines the order in which contacts are emailed each day.
             </div>
           </div>
 
