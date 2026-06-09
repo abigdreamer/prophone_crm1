@@ -162,41 +162,6 @@ function mergeContainers(saved) {
   return merged;
 }
 
-function contactToForm(c) {
-  return {
-    firstName: c.firstName || "",
-    lastName: c.lastName || "",
-    company: c.company || "",
-    title: c.title || "",
-    email: c.email || "",
-    phone: c.phone || "",
-    website: c.website || "",
-    address: c.address || "",
-    socialLinks: c.socialLinks || {},
-    trucks: c.trucks != null ? String(c.trucks) : "",
-    lifecycleStage: c.lifecycleStage || "new",
-    leadState: c.leadState || "prospect",
-    source: c.source || "",
-    campaign: c.campaign || "",
-    tags: Array.isArray(c.tags) ? c.tags.join(", ") : (c.tags || ""),
-    notes: c.notes || "",
-    contractValue: c.contractValue != null ? String(c.contractValue) : "",
-    accountSize: c.accountSize || "",
-    ownedBy: c.ownedBy || "",
-  };
-}
-
-function emptyForm(currentUser) {
-  return {
-    firstName: "", lastName: "", company: "", title: "",
-    email: "", phone: "", website: "", address: "",
-    socialLinks: {},
-    trucks: "", lifecycleStage: "new", leadState: "prospect",
-    source: "", campaign: "",
-    tags: "", notes: "", contractValue: "", accountSize: "",
-    ownedBy: currentUser?.name || "",
-  };
-}
 
 export default function ContactDetailPanel({
   contact, onSave, onAction, currentUser, pool, clientId,
@@ -537,8 +502,7 @@ export default function ContactDetailPanel({
     : (form.company?.[0] || form.email?.[0] || (isNew ? "+" : "?")).toUpperCase();
   const d             = STAGE_DEF[form.lifecycleStage] || STAGE_DEF.new;
   const avatarColor   = (d.color === T.muted || d.color === T.dim) ? T.accent : d.color;
-  const show          = (key) => fieldVis[key] !== false;
-  const enabledSocials = SOCIAL_FIELDS.filter(({ key }) => fieldVis[`social_${key}`] !== false);
+  const enabledSocials = SOCIAL_FIELDS.filter(({ key }) => show(`social_${key}`));
   const parsedTags    = form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
 
   const numKey = (e) => {
@@ -1116,6 +1080,19 @@ function ContainerBlock({
     }
   }
 
+  return (
+    <div style={{
+      background: T.card,
+      border: "1px solid " + T.border,
+      borderRadius: 10,
+      overflow: "hidden",
+    }}>
+      {header}
+      {body}
+    </div>
+  );
+}
+
 function Section({ icon: Icon, title, children, T, sectionKey }) {
   const ctx = useContext(EditCtx);
   const em  = ctx?.editMode ?? false;
@@ -1357,7 +1334,7 @@ function FTextarea({ value, onChange, placeholder, rows = 3 }) {
 
 // ─── InlineStageSelect ────────────────────────────────────────────────────────
 
-function InlineStageSelect({ value, onChange }) {
+function CustomSelect({ label, value, onChange, options, getColor, outerStyle }) {
   const T = useTheme();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -1394,7 +1371,6 @@ function InlineStageSelect({ value, onChange }) {
 
   function handleKeyDown(e) {
     if (e.key === "Enter") {
-      // advance to next field like all other inputs
       fieldNav(e);
     } else if (e.key === " ") {
       e.preventDefault();
