@@ -366,28 +366,6 @@ export async function getContactsForCampaign(clientId) {
   return Array.isArray(r) ? r : (r.data ?? []);
 }
 
-export async function searchCampaignLeads(id, params = {}) {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') {
-      if (Array.isArray(v)) v.forEach(item => q.append(k, item));
-      else q.set(k, v);
-    }
-  });
-  const r = await request('GET', `/api/campaigns/${id}/leads/search?${q}`);
-  return r.data ?? r;
-}
-
-export async function getNextRunRecipients(campaignId) {
-  const r = await request('GET', `/api/campaigns/${campaignId}/queue/next-run-recipients`);
-  return r.data ?? r;
-}
-
-export async function manageNextRunRecipients(campaignId, body) {
-  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue/next-run-recipients`, body);
-  return r.data ?? r;
-}
-
 export async function removeCampaignRecipients(id) {
   return request('DELETE', `/api/campaigns/${id}/recipients`);
 }
@@ -559,24 +537,6 @@ export async function getRedditStats(clientId) {
   const params = new URLSearchParams();
   if (clientId) params.set('clientId', clientId);
   return request('GET', `/api/reddit/stats?${params}`);
-}
-
-export async function getRedditFilters(clientId) {
-  const params = new URLSearchParams();
-  if (clientId) params.set('clientId', clientId);
-  return request('GET', `/api/reddit/filters?${params}`);
-}
-
-export async function createRedditFilter(data) {
-  return request('POST', '/api/reddit/filters', data);
-}
-
-export async function updateRedditFilter(id, data) {
-  return request('PATCH', `/api/reddit/filters/${id}`, data);
-}
-
-export async function deleteRedditFilter(id) {
-  return request('DELETE', `/api/reddit/filters/${id}`);
 }
 
 // ── Foxtow External API ───────────────────────────────────────────────────────

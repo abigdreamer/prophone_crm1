@@ -10,7 +10,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check, List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -138,7 +138,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
   // Contacts visible in the current viewMode — used to scope the selection display
   const visibleSelectedIds = (() => {
-    const pool_list = (viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts) || [];
+    const pool_list = viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts;
     const stages = STAGE_GROUPS[viewMode];
     const inView = stages?.length > 0
       ? pool_list.filter(c => stages.includes(c.lifecycleStage))
@@ -911,11 +911,9 @@ function AppLayout({ currentUser, onSignOut }) {
             </div>
           )}
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: isMarketing ? 0 : (isMobile ? 8 : isTablet ? 10 : '10px 18px'), position: 'relative' }}>
-            {!firstLoad && loading && <SkeletonDetailPanel />}
-            <div style={isContacts ? { maxWidth: 900, margin: '0 auto' } : undefined}>
-              {renderCenter()}
-            </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
+            {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
+            {renderCenter()}
           </div>
         </div>
 
