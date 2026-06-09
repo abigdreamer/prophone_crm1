@@ -366,6 +366,28 @@ export async function getContactsForCampaign(clientId) {
   return Array.isArray(r) ? r : (r.data ?? []);
 }
 
+export async function searchCampaignLeads(id, params = {}) {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') {
+      if (Array.isArray(v)) v.forEach(item => q.append(k, item));
+      else q.set(k, v);
+    }
+  });
+  const r = await request('GET', `/api/campaigns/${id}/leads/search?${q}`);
+  return r.data ?? r;
+}
+
+export async function getNextRunRecipients(campaignId) {
+  const r = await request('GET', `/api/campaigns/${campaignId}/queue/next-run-recipients`);
+  return r.data ?? r;
+}
+
+export async function manageNextRunRecipients(campaignId, body) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue/next-run-recipients`, body);
+  return r.data ?? r;
+}
+
 export async function removeCampaignRecipients(id) {
   return request('DELETE', `/api/campaigns/${id}/recipients`);
 }

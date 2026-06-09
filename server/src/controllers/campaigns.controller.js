@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { sendSuccess, sendError, sendServerError } from '../utils/response.js';
+import { icontains } from '../lib/db-compat.js';
 import * as repo from '../repositories/campaignRepository.js';
 import * as templateRepo from '../repositories/emailTemplateRepository.js';
 import * as domainRepo from '../repositories/domainRepository.js';
@@ -185,24 +186,82 @@ export const listRecipients = async (req, res) => {
   }
 };
 
+function sortContactsByImportMode(contacts, importOrderMode) {
+  const copy = [...contacts];
+  switch (importOrderMode) {
+    case 'name_asc':
+      return copy.sort((a, b) => {
+        const fa = (a.firstName || '').toLowerCase(), fb = (b.firstName || '').toLowerCase();
+        if (fa !== fb) return fa < fb ? -1 : 1;
+        return ((a.lastName || '').toLowerCase() < (b.lastName || '').toLowerCase()) ? -1 : 1;
+      });
+    case 'name_desc':
+      return copy.sort((a, b) => {
+        const fa = (a.firstName || '').toLowerCase(), fb = (b.firstName || '').toLowerCase();
+        if (fa !== fb) return fa > fb ? -1 : 1;
+        return ((a.lastName || '').toLowerCase() > (b.lastName || '').toLowerCase()) ? -1 : 1;
+      });
+    case 'email_asc':
+      return copy.sort((a, b) => (a.email || '') < (b.email || '') ? -1 : 1);
+    case 'email_desc':
+      return copy.sort((a, b) => (a.email || '') > (b.email || '') ? -1 : 1);
+    case 'created_asc':
+      return copy.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    case 'created_desc':
+      return copy.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    default: // import_order — use the order they arrived in
+      return copy;
+  }
+}
+
 export const addRecipients = async (req, res) => {
-  const { filter, contactIds } = req.body ?? {};
+  const { filter, contactIds, importOrderMode = 'import_order', limit, leadSearchParams } = req.body ?? {};
+  const contactLimit = limit ? Math.max(1, parseInt(limit, 10)) : null;
 
   try {
     const campaign = await repo.findById(req.params.id);
     if (!campaign) return sendError(res, 'Campaign not found', 404);
 
-    let ids = [];
+    let orderedItems = [];
     if (Array.isArray(contactIds) && contactIds.length) {
-      ids = contactIds;
+      const contacts = await prisma.contact.findMany({
+        where:  { id: { in: contactIds } },
+        select: { id: true, firstName: true, lastName: true, email: true, createdAt: true },
+      });
+      const sorted = sortContactsByImportMode(contacts, importOrderMode);
+      const sliced = contactLimit ? sorted.slice(0, contactLimit) : sorted;
+      orderedItems = sliced.map((c, i) => ({ contactId: c.id, sendOrder: i + 1 }));
+    } else if (leadSearchParams) {
+      const { q, stages, nameStartsWith } = leadSearchParams;
+      const andClauses = [{ status: 'active' }];
+      if (q && q.trim()) {
+        const t = q.trim();
+        andClauses.push({ OR: [{ firstName: icontains(t) }, { lastName: icontains(t) }, { email: icontains(t) }, { company: icontains(t) }] });
+      }
+      if (Array.isArray(stages) && stages.length) andClauses.push({ lifecycleStage: { in: stages } });
+      if (nameStartsWith) andClauses.push({ firstName: { startsWith: nameStartsWith, mode: 'insensitive' } });
+      const where = {
+        clientId: campaign.clientId ?? null,
+        campaignRecipients: { none: { campaignId: req.params.id } },
+        AND: andClauses,
+      };
+      const orderBy = LEADS_ORDER_MAP[importOrderMode] ?? LEADS_ORDER_MAP.import_order;
+      const contacts = await prisma.contact.findMany({
+        where, orderBy,
+        take: contactLimit || undefined,
+        select: { id: true, firstName: true, lastName: true, email: true, createdAt: true },
+      });
+      orderedItems = contacts.map((c, i) => ({ contactId: c.id, sendOrder: i + 1 }));
     } else if (filter) {
       const contacts = await repo.getContactsForFilter(campaign.clientId, filter);
-      ids = contacts.map(c => c.id);
+      const sorted = sortContactsByImportMode(contacts, importOrderMode);
+      const sliced = contactLimit ? sorted.slice(0, contactLimit) : sorted;
+      orderedItems = sliced.map((c, i) => ({ contactId: c.id, sendOrder: i + 1 }));
     }
 
-    if (!ids.length) return sendError(res, 'No contacts matched the filter', 400);
+    if (!orderedItems.length) return sendError(res, 'No contacts matched the filter', 400);
 
-    await repo.addRecipients(req.params.id, ids);
+    await repo.addRecipients(req.params.id, orderedItems);
 
     // For A/B test campaigns, auto-assign variants
     if (campaign.type === 'ab_test') {
@@ -226,6 +285,98 @@ export const previewRecipients = async (req, res) => {
     sendSuccess(res, { count: contacts.length, sample: contacts.slice(0, 5) });
   } catch (err) {
     sendServerError(res, err, 'previewRecipients');
+  }
+};
+
+const LEADS_ORDER_MAP = {
+  import_order: [{ createdAt: 'asc' }],
+  name_asc:     [{ firstName: 'asc' }, { lastName: 'asc' }],
+  name_desc:    [{ firstName: 'desc' }, { lastName: 'desc' }],
+  email_asc:    [{ email: 'asc' }],
+  email_desc:   [{ email: 'desc' }],
+  created_asc:  [{ createdAt: 'asc' }],
+  created_desc: [{ createdAt: 'desc' }],
+};
+
+export const searchCampaignLeads = async (req, res) => {
+  const { q, stages, nameStartsWith, order = 'import_order', page = '1', pageSize = '500', idsOnly, limit } = req.query;
+  const PAGE_SIZE = Math.min(3000, Math.max(1, parseInt(pageSize, 10)));
+  const pageNum = Math.max(1, parseInt(page, 10));
+  const skip = (pageNum - 1) * PAGE_SIZE;
+
+  try {
+    const campaign = await repo.findById(req.params.id);
+    if (!campaign) return sendError(res, 'Campaign not found', 404);
+
+    const andClauses = [{ status: 'active' }];
+
+    if (q && q.trim()) {
+      const t = q.trim();
+      andClauses.push({
+        OR: [
+          { firstName: icontains(t) },
+          { lastName:  icontains(t) },
+          { email:     icontains(t) },
+          { company:   icontains(t) },
+        ],
+      });
+    }
+
+    if (stages) {
+      const arr = Array.isArray(stages) ? stages : stages.split(',').filter(Boolean);
+      if (arr.length) andClauses.push({ lifecycleStage: { in: arr } });
+    }
+
+    if (nameStartsWith) {
+      const letters = nameStartsWith.split(',').map(l => l.trim()).filter(Boolean);
+      if (letters.length === 1) {
+        andClauses.push({ firstName: { startsWith: letters[0], mode: 'insensitive' } });
+      } else if (letters.length > 1) {
+        andClauses.push({ OR: letters.map(l => ({ firstName: { startsWith: l, mode: 'insensitive' } })) });
+      }
+    }
+
+    const baseWhere = {
+      clientId: campaign.clientId ?? null,
+      ...(andClauses.length ? { AND: andClauses } : {}),
+    };
+    const excludeWhere = { ...baseWhere, campaignRecipients: { none: { campaignId: req.params.id } } };
+    const orderBy = LEADS_ORDER_MAP[order] ?? LEADS_ORDER_MAP.import_order;
+
+    // idsOnly: return just IDs for bulk selection (always excludes already-added)
+    if (idsOnly === 'true') {
+      const takeCount = limit ? Math.min(5000, Math.max(1, parseInt(limit, 10))) : 5000;
+      const rows = await prisma.contact.findMany({ where: excludeWhere, orderBy, take: takeCount, select: { id: true, firstName: true, lastName: true, email: true } });
+      const ids = rows.map(r => r.id);
+      const nameOf = r => [r.firstName, r.lastName].filter(Boolean).join(' ') || r.email || '';
+      return sendSuccess(res, { ids, firstContact: rows.length ? nameOf(rows[0]) : '', lastContact: rows.length ? nameOf(rows[rows.length - 1]) : '' });
+    }
+
+    const [total, totalExcludingAlreadyAdded, contacts] = await Promise.all([
+      prisma.contact.count({ where: baseWhere }),
+      prisma.contact.count({ where: excludeWhere }),
+      prisma.contact.findMany({
+        where: baseWhere,
+        orderBy,
+        skip,
+        take: PAGE_SIZE,
+        select: {
+          id: true, firstName: true, lastName: true, email: true,
+          company: true, lifecycleStage: true, status: true,
+          campaignRecipients: { where: { campaignId: req.params.id }, select: { id: true } },
+        },
+      }),
+    ]);
+
+    sendSuccess(res, {
+      contacts: contacts.map(({ campaignRecipients, ...c }) => ({ ...c, alreadyAdded: campaignRecipients.length > 0 })),
+      total,
+      totalExcludingAlreadyAdded,
+      page: pageNum,
+      hasMore: skip + contacts.length < total,
+    });
+  } catch (err) {
+    sendServerError(res, err, 'searchCampaignLeads');
   }
 };
 

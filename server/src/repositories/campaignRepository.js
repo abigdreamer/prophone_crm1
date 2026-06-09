@@ -130,14 +130,13 @@ export async function findRecipients(campaignId, { status, event, abVariant, sea
   return { rows, total };
 }
 
+// contactIds may be a plain string[] or an array of { contactId, sendOrder } objects
 export async function addRecipients(campaignId, contactIds) {
-  const data = contactIds.map(contactId => ({
-    campaignId,
-    contactId,
-    status: 'pending',
-  }));
+  const data = contactIds.map((item, i) => {
+    if (typeof item === 'string') return { campaignId, contactId: item, status: 'pending' };
+    return { campaignId, contactId: item.contactId, status: 'pending', sendOrder: item.sendOrder ?? (i + 1) };
+  });
   const result = await prisma.campaignRecipient.createMany({ data, ...skipDups });
-  // Update recipientsCount
   const count = await prisma.campaignRecipient.count({ where: { campaignId } });
   await prisma.campaign.update({ where: { id: campaignId }, data: { recipientsCount: count } });
   return result;
@@ -227,11 +226,21 @@ export async function resetSkippedToPending(campaignId) {
   });
 }
 
-export async function findPendingRecipientsForSend(campaignId, limit = null) {
+const SEND_ORDER_MODES = {
+  import_order:  [{ sendOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+  name_asc:      [{ contact: { firstName: 'asc' } }, { contact: { lastName: 'asc' } }],
+  name_desc:     [{ contact: { firstName: 'desc' } }, { contact: { lastName: 'desc' } }],
+  email_asc:     [{ contact: { email: 'asc' } }],
+  email_desc:    [{ contact: { email: 'desc' } }],
+  created_asc:   [{ contact: { createdAt: 'asc' } }],
+  created_desc:  [{ contact: { createdAt: 'desc' } }],
+};
+
+export async function findPendingRecipientsForSend(campaignId, limit = null, sendOrderMode = 'import_order') {
+  const orderBy = SEND_ORDER_MODES[sendOrderMode] ?? SEND_ORDER_MODES.import_order;
   return prisma.campaignRecipient.findMany({
     where:   { campaignId, status: 'pending' },
-    // Deterministic order: creation order (import order = Record #1 → #N), tie-break by id
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    orderBy,
     ...(limit ? { take: limit } : {}),
     include: {
       contact: {
@@ -645,7 +654,7 @@ export async function getContactsForFilter(clientId, filter) {
   }
   return prisma.contact.findMany({
     where,
-    select: { id: true, firstName: true, lastName: true, email: true, company: true, lifecycleStage: true },
+    select: { id: true, firstName: true, lastName: true, email: true, company: true, lifecycleStage: true, createdAt: true },
     orderBy: { firstName: 'asc' },
   });
 }

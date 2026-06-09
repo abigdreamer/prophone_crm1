@@ -7,6 +7,8 @@ import {
   pauseQueue,
   resumeQueue,
   cancelQueue,
+  getNextRunRecipients,
+  manageNextRunRecipients,
 } from '../controllers/queueController.js';
 
 const router = Router({ mergeParams: true });
@@ -19,5 +21,7 @@ router.patch('/',      updateQueue);
 router.delete('/',     cancelQueue);
 router.post('/pause',  pauseQueue);
 router.post('/resume', resumeQueue);
+router.get('/next-run-recipients',   getNextRunRecipients);
+router.patch('/next-run-recipients', manageNextRunRecipients);
 
 export default router;

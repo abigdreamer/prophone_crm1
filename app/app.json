@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "ProPhone",
+    "slug": "prophone",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jhon06.prophone"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.jhon06.prophone"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "93712a10-d609-4a05-9736-0485d0b9e2b1"
+      }
+    },
+    "owner": "jhon06",
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

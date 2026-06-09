@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import { loginUser } from "../services/api";
@@ -6,7 +6,7 @@ import { identifyUser, analytics } from "../services/analytics";
 import {
   Eye, EyeOff, ArrowRight, Phone,
   Users, TrendingUp, Mail, BarChart2, Zap, Shield,
-  PhoneCall, Clock, Star,
+  PhoneCall, Clock, Star, Check,
 } from "lucide-react";
 
 const FEATURES = [
@@ -25,16 +25,45 @@ const STATS = [
   { icon: Mail,      value: "Built-in",   label: "Email Campaigns"    },
 ];
 
+const DEMO_ACCOUNTS = [
+  { name: "Mike Johnson",  email: "mike@geniusai.biz",  role: "Admin"   },
+  { name: "Sarah Lee",     email: "sarah@geniusai.biz", role: "Manager" },
+  { name: "James Davis",   email: "james@geniusai.biz", role: "Rep"     },
+  { name: "Amy Wilson",    email: "amy@geniusai.biz",   role: "Rep"     },
+];
+const DEMO_PASSWORD = "123456";
+
+const AVATAR_COLORS = ["#818cf8", "#34d399", "#fb923c", "#38bdf8", "#f472b6"];
+
+function initials(name) {
+  return name.split(" ").filter(Boolean).map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?";
+}
+
+function avatarColor(email) {
+  let h = 0;
+  for (let i = 0; i < email.length; i++) h = email.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
+function roleBadgeStyle(role) {
+  const r = (role || "").toLowerCase();
+  if (r === "admin")   return { color: "#818cf8", background: "#818cf820", border: "1px solid #818cf840" };
+  if (r === "manager") return { color: "#34d399", background: "#34d39920", border: "1px solid #34d39940" };
+  return                      { color: "#fb923c", background: "#fb923c20", border: "1px solid #fb923c40" };
+}
+
 export default function LoginPage({ onLogin }) {
   const T = useTheme();
   const navigate = useNavigate();
 
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [showPass, setShowPass] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
+  const [email,        setEmail]        = useState("");
+  const [password,     setPassword]     = useState("");
+  const [error,        setError]        = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [showPass,     setShowPass]     = useState(false);
+  const [isMobile,     setIsMobile]     = useState(window.innerWidth < 900);
+  const [quickEnabled, setQuickEnabled] = useState(false);
+  const [hoveredRow,   setHoveredRow]   = useState(null);
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth < 900);
@@ -42,12 +71,21 @@ export default function LoginPage({ onLogin }) {
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  async function handleLogin() {
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "ql-fade-style";
+    style.textContent = "@keyframes qlFade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }";
+    if (!document.getElementById("ql-fade-style")) document.head.appendChild(style);
+  }, []);
+
+  const handleLogin = useCallback(async (overrideEmail, overridePassword) => {
+    const loginEmail    = overrideEmail    ?? email;
+    const loginPassword = overridePassword ?? password;
     setError("");
-    if (!email.trim() || !password) { setError("Please enter your email and password."); return; }
+    if (!loginEmail.trim() || !loginPassword) { setError("Please enter your email and password."); return; }
     setLoading(true);
     try {
-      const user = await loginUser(email.trim(), password);
+      const user = await loginUser(loginEmail.trim(), loginPassword);
       if (user) {
         identifyUser(user);
         analytics.signedIn(user);
@@ -55,12 +93,21 @@ export default function LoginPage({ onLogin }) {
         navigate("/contacts", { replace: true });
       } else {
         setError("Invalid credentials. Check your email and password.");
+        setQuickEnabled(false);
       }
     } catch {
       setError("Connection error. Make sure the API server is running.");
+      setQuickEnabled(false);
     } finally {
       setLoading(false);
     }
+  }, [email, password, onLogin, navigate]);
+
+  function handleRowClick(account) {
+    if (loading) return;
+    setEmail(account.email);
+    setPassword(DEMO_PASSWORD);
+    handleLogin(account.email, DEMO_PASSWORD);
   }
 
   const themeAccent = T.accent || "#6366f1";
@@ -111,7 +158,6 @@ export default function LoginPage({ onLogin }) {
             <div style={{ position: "absolute", top: -60, left: -60, width: 260, height: 260, borderRadius: "50%", background: themeAccent + "12", filter: "blur(80px)", pointerEvents: "none" }} />
             <div style={{ position: "absolute", bottom: -30, right: -30, width: 200, height: 200, borderRadius: "50%", background: themeBlue + "08", filter: "blur(70px)", pointerEvents: "none" }} />
 
-            {/* Badge */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 32, position: "relative" }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: themeAccent, boxShadow: `0 0 10px ${themeAccent}` }} />
               <span style={{ fontSize: 10, fontWeight: 700, color: promoPanelMute, letterSpacing: "0.15em", textTransform: "uppercase" }}>
@@ -119,7 +165,6 @@ export default function LoginPage({ onLogin }) {
               </span>
             </div>
 
-            {/* Logo */}
             <div style={{ position: "relative", marginBottom: 32 }}>
               <div style={{
                 width: 48, height: 48, borderRadius: 14,
@@ -138,7 +183,6 @@ export default function LoginPage({ onLogin }) {
               </div>
             </div>
 
-            {/* Features */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28, position: "relative" }}>
               {FEATURES.map(({ icon: Icon, label, desc }) => (
                 <div key={label} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -158,7 +202,6 @@ export default function LoginPage({ onLogin }) {
               ))}
             </div>
 
-            {/* Stats */}
             <div style={{
               marginTop: "auto", position: "relative",
               background: isLightTheme ? T.bg : T.surface,
@@ -211,6 +254,7 @@ export default function LoginPage({ onLogin }) {
               </div>
             )}
 
+            {/* Heading — always visible */}
             <div style={{ marginBottom: 28 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: themeAccent, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>
                 Welcome back
@@ -223,88 +267,183 @@ export default function LoginPage({ onLogin }) {
               </p>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 6 }}>Email address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleLogin()}
-                  placeholder="Enter your email"
-                  autoComplete="email"
-                  style={{
-                    width: "100%", padding: "11px 14px", boxSizing: "border-box",
-                    background: T.card, border: "1px solid " + T.border,
-                    borderRadius: 10, color: T.text, fontSize: 13,
-                    outline: "none", fontFamily: "inherit", transition: "all 0.2s ease",
-                  }}
-                  onFocus={e => { e.target.style.borderColor = themeAccent; e.target.style.boxShadow = `0 0 0 3px ${themeAccent}20`; }}
-                  onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 6 }}>Password</label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    type={showPass ? "text" : "password"}
-                    onKeyDown={e => e.key === "Enter" && handleLogin()}
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
-                    style={{
-                      width: "100%", padding: "11px 42px 11px 14px", boxSizing: "border-box",
-                      background: T.card, border: "1px solid " + T.border,
-                      borderRadius: 10, color: T.text, fontSize: 13,
-                      outline: "none", fontFamily: "inherit", transition: "all 0.2s ease",
-                    }}
-                    onFocus={e => { e.target.style.borderColor = themeAccent; e.target.style.boxShadow = `0 0 0 3px ${themeAccent}20`; }}
-                    onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(v => !v)}
-                    style={{
-                      position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                      background: "none", border: "none", cursor: "pointer",
-                      color: T.muted, display: "flex", padding: 0,
-                    }}
-                  >
-                    {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div style={{
-                marginTop: 14, padding: "10px 14px", borderRadius: 10,
-                background: T.red + "15", border: "1px solid " + T.red + "40",
-                color: T.red, fontSize: 12, lineHeight: 1.5,
-              }}>
-                {error}
-              </div>
-            )}
-
+            {/* Quick Login checkbox — above the email field */}
             <button
               type="button"
-              onClick={handleLogin}
-              disabled={loading}
+              onClick={() => { setQuickEnabled(v => !v); setError(""); }}
               style={{
-                width: "100%", marginTop: 22, padding: "13px 0",
-                borderRadius: 10, border: "none",
-                cursor: loading ? "not-allowed" : "pointer",
-                background: loading ? themeAccent + "80" : themeAccent,
-                color: "#FFFFFF", fontWeight: 700, fontSize: 14,
-                display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
-                boxShadow: loading ? "none" : `0 8px 24px ${themeAccent}35`,
-                transition: "all 0.15s ease",
+                display: "flex", alignItems: "center", gap: 8, marginBottom: 18,
+                background: "none", border: "none", cursor: "pointer", padding: 0,
                 fontFamily: "inherit",
               }}
             >
-              {loading ? "Signing in…" : <><span>Sign in</span><ArrowRight size={15} /></>}
+              <div style={{
+                width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                background: quickEnabled ? themeAccent : "transparent",
+                border: `2px solid ${quickEnabled ? themeAccent : T.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s ease",
+              }}>
+                {quickEnabled && <Check size={11} color="#fff" strokeWidth={3} />}
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Quick Login</span>
             </button>
+
+            {/* Swappable area: account rows OR form fields */}
+            {quickEnabled ? (
+              /* ---- ACCOUNT ROWS ---- */
+              <div key="quick" style={{ animation: "qlFade 0.2s ease", display: "flex", flexDirection: "column", gap: 8 }}>
+                {DEMO_ACCOUNTS.map((account) => {
+                  const color   = avatarColor(account.email);
+                  const badge   = roleBadgeStyle(account.role);
+                  const hovered = hoveredRow === account.email;
+                  return (
+                    <div
+                      key={account.email}
+                      onClick={() => handleRowClick(account)}
+                      onMouseEnter={() => setHoveredRow(account.email)}
+                      onMouseLeave={() => setHoveredRow(null)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12,
+                        padding: "11px 14px", borderRadius: 12,
+                        background: hovered ? (themeAccent + "10") : T.card,
+                        border: "1px solid " + (hovered ? themeAccent + "50" : T.border),
+                        cursor: loading ? "not-allowed" : "pointer",
+                        transition: "all 0.15s ease",
+                        opacity: loading ? 0.6 : 1,
+                      }}
+                    >
+                      <div style={{
+                        width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                        background: color + "22", border: `1.5px solid ${color}45`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, fontWeight: 800, color,
+                      }}>
+                        {initials(account.name)}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {account.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: T.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {account.email}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 6,
+                        letterSpacing: "0.04em", flexShrink: 0, ...badge,
+                      }}>
+                        {account.role}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {error && (
+                  <div style={{
+                    marginTop: 6, padding: "10px 14px", borderRadius: 10,
+                    background: T.red + "15", border: "1px solid " + T.red + "40",
+                    color: T.red, fontSize: 12, lineHeight: 1.5,
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                {loading && (
+                  <div style={{ textAlign: "center", fontSize: 12, color: T.dim, marginTop: 4 }}>
+                    Signing in…
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ---- NORMAL FORM FIELDS ---- */
+              <div key="form" style={{ animation: "qlFade 0.2s ease" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 6 }}>Email address</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && handleLogin()}
+                      placeholder="Enter your email"
+                      autoComplete="email"
+                      style={{
+                        width: "100%", padding: "11px 14px", boxSizing: "border-box",
+                        background: T.card, border: "1px solid " + T.border,
+                        borderRadius: 10, color: T.text, fontSize: 13,
+                        outline: "none", fontFamily: "inherit", transition: "all 0.2s ease",
+                      }}
+                      onFocus={e => { e.target.style.borderColor = themeAccent; e.target.style.boxShadow = `0 0 0 3px ${themeAccent}20`; }}
+                      onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: T.dim, display: "block", marginBottom: 6 }}>Password</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        type={showPass ? "text" : "password"}
+                        onKeyDown={e => e.key === "Enter" && handleLogin()}
+                        placeholder="Enter your password"
+                        autoComplete="current-password"
+                        style={{
+                          width: "100%", padding: "11px 42px 11px 14px", boxSizing: "border-box",
+                          background: T.card, border: "1px solid " + T.border,
+                          borderRadius: 10, color: T.text, fontSize: 13,
+                          outline: "none", fontFamily: "inherit", transition: "all 0.2s ease",
+                        }}
+                        onFocus={e => { e.target.style.borderColor = themeAccent; e.target.style.boxShadow = `0 0 0 3px ${themeAccent}20`; }}
+                        onBlur={e => { e.target.style.borderColor = T.border; e.target.style.boxShadow = "none"; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(v => !v)}
+                        style={{
+                          position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                          background: "none", border: "none", cursor: "pointer",
+                          color: T.muted, display: "flex", padding: 0,
+                        }}
+                      >
+                        {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {error && (
+                  <div style={{
+                    marginTop: 14, padding: "10px 14px", borderRadius: 10,
+                    background: T.red + "15", border: "1px solid " + T.red + "40",
+                    color: T.red, fontSize: 12, lineHeight: 1.5,
+                  }}>
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleLogin()}
+                  disabled={loading}
+                  style={{
+                    width: "100%", marginTop: 22, padding: "13px 0",
+                    borderRadius: 10, border: "none",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    background: loading ? themeAccent + "80" : themeAccent,
+                    color: "#FFFFFF", fontWeight: 700, fontSize: 14,
+                    display: "flex", justifyContent: "center", alignItems: "center", gap: 8,
+                    boxShadow: loading ? "none" : `0 8px 24px ${themeAccent}35`,
+                    transition: "all 0.15s ease",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {loading ? "Signing in…" : <><span>Sign in</span><ArrowRight size={15} /></>}
+                </button>
+              </div>
+            )}
 
             <div style={{ marginTop: 28, textAlign: "center", fontSize: 10, color: T.muted, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               GeniusAI · ProPhone Suite

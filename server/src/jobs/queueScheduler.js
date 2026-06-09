@@ -89,6 +89,7 @@ async function processRun(run) {
         queueRunId:     run.id,
         label:          `Day ${run.dayNumber}`,
         sendGapSeconds: queue.sendGapSeconds ?? 5,
+        sendOrderMode:  queue.sendOrderMode  ?? 'import_order',
       }),
       `run ${run.id} (day ${run.dayNumber})`
     );
