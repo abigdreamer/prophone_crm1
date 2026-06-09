@@ -400,7 +400,7 @@ model CampaignRecipientEvent {
 
   recipient CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
-  @@index([recipientId])
+  @@unique([recipientId, event])
   @@index([campaignId])
   @@index([sendId])
   @@map("campaign_recipient_events")
