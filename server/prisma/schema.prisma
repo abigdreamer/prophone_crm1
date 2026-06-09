@@ -370,7 +370,9 @@ model CampaignRecipient {
   deliveredAt DateTime? @map("delivered_at")
   openedAt    DateTime? @map("opened_at")
   clickedAt   DateTime? @map("clicked_at")
-  bouncedAt   DateTime? @map("bounced_at")
+  bouncedAt          DateTime? @map("bounced_at")
+  sendOrder          Int?      @map("send_order")
+  sendSequenceNumber Int?      @map("send_sequence_number")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt     @map("updated_at")
 
@@ -420,6 +422,7 @@ model CampaignQueue {
   totalRecipients Int                @default(0) @map("total_recipients")
   totalSent       Int                @default(0) @map("total_sent")
   currentDay      Int                @default(0) @map("current_day")
+  sendOrderMode   String             @default("import_order") @map("send_order_mode")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 

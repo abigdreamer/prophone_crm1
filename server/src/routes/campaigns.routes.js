@@ -12,6 +12,7 @@ import {
   listRecipients,
   addRecipients,
   previewRecipients,
+  searchCampaignLeads,
   removeRecipients,
   sendCampaign,
   sendToContacts,
@@ -37,6 +38,7 @@ router.post('/:id/cancel',    cancelCampaign);
 router.post('/:id/restore',   restoreCampaign);
 router.post('/:id/duplicate', duplicateCampaign);
 
+router.get('/:id/leads/search',       searchCampaignLeads);
 router.get('/:id/recipients',         listRecipients);
 router.post('/:id/recipients',        addRecipients);
 router.delete('/:id/recipients',      removeRecipients);

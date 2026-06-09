@@ -58,7 +58,7 @@ async function disableResendDomainTracking(domain) {
 
 // ── Core batch executor — reused by both scheduler and HTTP send ──────────────
 
-export async function executeCampaignBatch(campaignId, { limit = null, queueRunId = null, label = '', sendGapSeconds = 5 } = {}) {
+export async function executeCampaignBatch(campaignId, { limit = null, queueRunId = null, label = '', sendGapSeconds = 5, sendOrderMode = 'import_order' } = {}) {
   const campaign = await repo.findById(campaignId);
   if (!campaign) throw new Error('Campaign not found');
   if (!campaign.templateId) throw new Error('Campaign has no template');
@@ -123,7 +123,7 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
     }
   }
 
-  const allRecipients = await repo.findPendingRecipientsForSend(campaignId, effectiveLimit);
+  const allRecipients = await repo.findPendingRecipientsForSend(campaignId, effectiveLimit, sendOrderMode);
   if (!allRecipients.length) return { sent: 0, skipped: 0, total: 0 };
 
   const contactIds     = allRecipients.map(r => r.contactId).filter(Boolean);
@@ -148,6 +148,9 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
   const sentContactIds = [];
   let totalSent = 0;
   const gapMs = Math.max(0, (sendGapSeconds ?? 5)) * 1000;
+  // Sequence number base: how many have already been sent globally in this campaign
+  const existingQueue = await prisma.campaignQueue.findUnique({ where: { campaignId }, select: { totalSent: true } });
+  let seqBase = existingQueue?.totalSent ?? 0;
 
   console.log(`[queue:executeBatch] Sending ${recipients.length} contacts one-by-one (gap: ${sendGapSeconds}s each)`);
 
@@ -198,10 +201,11 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
     const result = await sendOneWithRetry(emailPayload);
 
     if (result !== null) {
-      await markRecipientSentWithRun(r.id, result?.id || null, campaignId, label, queueRunId);
+      seqBase++;
+      await markRecipientSentWithRun(r.id, result?.id || null, campaignId, label, queueRunId, seqBase);
       sentContactIds.push(r.contact.id);
       totalSent++;
-      console.log(`[queue] (${i + 1}/${recipients.length}) Sent → ${r.contact.email}`);
+      console.log(`[queue] (${i + 1}/${recipients.length}) Sent #${seqBase} → ${r.contact.email}`);
     }
 
     // Gap between sends (skip gap after the last one)
@@ -233,7 +237,7 @@ export async function executeCampaignBatch(campaignId, { limit = null, queueRunI
   return { sent: totalSent, skipped: suppressed.length, total: allRecipients.length };
 }
 
-async function markRecipientSentWithRun(recipientId, messageId, campaignId, sendLabel, queueRunId) {
+async function markRecipientSentWithRun(recipientId, messageId, campaignId, sendLabel, queueRunId, sendSequenceNumber = null) {
   const { randomUUID } = await import('crypto');
   const sendId = randomUUID();
   const now = new Date();
@@ -247,6 +251,7 @@ async function markRecipientSentWithRun(recipientId, messageId, campaignId, send
       sentAt:      now,
       deliveredAt: now,
       ...(queueRunId ? { queueRunId } : {}),
+      ...(sendSequenceNumber != null ? { sendSequenceNumber } : {}),
     },
   });
   // Log sent + delivered events immediately — stats are computed from events, no counters needed
@@ -304,7 +309,7 @@ function addDays(date, n) {
   return d;
 }
 
-export async function createQueue(campaignId, clientId, { dailyLimit, sendTime = '09:00', timezone = 'UTC', sendGapSeconds = 5, sendDays = null }) {
+export async function createQueue(campaignId, clientId, { dailyLimit, sendTime = '09:00', timezone = 'UTC', sendGapSeconds = 5, sendDays = null, sendOrderMode = 'import_order' }) {
   if (!dailyLimit || dailyLimit < 1) throw new Error('dailyLimit must be >= 1');
 
   const normalizedDays = normalizeSendDays(sendDays);
@@ -331,6 +336,7 @@ export async function createQueue(campaignId, clientId, { dailyLimit, sendTime =
       startedAt:      firstRunAt,
       estimatedEndAt: estimatedEnd,
       totalRecipients,
+      sendOrderMode:  sendOrderMode || 'import_order',
     },
     include: { runs: true },
   });
@@ -358,7 +364,7 @@ export async function getQueue(campaignId) {
   });
 }
 
-export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds, sendDays }) {
+export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, sendGapSeconds, sendDays, sendOrderMode }) {
   const queue = await prisma.campaignQueue.findUnique({ where: { campaignId } });
   if (!queue) throw new Error('Queue not found');
 
@@ -372,6 +378,7 @@ export async function updateQueue(campaignId, { dailyLimit, sendTime, timezone, 
   if (timezone != null)        updates.timezone        = timezone;
   if (sendGapSeconds != null)  updates.sendGapSeconds  = Math.max(0, sendGapSeconds);
   if (sendDays != null)        updates.sendDays        = normalizeSendDays(sendDays);
+  if (sendOrderMode != null)   updates.sendOrderMode   = sendOrderMode;
 
   const newLimit   = updates.dailyLimit || queue.dailyLimit;
   const newTime    = updates.sendTime   || queue.sendTime;
