@@ -11,7 +11,7 @@ import { usePool } from './context/PoolContext';
 import { useTheme } from './context/ThemeContext';
 import { VIEW_MODE, STAGE_GROUPS } from './constants/index';
 
-import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check } from 'lucide-react';
+import { X, ChevronRight, LayoutGrid, Menu, Mail, Plus, Upload, PenLine, Check, List, UserPlus, Users, Flame, Zap, Star, Clock, AlertTriangle, XCircle } from 'lucide-react';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { STAGE_DEF } from './data/stages';
 import TopNav from './components/TopNav';
@@ -42,10 +42,9 @@ import ImportInline from './components/inline/ImportInline';
 import SendEmailInline from './components/inline/SendEmailInline';
 
 import { useAuth } from './hooks/useAuth';
-import { useClientAuth } from './hooks/useClientAuth';
 import { useContacts } from './hooks/useContacts';
 import { useClients } from './context/ClientsContext';
-import { PageLoader, ContentLoader, SkeletonDetailPanel } from './components/ui/Loader';
+import { PageLoader, ContentLoader } from './components/ui/Loader';
 import { useAppToast } from './context/ToastContext';
 import * as db from './services/api';
 
@@ -72,9 +71,9 @@ function PublicOrAuth({ currentUser, onSignOut }) {
   return <AppLayout currentUser={currentUser} onSignOut={onSignOut} />;
 }
 
+
 export default function App() {
   const { currentUser, setCurrentUser, loading, signOut } = useAuth();
-  const { clientUser, setClientUser, loading: clientLoading, clientSignOut } = useClientAuth();
   const { reload: reloadClients } = useClients();
 
   // ClientsProvider mounts before auth resolves, so the first fetch has no token.
@@ -83,43 +82,13 @@ export default function App() {
     if (currentUser) reloadClients();
   }, [currentUser?.id]); // eslint-disable-line
 
-  if (loading || clientLoading) return <PageLoader text="Loading…" />;
+  if (loading) return <PageLoader text="Loading…" />;
   return (
     <Routes>
-      {/* Admin auth */}
       <Route
         path="/login"
         element={currentUser ? <Navigate to="/contacts" replace /> : <LoginPage onLogin={setCurrentUser} />}
       />
-
-      {/* Client portal auth */}
-      <Route
-        path="/client-login"
-        element={clientUser ? <Navigate to="/portal/dashboard" replace /> : <ClientLoginPage onLogin={setClientUser} />}
-      />
-
-      {/* Client portal protected routes */}
-      <Route
-        path="/portal/*"
-        element={
-          clientUser ? (
-            <ClientPortalLayout clientUser={clientUser} onSignOut={clientSignOut}>
-              <Routes>
-                <Route path="dashboard" element={<ClientPortalDashboard clientUser={clientUser} />} />
-                <Route path="leads"     element={<ClientPortalLeads />} />
-                <Route path="campaigns" element={<ClientPortalCampaigns />} />
-                <Route path="reports"   element={<ClientPortalReports clientUser={clientUser} />} />
-                <Route path="profile"   element={<ClientPortalProfile clientUser={clientUser} onUpdate={setClientUser} />} />
-                <Route path="*"         element={<Navigate to="/portal/dashboard" replace />} />
-              </Routes>
-            </ClientPortalLayout>
-          ) : (
-            <Navigate to="/client-login" replace />
-          )
-        }
-      />
-
-      {/* Admin app */}
       <Route
         path="/*"
         element={<PublicOrAuth currentUser={currentUser} onSignOut={signOut} />}
@@ -172,11 +141,11 @@ function AppLayout({ currentUser, onSignOut }) {
   // Resizable panel widths — persisted to localStorage
   const [sidebarW, setSidebarW] = useState(() => {
     const saved = localStorage.getItem('crm-sidebar-width');
-    return saved ? Math.max(160, Math.min(500, parseInt(saved))) : Math.round(window.innerWidth * 0.20);
+    return saved ? Math.max(160, Math.min(400, parseInt(saved))) : 248;
   });
   const [lifecycleW, setLifecycleW] = useState(() => {
     const saved = localStorage.getItem('crm-lifecycle-width');
-    return saved ? Math.max(220, Math.min(600, parseInt(saved))) : Math.round(window.innerWidth * 0.25);
+    return saved ? Math.max(220, Math.min(480, parseInt(saved))) : 310;
   });
 
   // Auto-collapse/expand lifecycle as window resizes
@@ -189,7 +158,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const [mktgMobileOpen, setMktgMobileOpen] = useState(false);
   const [templateEditing, setTemplateEditing] = useState(false);
 
-  const { contacts, setContacts, contactCounts, loading, firstLoad, hasMore, total, loadMore, loadingMore } = useContacts(currentUser, { search: debouncedSearch, ...contactFilters });
+  const { contacts, setContacts, contactCounts, loading, firstLoad } = useContacts(currentUser);
   const [canceledContacts, setCanceledContacts] = useState([]);
 
   // Contacts visible in the current viewMode — used to scope the selection display
@@ -377,7 +346,7 @@ function AppLayout({ currentUser, onSignOut }) {
       const refreshed = await db.restoreContact(selected.id);
       setCanceledContacts((prev) => prev.filter((c) => c.id !== selected.id));
       const fresh = await db.getContacts();
-      setContacts(fresh.data);
+      setContacts(fresh);
       setSelected(refreshed);
       setCenterMode(null);
       toast.success('Contact restored.');
@@ -391,7 +360,7 @@ function AppLayout({ currentUser, onSignOut }) {
   const handleImportDone = useCallback(async () => {
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh.data);
+      setContacts(fresh);
     } catch {}
   }, [setContacts]);
 
@@ -399,7 +368,7 @@ function AppLayout({ currentUser, onSignOut }) {
     setCanceledContacts((prev) => prev.filter((c) => c.id !== contactId));
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh.data);
+      setContacts(fresh);
     } catch {}
   }, [setContacts]);
 
@@ -425,7 +394,7 @@ function AppLayout({ currentUser, onSignOut }) {
     setCenterMode(null);
     try {
       const fresh = await db.getContacts();
-      setContacts(fresh.data);
+      setContacts(fresh);
     } catch {}
   }, [setContacts]);
 
@@ -513,9 +482,6 @@ function AppLayout({ currentUser, onSignOut }) {
   const liveContact = liveFormData && selected ? {
     ...selected,
     ...liveFormData,
-    // leadScore is server-computed — always use the value from selected so the
-    // right panel reflects the saved score, not the stale form string.
-    leadScore:     selected.leadScore,
     trucks:        parseInt(liveFormData.trucks)        || selected.trucks        || 0,
     contractValue: parseInt(liveFormData.contractValue) || selected.contractValue || 0,
     tags: liveFormData.tags
@@ -525,6 +491,17 @@ function AppLayout({ currentUser, onSignOut }) {
 
   // ── View mode filter options ──────────────────────────────────────────────
 
+  const VIEW_MODE_OPTS = [
+    { mode: VIEW_MODE.ALL,        label: "All",        Icon: List,          colorKey: "dim"    },
+    { mode: VIEW_MODE.PROSPECTS,  label: "Prospects",  Icon: UserPlus,      colorKey: "amber"  },
+    { mode: VIEW_MODE.LEADS,      label: "Leads",      Icon: Users,         colorKey: "blue"   },
+    { mode: VIEW_MODE.WARM,       label: "Warm",       Icon: Flame,         colorKey: "orange" },
+    { mode: VIEW_MODE.HOT,        label: "Hot",        Icon: Zap,           colorKey: "red"    },
+    { mode: VIEW_MODE.CUSTOMER,   label: "Customer",   Icon: Star,          colorKey: "green"  },
+    { mode: VIEW_MODE.BACKBURNER, label: "Backburner", Icon: Clock,         colorKey: "purple" },
+    { mode: VIEW_MODE.LOST,       label: "Lost",       Icon: AlertTriangle, colorKey: "muted"  },
+    { mode: VIEW_MODE.CANCELED,   label: "Canceled",   Icon: XCircle,       colorKey: "red"    },
+  ];
 
   // ── Panel resize drag handlers ─────────────────────────────────────────────
 
@@ -537,7 +514,7 @@ function AppLayout({ currentUser, onSignOut }) {
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     function onMove(ev) {
-      currentW = Math.max(160, Math.min(500, startW + (ev.clientX - startX)));
+      currentW = Math.max(160, Math.min(400, startW + (ev.clientX - startX)));
       setSidebarW(currentW);
     }
     function onUp() {
@@ -559,7 +536,7 @@ function AppLayout({ currentUser, onSignOut }) {
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     function onMove(ev) {
-      currentW = Math.max(220, Math.min(600, startW - (ev.clientX - startX)));
+      currentW = Math.max(220, Math.min(480, startW - (ev.clientX - startX)));
       setLifecycleW(currentW);
     }
     function onUp() {
@@ -689,7 +666,7 @@ function AppLayout({ currentUser, onSignOut }) {
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/reddit" element={<RedditMonitorPage />} />
         <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage currentUser={currentUser} />} />
         <Route path="*" element={<Navigate to="/contacts" replace />} />
       </Routes>
@@ -808,7 +785,9 @@ function AppLayout({ currentUser, onSignOut }) {
                 pool={pool} clientId={clientId}
                 viewMode={viewMode} onViewModeChange={e => { handleViewModeChange(e); setMobileSidebarOpen(false); }}
                 selected={selected} onSelect={c => { handleSelect(c); if (isMobile) setMobileSidebarOpen(false); }}
+                onAddNew={() => { handleAddNew(); setMobileSidebarOpen(false); }}
                 onEditInline={handleEditInline}
+                onImport={() => { setCenterMode('import'); navigate('/contacts'); setMobileSidebarOpen(false); }}
                 search={search} setSearch={setSearch} searchRef={searchRef}
                 contacts={viewMode === VIEW_MODE.CANCELED ? canceledContacts : contacts}
                 canceledContacts={canceledContacts}
@@ -818,13 +797,6 @@ function AppLayout({ currentUser, onSignOut }) {
                 onToggleSelect={handleToggleSelect}
                 onToggleSelectAll={handleToggleSelectAll}
                 onSelectBulk={handleSelectBulk}
-                hasMore={viewMode !== VIEW_MODE.CANCELED && hasMore}
-                loadMore={loadMore}
-                loadingMore={loadingMore}
-                loading={loading}
-                firstLoad={firstLoad}
-                total={total}
-                onFiltersChange={setContactFilters}
               />
             </div>
             {/* Sidebar ↔ center drag handle */}
@@ -851,17 +823,13 @@ function AppLayout({ currentUser, onSignOut }) {
           )}
           {isReports && <ReportsSubNav />}
           {isSettings && <SettingsSubNav />}
-
-
-          {/* ── Contacts action bar — Add / Import ───────────────────────── */}
-          {isContacts && centerMode !== 'sendEmail' && centerMode !== 'import' && centerMode !== 'add' && (
+          {/* ── Center filter bar (contacts only, not in modal modes) ─────── */}
+          {isContacts && centerMode !== 'import' && centerMode !== 'cancel' && centerMode !== 'restore' && centerMode !== 'sendEmail' && (
             <div style={{
-              flexShrink: 0,
-              height: 38, flexShrink: 0, boxSizing: 'border-box',
-              borderBottom: '1px solid ' + T.border,
-              padding: '0 14px',
-              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 7,
-              background: T.surface,
+              flexShrink: 0, borderBottom: '1px solid ' + T.border,
+              background: T.surface, padding: '8px 12px',
+              display: 'flex', alignItems: 'center', gap: 8,
+              overflowX: 'auto', whiteSpace: 'nowrap',
             }}>
               {selected && (
                 <button
@@ -968,11 +936,9 @@ function AppLayout({ currentUser, onSignOut }) {
             </div>
           )}
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: isMarketing ? 0 : (isMobile ? 8 : isTablet ? 10 : '10px 18px'), position: 'relative' }}>
-            {!firstLoad && loading && <SkeletonDetailPanel />}
-            <div style={isContacts ? { maxWidth: 900, margin: '0 auto' } : undefined}>
-              {renderCenter()}
-            </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 12 : isTablet ? 16 : 20, position: 'relative' }}>
+            {!firstLoad && loading && <ContentLoader text="Loading contacts…" />}
+            {renderCenter()}
           </div>
         </div>
 
@@ -997,9 +963,8 @@ function AppLayout({ currentUser, onSignOut }) {
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}>
             <div style={{
-              height: 38, flexShrink: 0, boxSizing: 'border-box',
-              padding: '0 14px', borderBottom: '1px solid ' + T.border,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 14px', borderBottom: '1px solid ' + T.border,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
             }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: T.text, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Lead Lifecycle
@@ -1043,7 +1008,7 @@ function AppLayout({ currentUser, onSignOut }) {
 
         {/* Collapsed lifecycle — slim reopen tab */}
         {isContacts && !lifecycleOpen && (
-          <div style={{ flexShrink: 0, width: 29, borderLeft: '1px solid ' + T.border, background: T.surface }}>
+          <div style={{ flexShrink: 0, borderLeft: '1px solid ' + T.border, background: T.surface }}>
             <button
               onClick={() => setLifecycleOpen(true)}
               title="Open Lead Lifecycle"

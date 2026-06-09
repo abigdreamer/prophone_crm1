@@ -100,8 +100,7 @@ export default function ContactsPage({
         name.includes(ql) ||
         (c.email || "").toLowerCase().includes(ql) ||
         (c.company || "").toLowerCase().includes(ql) ||
-        (c.address || "").toLowerCase().includes(ql) ||
-        (c.city || "").toLowerCase().includes(ql)
+        (c.address || "").toLowerCase().includes(ql)
       );
     })
     .sort((a, b) => {
@@ -125,8 +124,8 @@ export default function ContactsPage({
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      const result = showingCanceled ? await db.getCanceledContacts() : await db.getContacts();
-      setContacts(showingCanceled ? result : result.data);
+      const fresh = showingCanceled ? await db.getCanceledContacts() : await db.getContacts();
+      setContacts(fresh);
     } catch {
       toast.error("Failed to refresh contacts.");
     } finally {
@@ -192,7 +191,7 @@ export default function ContactsPage({
     try {
       await Promise.all([...selectedIds].map(id => db.cancelContact(id, "Bulk canceled")));
       const fresh = await db.getContacts();
-      setContacts(fresh.data);
+      setContacts(fresh);
       setSelectedIds(new Set());
       setBulkCancelOpen(false);
       toast.success(`${selectedIds.size} contact${selectedIds.size > 1 ? "s" : ""} canceled.`);

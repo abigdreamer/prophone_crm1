@@ -124,7 +124,7 @@ This is the most important panel. It shows everything about one contact:
 
 ## How Data Flows
 
-### Loading lead
+### Loading Contacts
 ```
 User logs in or switches pool/client
         ↓
