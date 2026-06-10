@@ -61,22 +61,6 @@ export async function getUsers() {
   return request('GET', '/api/users');
 }
 
-export async function createSystemUser(data) {
-  return request('POST', '/api/users', data);
-}
-
-export async function updateSystemUser(id, data) {
-  return request('PATCH', `/api/users/${id}`, data);
-}
-
-export async function deleteSystemUser(id) {
-  return request('DELETE', `/api/users/${id}`);
-}
-
-export async function getAllPortalUsers() {
-  return request('GET', '/api/users/portal-users');
-}
-
 // ── Contacts ──────────────────────────────────────────────────────────────────
 
 export async function getContactCounts() {
@@ -382,28 +366,6 @@ export async function getContactsForCampaign(clientId) {
   return Array.isArray(r) ? r : (r.data ?? []);
 }
 
-export async function searchCampaignLeads(id, params = {}) {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') {
-      if (Array.isArray(v)) v.forEach(item => q.append(k, item));
-      else q.set(k, v);
-    }
-  });
-  const r = await request('GET', `/api/campaigns/${id}/leads/search?${q}`);
-  return r.data ?? r;
-}
-
-export async function getNextRunRecipients(campaignId) {
-  const r = await request('GET', `/api/campaigns/${campaignId}/queue/next-run-recipients`);
-  return r.data ?? r;
-}
-
-export async function manageNextRunRecipients(campaignId, body) {
-  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue/next-run-recipients`, body);
-  return r.data ?? r;
-}
-
 export async function removeCampaignRecipients(id) {
   return request('DELETE', `/api/campaigns/${id}/recipients`);
 }
@@ -511,6 +473,22 @@ export async function cancelCampaignQueue(campaignId) {
   return r.data ?? r;
 }
 
+export async function getNextRunRecipients(campaignId) {
+  const r = await request('GET', `/api/campaigns/${campaignId}/queue/next-run-recipients`);
+  return r.data ?? r;
+}
+
+export async function manageNextRunRecipients(campaignId, body) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue/next-run-recipients`, body);
+  return r.data ?? r;
+}
+
+export async function searchCampaignLeads(campaignId, params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const r = await request('GET', `/api/campaigns/${campaignId}/leads/search?${qs}`);
+  return r.data ?? r;
+}
+
 export async function exportCampaignDayBlob(campaignId, dayNumber, format = 'excel') {
   const token = localStorage.getItem('prophone_token');
   const qs = new URLSearchParams({ format, day: dayNumber }).toString();
@@ -575,6 +553,26 @@ export async function getRedditStats(clientId) {
   const params = new URLSearchParams();
   if (clientId) params.set('clientId', clientId);
   return request('GET', `/api/reddit/stats?${params}`);
+}
+
+// ── Reddit Filters ───────────────────────────────────────────────────────────
+
+export async function getRedditFilters(clientId) {
+  const params = new URLSearchParams();
+  if (clientId) params.set('clientId', clientId);
+  return request('GET', `/api/reddit/filters?${params}`);
+}
+
+export async function createRedditFilter(data) {
+  return request('POST', '/api/reddit/filters', data);
+}
+
+export async function updateRedditFilter(id, data) {
+  return request('PATCH', `/api/reddit/filters/${id}`, data);
+}
+
+export async function deleteRedditFilter(id) {
+  return request('DELETE', `/api/reddit/filters/${id}`);
 }
 
 // ── Foxtow External API ───────────────────────────────────────────────────────
