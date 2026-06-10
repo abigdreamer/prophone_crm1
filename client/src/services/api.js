@@ -473,6 +473,22 @@ export async function cancelCampaignQueue(campaignId) {
   return r.data ?? r;
 }
 
+export async function getNextRunRecipients(campaignId) {
+  const r = await request('GET', `/api/campaigns/${campaignId}/queue/next-run-recipients`);
+  return r.data ?? r;
+}
+
+export async function manageNextRunRecipients(campaignId, body) {
+  const r = await request('PATCH', `/api/campaigns/${campaignId}/queue/next-run-recipients`, body);
+  return r.data ?? r;
+}
+
+export async function searchCampaignLeads(campaignId, params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const r = await request('GET', `/api/campaigns/${campaignId}/leads/search?${qs}`);
+  return r.data ?? r;
+}
+
 export async function exportCampaignDayBlob(campaignId, dayNumber, format = 'excel') {
   const token = localStorage.getItem('prophone_token');
   const qs = new URLSearchParams({ format, day: dayNumber }).toString();
