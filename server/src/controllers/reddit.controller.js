@@ -55,38 +55,11 @@ export async function deleteMonitor(req, res) {
 // ── Posts ──────────────────────────────────────────────────────────────────
 
 export async function listPosts(req, res) {
-  const { clientId, status, monitorId, filterIds, limit = '50', offset = '0' } = req.query;
+  const { clientId, status, monitorId, limit = '50', offset = '0' } = req.query;
   const where = {};
   if (clientId) where.clientId = clientId;
   if (status && status !== 'all') where.status = status;
   if (monitorId) where.monitorId = monitorId;
-
-  // Apply saved filters (OR logic)
-  if (filterIds) {
-    const ids = filterIds.split(',').filter(Boolean);
-    if (ids.length > 0) {
-      const filters = await prisma.redditPostFilter.findMany({ where: { id: { in: ids } } });
-      const orConditions = [];
-      for (const f of filters) {
-        const cond = {};
-        if (f.keywords && f.keywords.length > 0) {
-          cond.OR = f.keywords.map(kw => ({
-            OR: [
-              { title: { contains: kw, mode: 'insensitive' } },
-              { body: { contains: kw, mode: 'insensitive' } },
-              { matchedKeywords: { has: kw } },
-            ],
-          }));
-        }
-        const dateRange = resolveDateRange(f.datePreset, f.dateFrom, f.dateTo);
-        if (dateRange) cond.redditCreatedAt = dateRange;
-        if (Object.keys(cond).length > 0) orConditions.push(cond);
-      }
-      if (orConditions.length > 0) {
-        where.AND = [...(where.AND || []), { OR: orConditions }];
-      }
-    }
-  }
 
   const [posts, total] = await Promise.all([
     prisma.redditPost.findMany({
@@ -154,73 +127,6 @@ export async function updatePost(req, res) {
   }
 
   res.json(updated);
-}
-
-// ── Filters ───────────────────────────────────────────────────────────────
-
-function resolveDateRange(preset, from, to) {
-  if (preset === 'custom') {
-    return {
-      ...(from ? { gte: new Date(from) } : {}),
-      ...(to ? { lte: new Date(to) } : {}),
-    };
-  }
-  const now = new Date();
-  const ranges = {
-    last_week: 7,
-    last_month: 30,
-    last_year: 365,
-  };
-  const days = ranges[preset];
-  if (!days) return null;
-  const start = new Date(now);
-  start.setDate(start.getDate() - days);
-  return { gte: start, lte: now };
-}
-
-export async function listFilters(req, res) {
-  const { clientId } = req.query;
-  if (!clientId) return res.status(400).json({ error: 'clientId is required' });
-  const filters = await prisma.redditPostFilter.findMany({
-    where: { clientId },
-    orderBy: { createdAt: 'desc' },
-  });
-  res.json(filters);
-}
-
-export async function createFilter(req, res) {
-  const { clientId, name, keywords, datePreset, dateFrom, dateTo } = req.body;
-  if (!clientId || !name) return res.status(400).json({ error: 'clientId and name are required' });
-  const filter = await prisma.redditPostFilter.create({
-    data: {
-      clientId,
-      name,
-      keywords: keywords || [],
-      datePreset: datePreset || null,
-      dateFrom: dateFrom ? new Date(dateFrom) : null,
-      dateTo: dateTo ? new Date(dateTo) : null,
-    },
-  });
-  res.status(201).json(filter);
-}
-
-export async function updateFilter(req, res) {
-  const { id } = req.params;
-  const { name, keywords, datePreset, dateFrom, dateTo } = req.body;
-  const data = {};
-  if (name !== undefined) data.name = name;
-  if (keywords !== undefined) data.keywords = keywords;
-  if (datePreset !== undefined) data.datePreset = datePreset || null;
-  if (dateFrom !== undefined) data.dateFrom = dateFrom ? new Date(dateFrom) : null;
-  if (dateTo !== undefined) data.dateTo = dateTo ? new Date(dateTo) : null;
-  const filter = await prisma.redditPostFilter.update({ where: { id }, data });
-  res.json(filter);
-}
-
-export async function deleteFilter(req, res) {
-  const { id } = req.params;
-  await prisma.redditPostFilter.delete({ where: { id } });
-  res.json({ success: true });
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────
