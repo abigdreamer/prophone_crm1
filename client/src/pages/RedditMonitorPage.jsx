@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { usePool } from '../context/PoolContext';
 import { useAppToast } from '../context/ToastContext';
-import { Eye, Radio, FileText, CheckCircle, Plus, Trash2, Power, PowerOff, Filter, Pencil, X } from 'lucide-react';
+import { Eye, Radio, FileText, CheckCircle, Plus, Trash2, Power, PowerOff } from 'lucide-react';
 import RefreshBtn from '../components/ui/RefreshBtn';
 import RedditPostCard from '../components/RedditPostCard';
 import RedditMonitorModal from '../components/modals/RedditMonitorModal';
-import RedditFilterModal from '../components/modals/RedditFilterModal';
 import * as db from '../services/api';
 
 function getPageWindow(current, total) {
@@ -39,35 +38,28 @@ export default function RedditMonitorPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editMonitor, setEditMonitor] = useState(null);
-  const [savedFilters, setSavedFilters] = useState([]);
-  const [activeFilterIds, setActiveFilterIds] = useState([]);
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [editFilter, setEditFilter] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
       const params = { limit: pageSize, offset: (page - 1) * pageSize };
       if (clientId) params.clientId = clientId;
       if (tab !== 'all') params.status = tab;
-      if (activeFilterIds.length > 0) params.filterIds = activeFilterIds.join(',');
 
-      const [postsRes, monRes, statsRes, filtersRes] = await Promise.all([
+      const [postsRes, monRes, statsRes] = await Promise.all([
         db.getRedditPosts(params),
         db.getRedditMonitors(clientId),
         db.getRedditStats(clientId),
-        db.getRedditFilters(clientId),
       ]);
       setPosts(postsRes.posts || []);
       setTotal(postsRes.total || 0);
       setMonitors(monRes || []);
       setStats(statsRes || {});
-      setSavedFilters(filtersRes || []);
     } catch (err) {
       console.error('Failed to load reddit data:', err);
     } finally {
       setLoading(false);
     }
-  }, [clientId, tab, page, pageSize, activeFilterIds]);
+  }, [clientId, tab, page, pageSize]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -97,32 +89,6 @@ export default function RedditMonitorPage() {
 
   async function handleToggleMonitor(mon) {
     await db.updateRedditMonitor(mon.id, { isActive: !mon.isActive });
-    loadData();
-  }
-
-  function toggleFilter(id) {
-    setActiveFilterIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-    setPage(1);
-  }
-
-  async function handleSaveFilter(data) {
-    if (editFilter) {
-      await db.updateRedditFilter(editFilter.id, data);
-      toast.success('Filter updated');
-    } else {
-      await db.createRedditFilter(data);
-      toast.success('Filter saved');
-    }
-    setEditFilter(null);
-    loadData();
-  }
-
-  async function handleDeleteFilter(id) {
-    await db.deleteRedditFilter(id);
-    setActiveFilterIds(prev => prev.filter(x => x !== id));
-    toast.success('Filter deleted');
     loadData();
   }
 
@@ -261,82 +227,6 @@ export default function RedditMonitorPage() {
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
-        flexWrap: 'wrap',
-      }}>
-        <Filter size={14} color={T.muted} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.dim, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Filters
-        </span>
-        {savedFilters.map(f => {
-          const isActive = activeFilterIds.includes(f.id);
-          return (
-            <div key={f.id} style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', borderRadius: 16,
-              background: isActive ? T.accent + '18' : T.surface,
-              border: '1px solid ' + (isActive ? T.accent + '60' : T.border),
-              cursor: 'pointer', transition: 'all 0.15s',
-            }}>
-              <span
-                onClick={() => toggleFilter(f.id)}
-                style={{
-                  fontSize: 11, fontWeight: isActive ? 700 : 500,
-                  color: isActive ? T.accent : T.muted,
-                }}
-              >
-                {f.name}
-              </span>
-              <button
-                onClick={() => { setEditFilter(f); setShowFilterModal(true); }}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: T.muted, display: 'flex', padding: 1,
-                }}
-                title="Edit filter"
-              >
-                <Pencil size={10} />
-              </button>
-              <button
-                onClick={() => handleDeleteFilter(f.id)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: T.red, display: 'flex', padding: 1,
-                }}
-                title="Delete filter"
-              >
-                <X size={10} />
-              </button>
-            </div>
-          );
-        })}
-        <button
-          onClick={() => { setEditFilter(null); setShowFilterModal(true); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: 600,
-            background: T.surface, border: '1px solid ' + T.border,
-            color: T.muted, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <Plus size={10} /> Save Filter
-        </button>
-        {activeFilterIds.length > 0 && (
-          <button
-            onClick={() => { setActiveFilterIds([]); setPage(1); }}
-            style={{
-              fontSize: 10, fontWeight: 600, color: T.red,
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            Clear All
-          </button>
-        )}
-      </div>
-
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid ' + T.border, paddingBottom: 0 }}>
         {TABS.map(t => (
@@ -443,23 +333,13 @@ export default function RedditMonitorPage() {
         );
       })()}
 
-      {/* Monitor Modal */}
+      {/* Modal */}
       {showModal && (
         <RedditMonitorModal
           monitor={editMonitor}
           clientId={clientId}
           onSave={handleSaveMonitor}
           onClose={() => { setShowModal(false); setEditMonitor(null); }}
-        />
-      )}
-
-      {/* Filter Modal */}
-      {showFilterModal && (
-        <RedditFilterModal
-          filter={editFilter}
-          clientId={clientId}
-          onSave={handleSaveFilter}
-          onClose={() => { setShowFilterModal(false); setEditFilter(null); }}
         />
       )}
     </div>

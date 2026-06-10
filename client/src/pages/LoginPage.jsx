@@ -31,7 +31,7 @@ const DEMO_ACCOUNTS = [
   { name: "James Davis",   email: "james@geniusai.biz", role: "Rep"     },
   { name: "Amy Wilson",    email: "amy@geniusai.biz",   role: "Rep"     },
 ];
-const DEMO_PASSWORD = "demo";
+const DEMO_PASSWORD = "123456";
 
 const AVATAR_COLORS = ["#818cf8", "#34d399", "#fb923c", "#38bdf8", "#f472b6"];
 

@@ -7,6 +7,7 @@ import {
   TRACKED_CONTACT_FIELDS,
 } from '../constants/index.js';
 import { logActivity } from '../lib/activityLogger.js';
+import { calculateLeadScore } from '../lib/leadScore.js';
 
 function normaliseDomain(raw) {
   if (!raw) return '';
@@ -51,9 +52,17 @@ function formatContact(c) {
     website: c.website,
     address: c.address,
     city: c.city,
+    state: c.state,
+    zip: c.zip,
     trucks: c.trucks,
+    servicesOffered: c.servicesOffered,
+    motorClubAffiliations: c.motorClubAffiliations,
+    dispatcherSoftware: c.dispatcherSoftware,
+    painPoints: c.painPoints,
+    estAnnualRevenue: c.estAnnualRevenue,
+    serviceAreaMiles: c.serviceAreaMiles,
+    yearsInBusiness: c.yearsInBusiness,
     lifecycleStage: c.lifecycleStage,
-    leadState: c.leadState ?? 'prospect',
     leadScore: c.leadScore,
     status: c.status,
     source: c.source,
@@ -93,16 +102,18 @@ async function listContacts(req, res) {
     return res.status(400).json({ error: 'Invalid pool' });
   }
 
+  const page  = Math.max(1, parseInt(req.query.page)  || 1);
+  const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 100));
+  const skip  = (page - 1) * limit;
+
   const where = {};
 
   if (pool) where.pool = pool;
   if (pool === 'client' && clientId) where.clientId = clientId;
 
   const isAllStatus = !status || status === 'all';
-
   if (!isAllStatus) {
     const isCanceled = status === STATUS.CANCELED;
-
     if (isCanceled) {
       where.isCanceled = true;
     } else if (VALID_STATUSES.includes(status)) {
@@ -263,7 +274,12 @@ async function listContacts(req, res) {
   ]);
 
   const actMap = await fetchActivitiesBulk(contacts.map(c => c.id));
-  res.json(contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })));
+  res.json({
+    data: contacts.map(c => formatContact({ ...c, activities: actMap[c.id] || [] })),
+    total,
+    page,
+    hasMore: skip + contacts.length < total,
+  });
 }
 
 async function getContact(req, res) {
@@ -280,6 +296,23 @@ async function createContact(req, res) {
   if (b.lifecycleStage && !VALID_STAGES.includes(b.lifecycleStage)) return res.status(400).json({ error: 'Invalid lifecycleStage' });
   if (b.status && !VALID_STATUSES.includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
 
+  // Pre-compute lead score from the incoming data
+  const initScore = calculateLeadScore({
+    firstName:      b.firstName       || '',
+    lastName:       b.lastName        || '',
+    email:          b.email           || '',
+    phone:          b.phone           || '',
+    company:        b.company         || '',
+    source:         b.source          || '',
+    title:          b.title           || '',
+    website:        b.website         || '',
+    address:        b.address         || '',
+    lifecycleStage: b.lifecycleStage  || STAGE.NEW,
+    status:         b.status          || STATUS.ACTIVE,
+    isCanceled:     false,
+    lastActivityAt: new Date(),
+  });
+
   const contact = await prisma.contact.create({
     data: {
       pool: b.pool || POOL.PROSPECT,
@@ -292,10 +325,19 @@ async function createContact(req, res) {
       title: b.title || '',
       website: b.website || '',
       address: (b.address || '').trim(),
+      city: b.city || '',
+      state: b.state || '',
+      zip: b.zip || '',
       trucks: parseInt(b.trucks) || 0,
+      servicesOffered: b.servicesOffered || '',
+      motorClubAffiliations: b.motorClubAffiliations || '',
+      dispatcherSoftware: b.dispatcherSoftware || '',
+      painPoints: b.painPoints || '',
+      estAnnualRevenue: b.estAnnualRevenue || '',
+      serviceAreaMiles: parseInt(b.serviceAreaMiles) || 0,
+      yearsInBusiness: parseInt(b.yearsInBusiness) || 0,
       lifecycleStage: b.lifecycleStage || STAGE.NEW,
-      leadState: b.leadState || 'prospect',
-      leadScore: b.leadScore || 10,
+      leadScore: initScore,
       status: b.status || STATUS.ACTIVE,
       source: b.source || '',
       campaign: b.campaign || '',
@@ -360,23 +402,50 @@ async function updateContact(req, res) {
     });
   }
 
+  // Build the merged snapshot used for score calculation.
+  const merged = {
+    firstName:      b.firstName      ?? existing.firstName,
+    lastName:       b.lastName       ?? existing.lastName,
+    email:          b.email          ?? existing.email,
+    phone:          b.phone          ?? existing.phone,
+    company:        b.company        ?? existing.company,
+    source:         b.source         ?? existing.source,
+    title:          b.title          ?? existing.title,
+    website:        b.website        ?? existing.website,
+    address:        b.address !== undefined ? b.address.trim() : existing.address,
+    lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
+    status:         b.status         ?? existing.status,
+    isCanceled:     existing.isCanceled,
+    lastActivityAt: existing.lastActivityAt,
+  };
+  const newScore = calculateLeadScore(merged);
+
   const updated = await prisma.contact.update({
     where: { id },
     data: {
-      firstName: b.firstName ?? existing.firstName,
-      lastName: b.lastName ?? existing.lastName,
-      email: b.email ?? existing.email,
-      phone: b.phone ?? existing.phone,
-      company: b.company ?? existing.company,
-      title: b.title ?? existing.title,
-      website: b.website ?? existing.website,
-      address: b.address !== undefined ? b.address.trim() : existing.address,
+      firstName: merged.firstName,
+      lastName: merged.lastName,
+      email: merged.email,
+      phone: merged.phone,
+      company: merged.company,
+      title: merged.title,
+      website: merged.website,
+      address: merged.address,
+      city: b.city ?? existing.city,
+      state: b.state ?? existing.state,
+      zip: b.zip ?? existing.zip,
       trucks: b.trucks !== undefined ? parseInt(b.trucks) : existing.trucks,
-      lifecycleStage: b.lifecycleStage ?? existing.lifecycleStage,
-      leadState: b.leadState ?? existing.leadState,
-      leadScore: b.leadScore ?? existing.leadScore,
-      status: b.status ?? existing.status,
-      source: b.source ?? existing.source,
+      servicesOffered: b.servicesOffered ?? existing.servicesOffered,
+      motorClubAffiliations: b.motorClubAffiliations ?? existing.motorClubAffiliations,
+      dispatcherSoftware: b.dispatcherSoftware ?? existing.dispatcherSoftware,
+      painPoints: b.painPoints ?? existing.painPoints,
+      estAnnualRevenue: b.estAnnualRevenue ?? existing.estAnnualRevenue,
+      serviceAreaMiles: b.serviceAreaMiles !== undefined ? parseInt(b.serviceAreaMiles) : existing.serviceAreaMiles,
+      yearsInBusiness: b.yearsInBusiness !== undefined ? parseInt(b.yearsInBusiness) : existing.yearsInBusiness,
+      lifecycleStage: merged.lifecycleStage,
+      leadScore: newScore,
+      status: merged.status,
+      source: merged.source,
       campaign: b.campaign ?? existing.campaign,
       contractValue:
         b.contractValue !== undefined
@@ -515,12 +584,52 @@ async function importContacts(req, res) {
     // }
 
     const address = s('address');
+    const city = s('city');
+
+    // Detect social platform from a generic "socialMedia" column if provided
+    const detectSocialPlatform = (url) => {
+      const u = url.toLowerCase();
+      if (u.includes('facebook.com') || u.includes('fb.com')) return 'facebook';
+      if (u.includes('instagram.com')) return 'instagram';
+      if (u.includes('linkedin.com')) return 'linkedin';
+      if (u.includes('twitter.com') || u.includes('x.com')) return 'twitter';
+      if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+      if (u.includes('yelp.com')) return 'yelp';
+      if (u.includes('pinterest.com')) return 'pinterest';
+      if (u.includes('tiktok.com')) return 'tiktok';
+      return null;
+    };
 
     const socialLinks = {};
     for (const k of ['facebook','instagram','linkedin','twitter','youtube','yelp','pinterest','tiktok']) {
       const v = s(k) || s(`social_${k}`) || String(r.socialLinks?.[k] ?? '').trim();
       if (v) socialLinks[k] = v;
     }
+    // Generic social media column — detect platform from URL
+    const genericSocial = s('socialMedia');
+    if (genericSocial) {
+      const platform = detectSocialPlatform(genericSocial);
+      if (platform && !socialLinks[platform]) socialLinks[platform] = genericSocial;
+    }
+
+    // Normalize lifecycle stage value
+    const STAGE_ALIASES = {
+      new: STAGE.NEW, prospect: STAGE.NEW, fresh: STAGE.NEW,
+      contacted: STAGE.CONTACTED, contact: STAGE.CONTACTED,
+      engaged: STAGE.ENGAGED,
+      demo_scheduled: STAGE.DEMO_SCHEDULED, 'demo scheduled': STAGE.DEMO_SCHEDULED,
+      demo_done: STAGE.DEMO_DONE, 'demo done': STAGE.DEMO_DONE,
+      proposal_sent: STAGE.PROPOSAL_SENT, 'proposal sent': STAGE.PROPOSAL_SENT, proposal: STAGE.PROPOSAL_SENT,
+      negotiating: STAGE.NEGOTIATING,
+      customer: STAGE.CUSTOMER, client: STAGE.CUSTOMER,
+      not_qualified: STAGE.NOT_QUALIFIED, 'not qualified': STAGE.NOT_QUALIFIED, unqualified: STAGE.NOT_QUALIFIED,
+      lost: STAGE.LOST,
+      churned: STAGE.CHURNED,
+    };
+    const rawStage = s('lifecycleStage').toLowerCase();
+    const resolvedStage = VALID_STAGES.includes(r.lifecycleStage)
+      ? r.lifecycleStage
+      : (STAGE_ALIASES[rawStage] || STAGE.NEW);
 
     const data = {
       pool,
@@ -533,19 +642,38 @@ async function importContacts(req, res) {
       title: s('title'),
       website: normaliseDomain(s('website')),
       address,
+      city,
+      state: s('state'),
+      zip: s('zip'),
       description: s('description'),
       socialLinks,
       trucks: parseInt(r.trucks) || 0,
+      servicesOffered: s('servicesOffered') || s('services_offered'),
+      motorClubAffiliations: s('motorClubAffiliations') || s('motor_club_affiliations'),
+      dispatcherSoftware: s('dispatcherSoftware') || s('dispatcher_software'),
+      painPoints: s('painPoints') || s('pain_points'),
+      estAnnualRevenue: s('estAnnualRevenue') || s('est_annual_revenue'),
+      serviceAreaMiles: parseInt(r.serviceAreaMiles ?? r.service_area_miles) || 0,
+      yearsInBusiness: parseInt(r.yearsInBusiness ?? r.years_in_business) || 0,
       contractValue: parseInt(r.contractValue) || 0,
-      lifecycleStage: VALID_STAGES.includes(r.lifecycleStage) ? r.lifecycleStage : STAGE.NEW,
-      leadScore: 10,
+      lifecycleStage: resolvedStage,
+      leadScore: calculateLeadScore({
+        firstName, lastName, email, phone,
+        company: s('company'), source: s('source'),
+        title: s('title'), website: s('website'), address,
+        lifecycleStage: resolvedStage,
+        status: STATUS.ACTIVE, isCanceled: false,
+        lastActivityAt: new Date(),
+      }),
       status: STATUS.ACTIVE,
       source: s('source'),
+      campaign: s('campaign'),
       notes: s('notes'),
+      tags: Array.isArray(r.tags) ? r.tags : (r.tags ? String(r.tags).split(/[,;|]/).map(t => t.trim()).filter(Boolean) : []),
       ownedBy: s('ownedBy') || currentUserName,
       addedBy: s('addedBy') || currentUserName,
-      tags: [],
       lastActivityAt: new Date(),
+      ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
     };
 
     const key = email ? email.toLowerCase() : null;

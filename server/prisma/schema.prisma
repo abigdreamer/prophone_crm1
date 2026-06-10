@@ -48,9 +48,8 @@ model Client {
   campaigns       Campaign[]
   templateLinks   TemplateLink[]
   campaignQueues  CampaignQueue[]
-  redditMonitors    RedditMonitor[]
-  redditPosts       RedditPost[]
-  redditPostFilters RedditPostFilter[]
+  redditMonitors RedditMonitor[]
+  redditPosts    RedditPost[]
   portalUsers    ClientUser[]
   userDefinedFields   UserDefinedField[]
   customSortOptions   CustomSortOption[]
@@ -554,23 +553,6 @@ model RedditPostEvent {
 
   @@index([postId])
   @@map("reddit_post_events")
-}
-
-model RedditPostFilter {
-  id          String    @id @default(uuid())
-  clientId    String    @map("client_id")
-  name        String
-  keywords    String[]
-  datePreset  String?   @map("date_preset")
-  dateFrom    DateTime? @map("date_from")
-  dateTo      DateTime? @map("date_to")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt     @map("updated_at")
-
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@index([clientId])
-  @@map("reddit_post_filters")
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
