@@ -37,9 +37,9 @@ function fmtCountdown(targetIso) {
   const h = Math.floor((totalSec % 86400) / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  if (d > 0) return `${d}d ${h}h ${String(m).padStart(2,"0")}m ${String(s).padStart(2,"0")}s`;
+  if (h > 0) return `${h}h ${String(m).padStart(2,"0")}m ${String(s).padStart(2,"0")}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2,"0")}s`;
   return `${s}s`;
 }
 
@@ -2015,171 +2015,100 @@ export default function CampaignDetailPage() {
 
       {/* ── Queue Status Strip ── */}
       {queue && queue.status !== "cancelled" && (() => {
-        const qColor    = queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green;
-        const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
-        const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
-        const sentPct   = queue.totalRecipients > 0
+        const qColor     = queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green;
+        const nextRun    = queueRuns.find(r => r.status === "pending" || r.status === "running");
+        const totalDays  = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
+        const sentPct    = queue.totalRecipients > 0
           ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100)) : 0;
-        const liveSent  = analytics?.totals?.sent ?? queue.totalSent ?? 0;
-        const remaining = Math.max(0, queue.totalRecipients - liveSent);
-        const todaySent = Math.max(0, liveSent - (queue.totalSent ?? 0));
+        const liveSent   = analytics?.totals?.sent ?? queue.totalSent ?? 0;
+        const remaining  = Math.max(0, queue.totalRecipients - liveSent);
+        const todaySent  = Math.max(0, liveSent - (queue.totalSent ?? 0));
         const todayLimit = queue.dailyLimit ?? 0;
-        const dot = <span style={{ color: T.border, margin: "0 6px" }}>·</span>;
+        const countdown  = nextRun?.status === "pending" && nextRun?.scheduledAt ? fmtCountdown(nextRun.scheduledAt) : null;
+
+        const StatBlock = ({ label, value, valueColor }) => (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: valueColor ?? T.text, whiteSpace: "nowrap" }}>{value}</span>
+          </div>
+        );
+
         return (
           <div style={{
-            display: "flex", alignItems: "center", gap: 14, padding: "10px 16px",
-            background: T.surface, border: "1px solid " + T.border, borderRadius: 10, marginBottom: 12,
+            background: T.surface, border: "1px solid " + T.border,
+            borderRadius: 10, padding: "10px 16px", marginBottom: 10,
+            display: "flex", alignItems: "center", gap: 14,
           }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
-            border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <CalendarClock size={16} color={queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green} />
-          </div>
-
-          {/* Info */}
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Queue</span>
+            {/* Status badge */}
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+              <CalendarClock size={14} color={qColor} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: T.dim }}>Queue</span>
               <span style={{
-                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
-                textTransform: "uppercase", letterSpacing: "0.05em",
-                color: queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green,
-                background: (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "18",
-                border: "1px solid " + (queue.status === "active" ? T.blue : queue.status === "paused" ? T.amber : T.green) + "30",
+                fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 4,
+                textTransform: "uppercase", letterSpacing: "0.07em",
+                color: qColor, background: qColor + "18", border: "1px solid " + qColor + "40",
               }}>
                 {queue.status === "active" ? "Active" : queue.status === "paused" ? "Paused" : "Completed"}
               </span>
             </div>
-            {(() => {
-              const nextRun   = queueRuns.find(r => r.status === "pending" || r.status === "running");
-              const countdown = nextRun ? fmtCountdown(nextRun.scheduledAt) : null;
-              const localTime = nextRun ? fmtLocalTime(nextRun.scheduledAt) : null;
-              const totalDays = Math.ceil(queue.totalRecipients / queue.dailyLimit) || "?";
-              const sentPct   = queue.totalRecipients > 0
-                ? Math.min(100, Math.round(queue.totalSent / queue.totalRecipients * 100))
-                : 0;
-              const barColor  = queue.status === "completed" ? T.green : T.blue;
 
-              return (
-                <div>
-                  {/* Progress row */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
-                      {queue.totalSent?.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>of</span> {queue.totalRecipients?.toLocaleString()} sent
-                    </span>
-                    <div style={{ flex: 1, height: 5, borderRadius: 4, background: T.border, overflow: "hidden", minWidth: 60 }}>
-                      <div style={{ height: "100%", borderRadius: 4, background: barColor, width: sentPct + "%", transition: "width 0.4s ease" }} />
-                    </div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: barColor, whiteSpace: "nowrap" }}>{sentPct}%</span>
-                  </div>
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: T.border, flexShrink: 0 }} />
 
-                  {/* Meta row */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: T.muted }}>
-                      Day <strong style={{ color: T.text }}>{queue.currentDay}</strong> of <strong style={{ color: T.text }}>{totalDays}</strong>
-                    </span>
+            {/* Progress */}
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 160 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>
+                {queue.totalSent?.toLocaleString()}
+                <span style={{ fontWeight: 400, color: T.muted, fontSize: 11 }}> / {queue.totalRecipients?.toLocaleString()}</span>
+              </span>
+              <div style={{ flex: 1, height: 5, borderRadius: 99, background: T.border, overflow: "hidden", minWidth: 60 }}>
+                <div style={{ height: "100%", borderRadius: 99, background: sentPct === 100 ? T.green : T.blue, width: sentPct + "%", transition: "width 0.5s ease" }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: sentPct === 100 ? T.green : T.blue, whiteSpace: "nowrap" }}>{sentPct}%</span>
+            </div>
 
-                    {nextRun && queue.status === "active" && (
-                      nextRun.status === "running"
-                        ? <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Sending now…</span>
-                        : <span style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}>
-                            <Clock size={10} />
-                            Next in <strong style={{ color: T.blue }}>{countdown}</strong>
-                            <span style={{ color: T.border }}>·</span>
-                            {localTime}
-                          </span>
-                    )}
+            {/* Divider */}
+            <div style={{ width: 1, height: 28, background: T.border, flexShrink: 0 }} />
 
-                    {queue.status === "paused" && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Paused</span>
-                    )}
-
-                    {queue.estimatedEndAt && queue.status === "active" && (
-                      <span style={{ fontSize: 11, color: T.muted }}>
-                        Ends <strong style={{ color: T.text }}>{new Date(queue.estimatedEndAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Live stats — visible when queue is active */}
-                  {queue.status === "active" && (() => {
-                    const liveSent      = analytics?.totals?.sent ?? queue.totalSent ?? 0;
-                    const remaining     = Math.max(0, queue.totalRecipients - liveSent);
-                    const todayLimit    = queue.dailyLimit ?? 0;
-                    const prevSent      = queue.totalSent ?? 0;
-                    const todaySent     = Math.max(0, liveSent - prevSent);
-                    const todayLeft     = Math.max(0, todayLimit - todaySent);
-                    const gapSec        = queue.sendGapSeconds ?? 5;
-                    const estMinToday   = Math.round(todayLeft * gapSec / 60);
-                    return (
-                      <div style={{
-                        display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap",
-                      }}>
-                        {[
-                          { label: "Remaining", value: remaining.toLocaleString(), color: T.blue },
-                          { label: "Today's batch", value: `${todaySent.toLocaleString()} / ${todayLimit.toLocaleString()}`, color: T.text },
-                          ...(nextRun?.status === "running" && estMinToday > 0
-                            ? [{ label: "Est. time left today", value: estMinToday >= 60 ? `~${Math.round(estMinToday/60)}h ${estMinToday%60}m` : `~${estMinToday}m`, color: T.amber }]
-                            : []),
-                        ].map(({ label, value, color }) => (
-                          <div key={label} style={{
-                            background: T.surface, border: "1px solid " + T.border,
-                            borderRadius: 6, padding: "4px 10px",
-                            display: "flex", alignItems: "center", gap: 6,
-                          }}>
-                            <span style={{ fontSize: 10, color: T.muted }}>{label}</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color }}>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
+            {/* Stat blocks */}
+            <div style={{ display: "flex", alignItems: "center", gap: 18, flex: 1 }}>
+              <StatBlock label="Day" value={<>{queue.currentDay} <span style={{ fontWeight: 400, color: T.muted }}>/ {totalDays}</span></>} />
+              {queue.estimatedEndAt && queue.status !== "completed" && (
+                <StatBlock label="Ends" value={new Date(queue.estimatedEndAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} />
+              )}
+              <StatBlock label="Remaining" value={remaining.toLocaleString()} valueColor={T.blue} />
+              <StatBlock
+                label="Today"
+                value={<>{todaySent.toLocaleString()} <span style={{ fontWeight: 400, color: T.muted }}>/ {todayLimit.toLocaleString()}</span></>}
+              />
+              {countdown && (
+                <StatBlock label="Next Run" value={countdown} valueColor={T.amber} />
+              )}
+              {nextRun?.status === "running" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.amber, display: "inline-block", boxShadow: "0 0 0 3px " + T.amber + "30" }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>Sending now…</span>
                 </div>
-              );
-            })()}
-          </div>
+              )}
+            </div>
 
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {queue.status === "active" && (
-              <button
-                onClick={handleQueuePause} disabled={queueActing}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                  borderRadius: 7, border: "1px solid " + T.amber + "60", background: T.amber + "12",
-                  color: T.amber, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <Pause size={12} /> Pause
+            {/* Actions */}
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+              {queue.status === "active" && (
+                <button onClick={handleQueuePause} disabled={queueActing} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.amber + "60", background: T.amber + "12", color: T.amber, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Pause size={11} /> Pause
+                </button>
+              )}
+              {queue.status === "paused" && (
+                <button onClick={handleQueueResume} disabled={queueActing} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.green + "60", background: T.green + "12", color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  <Play size={11} /> Resume
+                </button>
+              )}
+              <button onClick={() => setShowQueueModal(true)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 6, border: "1px solid " + T.border, background: "transparent", color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                <Settings2 size={11} /> Settings
               </button>
-            )}
-            {queue.status === "paused" && (
-              <button
-                onClick={handleQueueResume} disabled={queueActing}
-                style={{
-                  display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                  borderRadius: 7, border: "1px solid " + T.green + "60", background: T.green + "12",
-                  color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}
-              >
-                <Play size={12} /> Resume
-              </button>
-            )}
-            <button
-              onClick={() => setShowQueueModal(true)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-                borderRadius: 7, border: "1px solid " + T.border, background: T.surface,
-                color: T.dim, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
-              <Settings2 size={12} /> Settings
-            </button>
+            </div>
           </div>
-        </div>
         );
       })()}
 
